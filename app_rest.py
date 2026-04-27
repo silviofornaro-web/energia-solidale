@@ -947,10 +947,24 @@ with center:
             disabled=True,
         )
     with f2:
-        st.checkbox(
-            "Quote fisse inserite come importo mensile",
-            key="assume_fixed_is_monthly",
-        )
+        st.caption("Quote fisse inserite come importo mensile")
+        fixed_yes, fixed_no = st.columns(2)
+        with fixed_yes:
+            if st.button(
+                "SI",
+                key="btn_fixed_monthly_yes",
+                type="primary" if st.session_state["assume_fixed_is_monthly"] else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state["assume_fixed_is_monthly"] = True
+        with fixed_no:
+            if st.button(
+                "NO",
+                key="btn_fixed_monthly_no",
+                type="primary" if not st.session_state["assume_fixed_is_monthly"] else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state["assume_fixed_is_monthly"] = False
 
     st.caption(
         f"Mesi fatturati = {billing_months} | "
@@ -1078,7 +1092,24 @@ with center:
         st.error("❌ Nessun indice PUN/PSV trovato nel file indici_pun_psv_2025_2026.xlsx.")
 
     if st.session_state["commodity"] == "EE":
-        st.checkbox("EE variabile: perdite rete 10% su PUN", key="apply_loss")
+        st.caption("EE variabile: perdite rete 10% su PUN")
+        loss_yes, loss_no = st.columns(2)
+        with loss_yes:
+            if st.button(
+                "Perdite SI",
+                key="btn_apply_loss_yes",
+                type="primary" if st.session_state["apply_loss"] else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state["apply_loss"] = True
+        with loss_no:
+            if st.button(
+                "Perdite NO",
+                key="btn_apply_loss_no",
+                type="primary" if not st.session_state["apply_loss"] else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state["apply_loss"] = False
         st.number_input("PUN (€/kWh) da file indici *", step=0.001, format="%.4f", key="pun_override", disabled=True)
         indice_ok = float(st.session_state["pun_override"]) > 0
     else:
