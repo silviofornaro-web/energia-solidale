@@ -732,12 +732,10 @@ def validate_row_map(rm):
         raise ValueError("Template Excel incompleto: mancano le righe " + ", ".join(missing))
 
 def apply_accise_formula_conforme(ws, rm, col_letter):
-    # Conforme a esempio_confronto_corretto.xlsx [1](https://onedrive.live.com/personal/8d36b8086e9d2af7/_layouts/15/doc.aspx?resid=ae62e5e9-da89-4f80-8edb-c1ae21b28205&cid=8d36b8086e9d2af7)
     acc = rm["accise_iva"]
-    tot = rm["totale"]
     start = rm["vendita_consumo"]
     end = rm["arrotondamenti"]
-    ws[f"{col_letter}{acc}"] = f"=B{acc}/(B{tot}-B{acc})*SUM({col_letter}{start}:{col_letter}{end})"
+    ws[f"{col_letter}{acc}"] = f"=SUM({col_letter}{start}:{col_letter}{end})*B{acc}/SUM(B{start}:B{end})"
 
 def apply_total_formula(ws, rm, col_letter):
     acc = rm["accise_iva"]
