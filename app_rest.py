@@ -1,0 +1,1032 @@
+import io
+import re
+from pathlib import Path
+from datetime import datetime, date
+
+import streamlit as st
+import openpyxl
+
+st.set_page_config(page_title="Energia Solidale — Confronto bollette vs Illumia", layout="wide")
+
+BASE_DIR = Path(__file__).parent
+TEMPLATE_XLSX = BASE_DIR / "esempio_confronto_corretto.xlsx"
+TARIFFE_BASE = BASE_DIR / "tariffe"
+INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
+
+# Legacy fallback (solo se non hai ancora tariffe/)
+LEGACY_RES_FILES = [
+    BASE_DIR / "tariffe_illumia_template.xlsx",
+    BASE_DIR / "tariffe_illumia_templatemarzo.xlsx",
+]
+LEGACY_RES_FOUND = [p for p in LEGACY_RES_FILES if p.exists()]
+
+if not TEMPLATE_XLSX.exists():
+    st.error("❌ Manca esempio_confronto_corretto.xlsx nella cartella del progetto.")
+    st.stop()
+
+KEYS = [
+    "vendita_consumo",
+    "vendita_fissa",
+    "rete_consumi",
+    "rete_fissa",
+    "quota_potenza",
+    "sconti",
+    "ricalcoli",
+    "arrotondamenti",
+    "accise_iva",
+]
+
+def ss(k, v):
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+# Stato base
+ss("segmento", "RESIDENZIALE")  # RESIDENZIALE / BUSINESS
+ss("nome_cliente", "")
+ss("commodity", "GAS")          # GAS / EE
+ss("consumo", 0.0)
+
+# Periodo bolletta (solo informativo/controllo; NON è validità offerta)
+ss("bill_start", date.today())
+ss("bill_end", date.today())
+ss("bill_dates_locked", False)
+
+# Periodicità (per quota fissa scontrino)
+ss("billing_divisor", 12)
+ss("billing_months", 1)
+ss("assume_fixed_is_monthly", True)
+
+BILLING_PERIODS = {
+    1: "MENSILE",
+    2: "BIMESTRALE",
+    3: "TRIMESTRALE",
+}
+
+# Bolletta B
+for k in KEYS:
+    ss(f"b_{k}", 0.0)
+
+# Indici
+ss("pun_override", 0.0)
+ss("psv_override", 0.0)
+ss("indice_month", "")
+ss("indice_source", "")
+ss("indice_file_path", "")
+ss("apply_loss", True)
+ss("include_dispbt", True)
+
+# Illumia outputs
+ss("c_vendita_consumo", 0.0)
+ss("c_vendita_fissa", 0.0)
+ss("d_vendita_consumo", 0.0)
+ss("d_vendita_fissa", 0.0)
+ss("illumia_calculated", False)
+
+# Sconti Illumia
+ss("ill_sconto_var", -3.0)
+ss("ill_sconto_fix", -3.0)
+
+# Tariffe: upload override
+ss("tariffe_uploaded_bytes", None)
+
+# Offerte selezionate automaticamente dall'app
+ss("offer_var_name", "")
+ss("offer_fix_name", "")
+
+# Validità offerta (presa dal file tariffe più recente)
+ss("offer_valid_from", None)
+ss("offer_valid_to", None)
+ss("offer_file_path", "")
+
+# UI
+ss("export_mode", "ENTRAMBE")
+
+
+# -----------------------------
+# Utils
+# -----------------------------
+def norm(s: str) -> str:
+    return " ".join(str(s).strip().lower().split())
+
+def parse_number(x) -> float:
+    if x is None:
+        return 0.0
+    if isinstance(x, (int, float)):
+        return float(x)
+    s = str(x).strip().replace("€", "").replace("\u20ac", "").replace(" ", "")
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    else:
+        s = s.replace(",", ".")
+    try:
+        return float(s)
+    except Exception:
+        return 0.0
+
+def parse_date_any(x):
+    if x is None:
+        return None
+    if isinstance(x, datetime):
+        return x.date()
+    if isinstance(x, date):
+        return x
+    s = str(x).strip()
+    # accetta più formati perché nel tuo file si vedono date tipo 03/11/2026, 04/10/2026 ecc. [1](https://onedrive.live.com/personal/8d36b8086e9d2af7/_layouts/15/doc.aspx?resid=ae62e5e9-da89-4f80-8edb-c1ae21b28205&cid=8d36b8086e9d2af7)
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except Exception:
+            pass
+    return None
+
+def truthy(v):
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return v
+    s = str(v).strip().lower()
+    if s in ("true", "1", "yes", "y", "si", "sì"):
+        return True
+    if s in ("false", "0", "no", "n"):
+        return False
+    return None
+
+def clean_text(v) -> str:
+    if v is None:
+        return ""
+    return str(v).strip()
+
+def billing_months_from_dates(start: date, end: date) -> int:
+    if not isinstance(start, date) or not isinstance(end, date):
+        return 1
+    if end < start:
+        start, end = end, start
+    months = (end.year - start.year) * 12 + (end.month - start.month) + 1
+    return max(1, months)
+
+def billing_label_from_months(months) -> str:
+    try:
+        months = int(months)
+    except Exception:
+        months = 1
+    return BILLING_PERIODS.get(months, f"{months} MESI")
+
+def billing_divisor_from_months(months) -> float:
+    try:
+        months = int(months)
+    except Exception:
+        months = 1
+    months = max(1, months)
+    return 12.0 / float(months)
+
+def bill_fixed_multiplier() -> int:
+    try:
+        return max(1, int(st.session_state.get("billing_months", 1)))
+    except Exception:
+        return 1
+
+def month_key_from_date(d: date) -> str:
+    return f"{d.year:04d}-{d.month:02d}"
+
+def parse_index_month(x):
+    if x is None:
+        return ""
+    if isinstance(x, datetime):
+        return month_key_from_date(x.date())
+    if isinstance(x, date):
+        return month_key_from_date(x)
+    s = str(x).strip()
+    m = re.search(r"(\d{4})[-/](\d{1,2})", s)
+    if m:
+        return f"{int(m.group(1)):04d}-{int(m.group(2)):02d}"
+    parsed = parse_date_any(s)
+    return month_key_from_date(parsed) if parsed else ""
+
+def load_indici_rows(path: Path):
+    if not path.exists():
+        return []
+    try:
+        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+        if "indici" not in wb.sheetnames:
+            return []
+        ws = wb["indici"]
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            return []
+        header = [clean_text(c).lower() for c in rows[0]]
+        if not {"mese", "pun", "psv"}.issubset(set(header)):
+            return []
+        i_mese = header.index("mese")
+        i_pun = header.index("pun")
+        i_psv = header.index("psv")
+        out = []
+        for r in rows[1:]:
+            if not r or not any(r):
+                continue
+            mese = parse_index_month(r[i_mese] if i_mese < len(r) else None)
+            if not mese:
+                continue
+            out.append(
+                {
+                    "mese": mese,
+                    "pun": parse_number(r[i_pun] if i_pun < len(r) else None),
+                    "psv": parse_number(r[i_psv] if i_psv < len(r) else None),
+                }
+            )
+        return sorted(out, key=lambda row: row["mese"])
+    except Exception:
+        return []
+
+def select_indice_for_bill_period(rows, bill_start: date, bill_end: date):
+    if not rows:
+        return None, "missing"
+    if bill_end < bill_start:
+        bill_start, bill_end = bill_end, bill_start
+    start_month = month_key_from_date(bill_start)
+    end_month = month_key_from_date(bill_end)
+
+    in_period = [r for r in rows if start_month <= r["mese"] <= end_month]
+    if in_period:
+        return in_period[-1], "period"
+
+    before_end = [r for r in rows if r["mese"] <= end_month]
+    if before_end:
+        return before_end[-1], "before_end"
+
+    return rows[-1], "latest_available"
+
+def commodity_label(comm: str) -> str:
+    return "GAS" if comm == "GAS" else "LUCE"
+
+def safe_nome_cognome(nome_cliente: str) -> str:
+    if not nome_cliente:
+        return "senza_nome"
+    s = re.sub(r'[\\/:*?"<>|]', "", nome_cliente.strip())
+    parts = s.split()
+    if len(parts) >= 2:
+        return f"{parts[0]}_{parts[1]}"
+    return parts[0]
+
+def badge_ok():
+    st.markdown(
+        "<div style='background:#1f7a1f;color:white;padding:8px 12px;border-radius:10px;display:inline-block;font-weight:700;'>Dati completi ✅</div>",
+        unsafe_allow_html=True,
+    )
+
+def badge_missing(msg: str):
+    st.markdown(
+        "<div style='background:#b3261e;color:white;padding:8px 12px;border-radius:10px;display:inline-block;font-weight:700;'>Dati mancanti ❌</div>"
+        f"<div style='margin-top:6px;color:#b3261e;font-weight:600;'>{msg}</div>",
+        unsafe_allow_html=True,
+    )
+
+# -----------------------------
+# Tariffe: trova cartella più recente + carica template fisso
+# -----------------------------
+def find_latest_offer_folder(base: Path):
+    if not base.exists():
+        return None
+
+    candidates = []
+
+    # supporta: tariffe/2026-04
+    for p in base.glob("*"):
+        if p.is_dir() and re.match(r"^\d{4}-\d{2}$", p.name):
+            candidates.append((p.name, p))
+
+    # supporta: tariffe/2026/04
+    for y in base.glob("*"):
+        if y.is_dir() and re.match(r"^\d{4}$", y.name):
+            for m in y.glob("*"):
+                if m.is_dir() and re.match(r"^\d{2}$", m.name):
+                    candidates.append((f"{y.name}-{m.name}", m))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda x: x[0])
+    return candidates[-1][1]
+
+def tariff_month_key(path: Path) -> str:
+    try:
+        parts = path.relative_to(TARIFFE_BASE).parts
+    except ValueError:
+        parts = path.parts
+
+    for i, part in enumerate(parts):
+        if re.match(r"^\d{4}-\d{2}$", part):
+            return part
+        if re.match(r"^\d{4}$", part) and i + 1 < len(parts) and re.match(r"^\d{2}$", parts[i + 1]):
+            return f"{part}-{parts[i + 1]}"
+    return ""
+
+def tariff_matches_segment(path: Path, segmento: str) -> bool:
+    name = path.name.lower()
+    parts = {p.lower() for p in path.parts}
+    if path.suffix.lower() != ".xlsx" or name.startswith("~$"):
+        return False
+    if segmento == "BUSINESS":
+        return "business" in parts or "business" in name
+    return ("residenziale" in parts or "template" in name) and "business" not in name
+
+def load_tariffe_file_for_segment(segmento: str):
+    if TARIFFE_BASE.exists():
+        candidates = [
+            p for p in TARIFFE_BASE.rglob("*.xlsx")
+            if tariff_matches_segment(p, segmento)
+        ]
+        if candidates:
+            candidates.sort(key=lambda p: (tariff_month_key(p), p.stat().st_mtime, p.name))
+            selected = candidates[-1]
+            st.session_state["offer_file_path"] = str(selected)
+            return selected
+
+    # fallback legacy SOLO residenziale
+    if segmento == "RESIDENZIALE" and LEGACY_RES_FOUND:
+        st.session_state["offer_file_path"] = str(LEGACY_RES_FOUND[0])
+        return LEGACY_RES_FOUND[0]
+
+    return None
+
+def get_file_valid_range(xlsx_path: Path):
+    try:
+        wb = openpyxl.load_workbook(xlsx_path, data_only=True)
+        if "tariffe" not in wb.sheetnames:
+            return None, None
+        ws = wb["tariffe"]
+        rows = list(ws.iter_rows(values_only=True))
+        if not rows:
+            return None, None
+        header = [str(c).strip().lower() if c is not None else "" for c in rows[0]]
+        if "valid_from" not in header or "valid_to" not in header:
+            return None, None
+        i_from = header.index("valid_from")
+        i_to = header.index("valid_to")
+
+        dfs, dts = [], []
+        for r in rows[1:]:
+            if not r:
+                continue
+            vf = parse_date_any(r[i_from] if i_from < len(r) else None)
+            vt = parse_date_any(r[i_to] if i_to < len(r) else None)
+            if vf:
+                dfs.append(vf)
+            if vt:
+                dts.append(vt)
+        if not dfs or not dts:
+            return None, None
+        return min(dfs), max(dts)
+    except Exception:
+        return None, None
+
+def load_tariffe_from_path(path: Path):
+    wb = openpyxl.load_workbook(path, data_only=True)
+    if "tariffe" not in wb.sheetnames:
+        return []
+    ws = wb["tariffe"]
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return []
+    header = [str(c).strip().lower() if c is not None else "" for c in rows[0]]
+    out = []
+    for r in rows[1:]:
+        if not any(r):
+            continue
+        d = {}
+        for i, key in enumerate(header):
+            d[key] = r[i] if i < len(r) else None
+        d["commodity"] = clean_text(d.get("commodity")).upper()
+        d["offer_type"] = clean_text(d.get("offer_type")).upper()
+        d["offer_name"] = clean_text(d.get("offer_name"))
+        d["component"] = clean_text(d.get("component")).lower()
+        d["value_num"] = parse_number(d.get("value"))
+        d["is_sellable"] = d.get("is_sellable")
+        out.append(d)
+    return out
+
+def load_tariffe_from_bytes(xlsx_bytes: bytes):
+    wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), data_only=True)
+    if "tariffe" not in wb.sheetnames:
+        return []
+    ws = wb["tariffe"]
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return []
+    header = [str(c).strip().lower() if c is not None else "" for c in rows[0]]
+    out = []
+    for r in rows[1:]:
+        if not any(r):
+            continue
+        d = {}
+        for i, key in enumerate(header):
+            d[key] = r[i] if i < len(r) else None
+        d["commodity"] = clean_text(d.get("commodity")).upper()
+        d["offer_type"] = clean_text(d.get("offer_type")).upper()
+        d["offer_name"] = clean_text(d.get("offer_name"))
+        d["component"] = clean_text(d.get("component")).lower()
+        d["value_num"] = parse_number(d.get("value"))
+        d["is_sellable"] = d.get("is_sellable")
+        out.append(d)
+    return out
+
+
+# -----------------------------
+# Offerta scelta dall'app
+# -----------------------------
+def select_offer_name(rows, commodity, offer_type, segmento):
+    c = commodity.upper()
+    o = offer_type.upper()
+    subset = [r for r in rows if r.get("commodity") == c and r.get("offer_type") == o]
+
+    if any(r.get("is_sellable") is not None for r in subset):
+        subset = [r for r in subset if truthy(r.get("is_sellable")) is True]
+
+    # BUSINESS: se manca is_sellable, per prudenza non vendiamo FISSA
+    if segmento == "BUSINESS" and not any(r.get("is_sellable") is not None for r in rows):
+        if o == "FISSA":
+            return ""
+
+    if not subset:
+        return ""
+
+    counts = {}
+    for r in subset:
+        name = clean_text(r.get("offer_name"))
+        if name:
+            counts[name] = counts.get(name, 0) + 1
+    if not counts:
+        return ""
+
+    return sorted(counts.items(), key=lambda x: (-x[1], x[0]))[0][0]
+
+def filter_rows_by_offer(rows, commodity, offer_type, offer_name):
+    c = commodity.upper()
+    o = offer_type.upper()
+    return [r for r in rows if r.get("commodity") == c and r.get("offer_type") == o and clean_text(r.get("offer_name")) == offer_name]
+
+
+# -----------------------------
+# Calcolo Illumia
+# -----------------------------
+def comp_sum(rows, commodity, offer, component):
+    c = commodity.upper()
+    o = offer.upper()
+    comp = component.lower()
+    return float(sum(r.get("value_num", 0.0) for r in rows if r.get("commodity") == c and r.get("offer_type") == o and r.get("component") == comp))
+
+def comp_first(rows, commodity, offer, component):
+    c = commodity.upper()
+    o = offer.upper()
+    comp = component.lower()
+    for r in rows:
+        if r.get("commodity") == c and r.get("offer_type") == o and r.get("component") == comp:
+            return float(r.get("value_num", 0.0))
+    return 0.0
+
+def calc_illumia_vendite(rows_offer, commodity, offer, consumo, pun, psv, billing_divisor):
+    comm = commodity.upper()
+    off = offer.upper()
+
+    def fixed_annua(c, o):
+        base = comp_sum(rows_offer, c, o, "ccv_quota_fissa")
+        disp = comp_sum(rows_offer, c, o, "dispbt") if st.session_state.get("include_dispbt", True) else 0.0
+        return base + disp
+
+    if comm == "EE":
+        if off == "VARIABILE":
+            fee = comp_sum(rows_offer, "EE", "VARIABILE", "fee_energia")
+            ccv_var = comp_sum(rows_offer, "EE", "VARIABILE", "ccv_quota_variabile")
+            sbil = comp_sum(rows_offer, "EE", "VARIABILE", "sbilanciamento")
+            base = pun * (1.10 if st.session_state.get("apply_loss", True) else 1.0)
+            prezzo = base + fee + ccv_var + sbil
+            vend_cons = consumo * prezzo
+            vend_fix = fixed_annua("EE", "VARIABILE") / float(billing_divisor)
+            return float(vend_cons), float(vend_fix)
+
+        prezzo = comp_first(rows_offer, "EE", "FISSA", "prezzo_mono")
+        if prezzo == 0.0:
+            p1 = comp_first(rows_offer, "EE", "FISSA", "prezzo_f1")
+            p23 = comp_first(rows_offer, "EE", "FISSA", "prezzo_f23")
+            prezzo = max(p1, p23)
+        vend_cons = consumo * prezzo
+        vend_fix = fixed_annua("EE", "FISSA") / float(billing_divisor)
+        return float(vend_cons), float(vend_fix)
+
+    if off == "VARIABILE":
+        fee = comp_sum(rows_offer, "GAS", "VARIABILE", "fee_energia")
+        ccv_var = comp_sum(rows_offer, "GAS", "VARIABILE", "ccv_quota_variabile")
+        bil = comp_sum(rows_offer, "GAS", "VARIABILE", "bilanciamento")
+        prezzo = psv + fee + ccv_var + bil
+        vend_cons = consumo * prezzo
+        vend_fix = fixed_annua("GAS", "VARIABILE") / float(billing_divisor)
+        return float(vend_cons), float(vend_fix)
+
+    prezzo = comp_first(rows_offer, "GAS", "FISSA", "prezzo_fisso")
+    vend_cons = consumo * prezzo
+    vend_fix = fixed_annua("GAS", "FISSA") / float(billing_divisor)
+    return float(vend_cons), float(vend_fix)
+
+
+# -----------------------------
+# Export Excel (template + accise conformi al tuo esempio)
+# -----------------------------
+def find_row_map(ws):
+    rm = {}
+    for r in range(1, ws.max_row + 1):
+        v = ws[f"A{r}"].value
+        if not isinstance(v, str):
+            continue
+        t = norm(v)
+        if t == "vendita consumo":
+            rm["vendita_consumo"] = r
+        elif t.startswith("vendita fissa") and "luce" in t:
+            rm["vendita_fissa_luce"] = r
+        elif t.startswith("vendita fissa") and "gas" in t:
+            rm["vendita_fissa_gas"] = r
+        elif "rete" in t and "consumi" in t:
+            rm["rete_consumi"] = r
+        elif "rete" in t and "fissa" in t:
+            rm["rete_fissa"] = r
+        elif "quota potenza" in t:
+            rm["quota_potenza"] = r
+        elif t == "sconti":
+            rm["sconti"] = r
+        elif "ricalc" in t:
+            rm["ricalcoli"] = r
+        elif "arrotond" in t:
+            rm["arrotondamenti"] = r
+        elif "accise" in t:
+            rm["accise_iva"] = r
+        elif t == "totale":
+            rm["totale"] = r
+
+    if "arrotondamenti" not in rm and "accise_iva" in rm:
+        candidate = rm["accise_iva"] - 1
+        if candidate > 0:
+            rm["arrotondamenti"] = candidate
+
+    return rm
+
+def apply_export_labels(ws, nome_cliente: str):
+    labels = {
+        1: nome_cliente,
+        2: None,
+        3: "VOCE",
+        4: "Vendita Consumo",
+        5: "Rete e oneri di sistema Consumi",
+        6: "Vendita Fissa Luce",
+        7: "Vendita Fissa  Gas",
+        8: "Rete e oneri di sistema Fissa",
+        9: "Quota Potenza",
+        10: "Sconti",
+        11: "Ricalcoli/Partite pregresse",
+        12: None,
+        13: "Accise e Iva",
+        14: "Totale",
+    }
+    for row, value in labels.items():
+        ws[f"A{row}"] = value
+
+def write_export_metadata(ws):
+    ws["F1"] = f"Offerta Illumia VARIABILE: {st.session_state['offer_var_name']}"
+    ws["F2"] = f"Offerta Illumia FISSA: {st.session_state['offer_fix_name'] if st.session_state['offer_fix_name'] else 'N.D.'}"
+    if st.session_state.get("offer_valid_from") and st.session_state.get("offer_valid_to"):
+        ws["F3"] = f"Validità offerta: {st.session_state['offer_valid_from']} → {st.session_state['offer_valid_to']}"
+    else:
+        ws["F3"] = "Validità offerta: N.D. (upload manuale)"
+    ws["F4"] = f"File tariffe: {st.session_state.get('offer_file_path','')}"
+    ws["F5"] = (
+        f"Indice PUN/PSV: {st.session_state.get('indice_month','N.D.')} "
+        f"({st.session_state.get('indice_file_path','')})"
+    )
+
+def validate_row_map(rm):
+    required = [
+        "vendita_consumo",
+        "vendita_fissa_luce",
+        "vendita_fissa_gas",
+        "rete_consumi",
+        "rete_fissa",
+        "quota_potenza",
+        "sconti",
+        "ricalcoli",
+        "arrotondamenti",
+        "accise_iva",
+        "totale",
+    ]
+    missing = [key for key in required if key not in rm]
+    if missing:
+        raise ValueError("Template Excel incompleto: mancano le righe " + ", ".join(missing))
+
+def apply_accise_formula_conforme(ws, rm, col_letter):
+    # Conforme a esempio_confronto_corretto.xlsx [1](https://onedrive.live.com/personal/8d36b8086e9d2af7/_layouts/15/doc.aspx?resid=ae62e5e9-da89-4f80-8edb-c1ae21b28205&cid=8d36b8086e9d2af7)
+    acc = rm["accise_iva"]
+    tot = rm["totale"]
+    start = rm["vendita_consumo"]
+    end = rm["arrotondamenti"]
+    ws[f"{col_letter}{acc}"] = f"=B{acc}/(B{tot}-B{acc})*SUM({col_letter}{start}:{col_letter}{end})"
+
+def apply_total_formula(ws, rm, col_letter):
+    acc = rm["accise_iva"]
+    start = rm["vendita_consumo"]
+    end = rm["arrotondamenti"]
+    ws[f"{col_letter}{rm['totale']}"] = f"=SUM({col_letter}{start}:{col_letter}{end})+{col_letter}{acc}"
+
+def write_column(ws, rm, col, vals, commodity):
+    ws[f"{col}{rm['vendita_consumo']}"] = float(vals["vendita_consumo"])
+    if commodity == "GAS":
+        ws[f"{col}{rm['vendita_fissa_gas']}"] = float(vals["vendita_fissa"])
+        ws[f"{col}{rm['vendita_fissa_luce']}"] = "N.A."
+        ws[f"{col}{rm['quota_potenza']}"] = "N.A."
+    else:
+        ws[f"{col}{rm['vendita_fissa_luce']}"] = float(vals["vendita_fissa"])
+        ws[f"{col}{rm['vendita_fissa_gas']}"] = "N.A."
+        ws[f"{col}{rm['quota_potenza']}"] = float(vals["quota_potenza"])
+
+    ws[f"{col}{rm['rete_consumi']}"] = float(vals["rete_consumi"])
+    ws[f"{col}{rm['rete_fissa']}"] = float(vals["rete_fissa"])
+    ws[f"{col}{rm['sconti']}"] = float(vals["sconti"])
+    ws[f"{col}{rm['ricalcoli']}"] = float(vals["ricalcoli"])
+    ws[f"{col}{rm['arrotondamenti']}"] = float(vals["arrotondamenti"])
+
+def fill_column_text(ws, rm, col, text):
+    for key, r in rm.items():
+        if key == "totale" and text == "N.A.":
+            continue
+        ws[f"{col}{r}"] = text
+
+def fill_column_na(ws, rm, col):
+    fill_column_text(ws, rm, col, "N.A.")
+
+def fill_column_nd(ws, rm, col):
+    fill_column_text(ws, rm, col, "N.D.")
+
+def bolletta_is_valid():
+    v1 = float(st.session_state["b_vendita_consumo"])
+    v2 = float(st.session_state["b_vendita_fissa"])
+    v3 = float(st.session_state["b_rete_consumi"])
+    v4 = float(st.session_state["b_rete_fissa"])
+    return not (v1 == 0.0 and v2 == 0.0 and v3 == 0.0 and v4 == 0.0)
+
+
+# -----------------------------
+# UI
+# -----------------------------
+left, center, right = st.columns([1, 3, 1])
+with center:
+    st.title("Energia Solidale — Confronto bollette vs Illumia")
+
+    top_name, top_segment, top_supply = st.columns([2, 1, 1])
+    with top_name:
+        st.text_input("Nome cliente *", key="nome_cliente")
+    with top_segment:
+        st.selectbox("Segmento tariffario", ["RESIDENZIALE", "BUSINESS"], key="segmento")
+    with top_supply:
+        st.selectbox("Tipo fornitura", ["GAS", "EE (Luce)"], index=0 if st.session_state["commodity"] == "GAS" else 1, key="commodity_ui")
+    st.session_state["commodity"] = "GAS" if st.session_state["commodity_ui"] == "GAS" else "EE"
+    nome_ok = bool(st.session_state["nome_cliente"].strip())
+
+    # Reset buttons
+    cA, cB = st.columns(2)
+    with cA:
+        if st.button("🔁 Nuovo confronto (mantieni tariffe)", use_container_width=True):
+            st.session_state["consumo"] = 0.0
+            for k in KEYS:
+                st.session_state[f"b_{k}"] = 0.0
+            st.session_state["illumia_calculated"] = False
+            st.session_state["c_vendita_consumo"] = 0.0
+            st.session_state["c_vendita_fissa"] = 0.0
+            st.session_state["d_vendita_consumo"] = 0.0
+            st.session_state["d_vendita_fissa"] = 0.0
+            st.session_state["bill_dates_locked"] = False
+            st.session_state["offer_var_name"] = ""
+            st.session_state["offer_fix_name"] = ""
+            st.success("✅ Nuovo confronto pronto (tariffe mantenute).")
+    with cB:
+        if st.button("🗑 Reset totale", use_container_width=True):
+            st.session_state.clear()
+            st.info("🔄 Reset totale effettuato. Ricarica la pagina (F5).")
+            st.stop()
+
+    st.divider()
+
+    # 1) Periodicità
+    st.header("1️⃣ Periodicità")
+    p1, p2 = st.columns(2)
+    with p1:
+        st.date_input(
+            "Dal (bolletta)",
+            key="bill_start",
+            on_change=lambda: st.session_state.__setitem__("bill_dates_locked", True),
+        )
+    with p2:
+        st.date_input(
+            "Al (bolletta)",
+            key="bill_end",
+            on_change=lambda: st.session_state.__setitem__("bill_dates_locked", True),
+        )
+
+    billing_months = billing_months_from_dates(st.session_state["bill_start"], st.session_state["bill_end"])
+    st.session_state["billing_months"] = billing_months
+    st.session_state["billing_divisor"] = billing_divisor_from_months(billing_months)
+
+    f1, f2 = st.columns([2, 3])
+    with f1:
+        st.text_input(
+            "Periodicità calcolata",
+            value=billing_label_from_months(billing_months),
+            disabled=True,
+        )
+    with f2:
+        st.checkbox(
+            "Quote fisse inserite come importo mensile",
+            key="assume_fixed_is_monthly",
+        )
+
+    st.caption(
+        f"Mesi fatturati = {billing_months} | "
+        f"Divisore periodo = {float(st.session_state['billing_divisor']):g} | "
+        f"Moltiplicatore quote fisse bolletta = {bill_fixed_multiplier()}"
+    )
+    st.divider()
+
+    # 2) Bolletta
+    st.header("2️⃣ Bolletta")
+
+    unit = "Smc" if st.session_state["commodity"] == "GAS" else "kWh"
+
+    b1, b2 = st.columns(2)
+    with b1:
+        st.number_input(f"Consumo ({unit})", min_value=0.0, step=0.01, key="consumo")
+        st.number_input("Vendita consumo", step=0.01, key="b_vendita_consumo")
+        st.number_input("Rete/oneri consumi", step=0.01, key="b_rete_consumi")
+        st.number_input("Vendita fissa (scontrino)", step=0.01, key="b_vendita_fissa")
+        st.number_input("Rete/oneri fissa", step=0.01, key="b_rete_fissa")
+    with b2:
+        st.number_input("Quota potenza (solo luce)", step=0.01, key="b_quota_potenza", disabled=(st.session_state["commodity"] == "GAS"))
+        st.number_input("Sconti", step=0.01, key="b_sconti")
+        st.number_input("Ricalcoli", step=0.01, key="b_ricalcoli")
+        st.number_input("Arrotondamenti", step=0.01, key="b_arrotondamenti")
+        st.number_input("Accise + IVA", step=0.01, key="b_accise_iva")
+
+    bol_ok = bolletta_is_valid()
+    if not bol_ok:
+        st.warning("⚠️ Bolletta incompleta: inserisci almeno una voce tra Vendita/Rete.")
+    st.divider()
+
+    # 3) Offerta più recente (validità bloccata) + indici + selezione offerta + calcolo
+    st.header("3️⃣ Offerta Illumia (più recente) + Indici + Offerta automatica + Calcolo")
+
+    # Override upload (opzionale)
+    tariffe_upload = st.file_uploader("Carica tariffe Illumia (.xlsx) — override opzionale", type=["xlsx"])
+    if tariffe_upload:
+        st.session_state["tariffe_uploaded_bytes"] = tariffe_upload.read()
+        st.success("✅ Tariffe caricate in override (manuale).")
+
+    tariffe_rows = []
+    offer_vf, offer_vt = None, None
+
+    if st.session_state.get("tariffe_uploaded_bytes"):
+        tariffe_rows = load_tariffe_from_bytes(st.session_state["tariffe_uploaded_bytes"])
+        st.session_state["offer_file_path"] = "UPLOAD"
+        offer_vf, offer_vt = None, None
+    else:
+        offer_file = load_tariffe_file_for_segment(st.session_state["segmento"])
+        if offer_file is None:
+            st.error("❌ Nessun file tariffe trovato (né tariffe/ né legacy).")
+        else:
+            tariffe_rows = load_tariffe_from_path(offer_file)
+            offer_vf, offer_vt = get_file_valid_range(offer_file)
+            st.session_state["offer_valid_from"] = offer_vf
+            st.session_state["offer_valid_to"] = offer_vt
+
+    # MOSTRA VALIDITÀ OFFERTA SOLO COME TESTO (NON MODIFICABILE)
+    if offer_vf and offer_vt:
+        st.markdown(
+            f"**Validità offerta Illumia (da file più recente):**  \n"
+            f"🗓️ {offer_vf.strftime('%d/%m/%Y')} → {offer_vt.strftime('%d/%m/%Y')}"
+        )
+        st.caption(f"Fonte: {st.session_state.get('offer_file_path','')}")
+        # warning se bolletta fuori validità, ma confronto comunque con offerta più recente
+        if not (offer_vf <= st.session_state["bill_start"] <= offer_vt and offer_vf <= st.session_state["bill_end"] <= offer_vt):
+            st.warning("⚠️ Il periodo bolletta NON rientra nella validità dell’ultima offerta. Il confronto usa comunque l’offerta più recente.")
+    else:
+        st.info("Validità offerta: N.D. (override upload)")
+
+    # Indici PUN/PSV automatici dal file indici, sul mese più recente del periodo bolletta.
+    indici_rows = load_indici_rows(INDICI_XLSX)
+    selected_indice, indice_source = select_indice_for_bill_period(
+        indici_rows,
+        st.session_state["bill_start"],
+        st.session_state["bill_end"],
+    )
+
+    if selected_indice:
+        st.session_state["pun_override"] = float(selected_indice["pun"])
+        st.session_state["psv_override"] = float(selected_indice["psv"])
+        st.session_state["indice_month"] = selected_indice["mese"]
+        st.session_state["indice_source"] = indice_source
+        st.session_state["indice_file_path"] = str(INDICI_XLSX)
+
+        st.markdown(
+            f"**Indice PUN/PSV usato:** {selected_indice['mese']}  \n"
+            f"Fonte: `{INDICI_XLSX.name}`"
+        )
+        if indice_source == "before_end":
+            st.warning(
+                "⚠️ Nessun indice disponibile dentro il periodo bolletta: uso il mese più recente disponibile "
+                "non successivo alla fine periodo."
+            )
+        elif indice_source == "latest_available":
+            st.warning("⚠️ Il periodo bolletta è precedente agli indici disponibili: uso l’ultimo mese presente nel file.")
+    else:
+        st.session_state["pun_override"] = 0.0
+        st.session_state["psv_override"] = 0.0
+        st.session_state["indice_month"] = ""
+        st.session_state["indice_source"] = "missing"
+        st.session_state["indice_file_path"] = str(INDICI_XLSX)
+        st.error("❌ Nessun indice PUN/PSV trovato nel file indici_pun_psv_2025_2026.xlsx.")
+
+    if st.session_state["commodity"] == "EE":
+        st.checkbox("EE variabile: perdite rete 10% su PUN", key="apply_loss")
+        st.number_input("PUN (€/kWh) da file indici *", step=0.001, format="%.4f", key="pun_override", disabled=True)
+        indice_ok = float(st.session_state["pun_override"]) > 0
+    else:
+        st.number_input("PSV (€/Smc) da file indici *", step=0.001, format="%.4f", key="psv_override", disabled=True)
+        indice_ok = float(st.session_state["psv_override"]) > 0
+
+    s1, s2 = st.columns(2)
+    with s1:
+        st.number_input("Sconto Illumia Variabile", step=0.01, key="ill_sconto_var")
+    with s2:
+        st.number_input("Sconto Illumia Fissa", step=0.01, key="ill_sconto_fix")
+
+    # Offerta automatica dall’app
+    offer_var = select_offer_name(tariffe_rows, st.session_state["commodity"], "VARIABILE", st.session_state["segmento"]) if tariffe_rows else ""
+    offer_fix = select_offer_name(tariffe_rows, st.session_state["commodity"], "FISSA", st.session_state["segmento"]) if tariffe_rows else ""
+
+    st.session_state["offer_var_name"] = offer_var
+    st.session_state["offer_fix_name"] = offer_fix
+
+    if offer_var:
+        st.success(f"✅ Offerta VARIABILE selezionata dall’app: {offer_var}")
+    else:
+        st.info("ℹ️ Offerta VARIABILE non selezionata (assente/non vendibile).")
+
+    if offer_fix:
+        st.success(f"✅ Offerta FISSA selezionata dall’app: {offer_fix}")
+    else:
+        st.info("ℹ️ Offerta FISSA non selezionata (assente/non vendibile).")
+
+    missing = []
+    if not nome_ok:
+        missing.append("Nome cliente")
+    if not bol_ok:
+        missing.append("Bolletta completa")
+    if not indice_ok:
+        missing.append("PUN/PSV")
+    if not tariffe_rows:
+        missing.append("Tariffe")
+    if not offer_var and not offer_fix:
+        missing.append("Offerta Illumia")
+
+    if missing:
+        badge_missing("Mancano: " + ", ".join(missing))
+        can_calc = False
+    else:
+        badge_ok()
+        can_calc = True
+
+    if st.button("📐 Calcola Illumia", use_container_width=True, disabled=not can_calc):
+        comm = st.session_state["commodity"]
+        consumo = float(st.session_state["consumo"])
+        div = float(st.session_state["billing_divisor"])
+        pun = float(st.session_state["pun_override"])
+        psv = float(st.session_state["psv_override"])
+
+        if offer_var:
+            rows_var = filter_rows_by_offer(tariffe_rows, comm, "VARIABILE", offer_var)
+            v_cons, v_fix = calc_illumia_vendite(rows_var, comm, "VARIABILE", consumo, pun, psv, div)
+        else:
+            v_cons, v_fix = 0.0, 0.0
+
+        if offer_fix:
+            rows_fix = filter_rows_by_offer(tariffe_rows, comm, "FISSA", offer_fix)
+            f_cons, f_fix = calc_illumia_vendite(rows_fix, comm, "FISSA", consumo, pun, psv, div)
+        else:
+            f_cons, f_fix = 0.0, 0.0
+
+        st.session_state["c_vendita_consumo"] = v_cons
+        st.session_state["c_vendita_fissa"] = v_fix
+        st.session_state["d_vendita_consumo"] = f_cons
+        st.session_state["d_vendita_fissa"] = f_fix
+        st.session_state["illumia_calculated"] = True
+        st.success("✅ Calcolo Illumia completato.")
+
+    st.divider()
+
+    # 4) Export Excel
+    st.header("4️⃣ Export Excel (template + accise conformi)")
+    st.radio("Export", ["ENTRAMBE", "VARIABILE", "FISSA"], key="export_mode", horizontal=True)
+
+    def build_excel_bytes():
+        wb = openpyxl.load_workbook(TEMPLATE_XLSX)
+        ws = wb["Confronto"]
+        apply_export_labels(ws, st.session_state["nome_cliente"])
+        rm = find_row_map(ws)
+        validate_row_map(rm)
+
+        ws["B1"] = None
+        ws["C1"] = float(st.session_state["consumo"])
+        write_export_metadata(ws)
+
+        comm = st.session_state["commodity"]
+
+        b_vals = {k: float(st.session_state[f"b_{k}"]) for k in KEYS}
+        if st.session_state["assume_fixed_is_monthly"]:
+            fixed_multiplier = bill_fixed_multiplier()
+            b_vals["vendita_fissa"] *= fixed_multiplier
+            b_vals["rete_fissa"] *= fixed_multiplier
+
+        c_vals = b_vals.copy()
+        d_vals = b_vals.copy()
+
+        c_vals["vendita_consumo"] = float(st.session_state["c_vendita_consumo"])
+        c_vals["vendita_fissa"] = float(st.session_state["c_vendita_fissa"])
+        c_vals["sconti"] = float(st.session_state["ill_sconto_var"])
+        c_vals["ricalcoli"] = 0.0
+        c_vals["arrotondamenti"] = 0.0
+
+        d_vals["vendita_consumo"] = float(st.session_state["d_vendita_consumo"])
+        d_vals["vendita_fissa"] = float(st.session_state["d_vendita_fissa"])
+        d_vals["sconti"] = float(st.session_state["ill_sconto_fix"])
+        d_vals["ricalcoli"] = 0.0
+        d_vals["arrotondamenti"] = 0.0
+
+        # B
+        write_column(ws, rm, "B", b_vals, comm)
+        ws[f"B{rm['accise_iva']}"] = b_vals["accise_iva"]
+        apply_total_formula(ws, rm, "B")
+
+        mode = st.session_state["export_mode"]
+        has_offer_var = bool(st.session_state.get("offer_var_name"))
+        has_offer_fix = bool(st.session_state.get("offer_fix_name"))
+        if mode == "ENTRAMBE":
+            if has_offer_var:
+                write_column(ws, rm, "C", c_vals, comm)
+                apply_accise_formula_conforme(ws, rm, "C")
+                apply_total_formula(ws, rm, "C")
+            else:
+                fill_column_nd(ws, rm, "C")
+            if has_offer_fix:
+                write_column(ws, rm, "D", d_vals, comm)
+                apply_accise_formula_conforme(ws, rm, "D")
+                apply_total_formula(ws, rm, "D")
+            else:
+                fill_column_nd(ws, rm, "D")
+        elif mode == "VARIABILE":
+            if has_offer_var:
+                write_column(ws, rm, "C", c_vals, comm)
+                apply_accise_formula_conforme(ws, rm, "C")
+                apply_total_formula(ws, rm, "C")
+            else:
+                fill_column_nd(ws, rm, "C")
+            if has_offer_fix:
+                fill_column_na(ws, rm, "D")
+            else:
+                fill_column_nd(ws, rm, "D")
+        else:
+            if has_offer_var:
+                fill_column_na(ws, rm, "C")
+            else:
+                fill_column_nd(ws, rm, "C")
+            if has_offer_fix:
+                write_column(ws, rm, "D", d_vals, comm)
+                apply_accise_formula_conforme(ws, rm, "D")
+                apply_total_formula(ws, rm, "D")
+            else:
+                fill_column_nd(ws, rm, "D")
+
+        out = io.BytesIO()
+        wb.save(out)
+        return out.getvalue()
+
+    if st.button("✅ Genera e scarica Excel", use_container_width=True, disabled=not can_calc):
+        try:
+            data = build_excel_bytes()
+        except Exception as exc:
+            st.error(f"❌ Errore durante la generazione Excel: {exc}")
+            st.stop()
+        nome_file = safe_nome_cognome(st.session_state["nome_cliente"])
+        comm_lab = commodity_label(st.session_state["commodity"])
+        mode = st.session_state["export_mode"]
+        file_name = f"confronto_illumia_{nome_file}_{comm_lab}_{mode}.xlsx"
+
+        st.download_button(
+            "📥 Scarica Excel",
+            data=data,
+            file_name=file_name,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+        st.success(f"✅ Creato: {file_name}")
