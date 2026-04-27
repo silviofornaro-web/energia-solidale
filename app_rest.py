@@ -1,3 +1,4 @@
+import base64
 import io
 import re
 from pathlib import Path
@@ -671,12 +672,39 @@ def bolletta_is_valid():
     return not (v1 == 0.0 and v2 == 0.0 and v3 == 0.0 and v4 == 0.0)
 
 
+def render_header_logo(path):
+    mime = "image/jpeg" if path.suffix.lower() in {".jpg", ".jpeg"} else "image/png"
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    st.markdown(
+        f"""
+        <style>
+        .es-logo-header {{
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0.15rem 0 1.35rem;
+        }}
+        .es-logo-header img {{
+            width: min(50vw, 320px);
+            max-width: 82%;
+            height: auto;
+            display: block;
+        }}
+        </style>
+        <div class="es-logo-header">
+            <img src="data:{mime};base64,{encoded}" alt="Energia Solidale">
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # -----------------------------
 # UI
 # -----------------------------
 logo_path = LOGO_JPG if LOGO_JPG.exists() else LOGO_PNG
 if logo_path.exists():
-    st.image(str(logo_path), use_container_width=True)
+    render_header_logo(logo_path)
 
 left, center, right = st.columns([1, 3, 1])
 with center:
