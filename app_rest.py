@@ -1401,8 +1401,9 @@ with center:
 
     st.markdown(
         """
-        <div style="text-align:center;color:#1597d3;font-size:0.95rem;margin:2.5rem 0 0.75rem;">
-            Energia Solidale - Associazione senza scopo di lucro - Chioggia (VE) - info@energiasolidale.org
+        <div style="text-align:center;color:#1597d3;margin:2.5rem 0 0.75rem;line-height:1.35;">
+            <div style="font-size:1.25rem;font-weight:700;">Energia Solidale</div>
+            <div style="font-size:0.95rem;">Associazione senza scopo di lucro - Chioggia (VE) - info@energiasolidale.org</div>
         </div>
         """,
         unsafe_allow_html=True,
