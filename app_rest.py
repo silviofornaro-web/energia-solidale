@@ -18,7 +18,7 @@ LOGO_PNG = BASE_DIR / "assets" / "logo_energia_solidale.png"
 TEMPLATE_XLSX = BASE_DIR / "esempio_confronto_corretto.xlsx"
 TARIFFE_BASE = BASE_DIR / "tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
-APP_STATE_VERSION = "2026-04-27-session-reset-1"
+APP_STATE_VERSION = "2026-04-27-fixed-bill-mandatory-1"
 
 if str(st.query_params.get("debug", "")).lower() in {"1", "true", "si", "yes"}:
     st.title("Energia Solidale")
@@ -318,6 +318,9 @@ def bill_fixed_multiplier() -> int:
         return max(1, int(st.session_state.get("billing_months", 1)))
     except Exception:
         return 1
+
+def bill_fixed_period_amount(value) -> float:
+    return float(value) * float(bill_fixed_multiplier())
 
 def month_key_from_date(d: date) -> str:
     return f"{d.year:04d}-{d.month:02d}"
@@ -821,10 +824,8 @@ def build_comparison_values():
     comm = st.session_state["commodity"]
 
     b_vals = {k: float(st.session_state[f"b_{k}"]) for k in KEYS}
-    if st.session_state["assume_fixed_is_monthly"]:
-        fixed_multiplier = bill_fixed_multiplier()
-        b_vals["vendita_fissa"] *= fixed_multiplier
-        b_vals["rete_fissa"] *= fixed_multiplier
+    b_vals["vendita_fissa"] = bill_fixed_period_amount(b_vals["vendita_fissa"])
+    b_vals["rete_fissa"] = bill_fixed_period_amount(b_vals["rete_fissa"])
 
     c_vals = b_vals.copy()
     d_vals = b_vals.copy()
@@ -1074,7 +1075,10 @@ with center:
         )
     with f2:
         st.session_state["assume_fixed_is_monthly"] = True
-        st.caption("Quote fisse inserite come importo mensile")
+        st.caption(
+            "Quote fisse inserite come importo mensile: vendita fissa luce/gas "
+            "e rete/oneri fissa sono sempre moltiplicate per i mesi fatturati."
+        )
 
     st.caption(
         f"Mesi fatturati = {billing_months} | "
@@ -1090,6 +1094,9 @@ with center:
     unit = "Smc" if st.session_state["commodity"] == "GAS" else "kWh"
 
     if st.session_state["offers_loaded"]:
+        fixed_multiplier = bill_fixed_multiplier()
+        vendita_fissa_periodo = bill_fixed_period_amount(st.session_state["b_vendita_fissa"])
+        rete_fissa_periodo = bill_fixed_period_amount(st.session_state["b_rete_fissa"])
         st.markdown(
             "\n".join(
                 [
@@ -1098,8 +1105,8 @@ with center:
                     f"| Consumo ({unit}) | {float(st.session_state['consumo']):,.2f} |".replace(",", "X").replace(".", ",").replace("X", "."),
                     f"| Vendita consumo | {format_eur(st.session_state['b_vendita_consumo'])} |",
                     f"| Rete/oneri consumi | {format_eur(st.session_state['b_rete_consumi'])} |",
-                    f"| Vendita fissa | {format_eur(st.session_state['b_vendita_fissa'])} |",
-                    f"| Rete/oneri fissa | {format_eur(st.session_state['b_rete_fissa'])} |",
+                    f"| Vendita fissa totale periodo ({fixed_multiplier} mesi) | {format_eur(vendita_fissa_periodo)} |",
+                    f"| Rete/oneri fissa totale periodo ({fixed_multiplier} mesi) | {format_eur(rete_fissa_periodo)} |",
                     f"| Quota potenza | {format_eur(st.session_state['b_quota_potenza'])} |",
                     f"| Sconti | {format_eur(st.session_state['b_sconti'])} |",
                     f"| Ricalcoli | {format_eur(st.session_state['b_ricalcoli'])} |",
@@ -1114,8 +1121,8 @@ with center:
             st.number_input(f"Consumo ({unit})", min_value=0.0, step=0.01, key="consumo")
             st.number_input("Vendita consumo", step=0.01, key="b_vendita_consumo")
             st.number_input("Rete/oneri consumi", step=0.01, key="b_rete_consumi")
-            st.number_input("Vendita fissa (scontrino)", step=0.01, key="b_vendita_fissa")
-            st.number_input("Rete/oneri fissa", step=0.01, key="b_rete_fissa")
+            st.number_input("Vendita fissa mensile (scontrino)", step=0.01, key="b_vendita_fissa")
+            st.number_input("Rete/oneri fissa mensile", step=0.01, key="b_rete_fissa")
         with b2:
             st.number_input("Quota potenza (solo luce)", step=0.01, key="b_quota_potenza", disabled=(st.session_state["commodity"] == "GAS"))
             st.number_input("Sconti", step=0.01, key="b_sconti")
