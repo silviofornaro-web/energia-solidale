@@ -263,7 +263,9 @@ def require_authentication():
         st.error("Accesso non configurato: aggiungi gli utenti nei Secrets di Streamlit Cloud.")
         st.stop()
 
-    st.title("Energia Solidale")
+    logo_path = LOGO_JPG if LOGO_JPG.exists() else LOGO_PNG
+    if logo_path.exists():
+        render_logo(logo_path)
     st.subheader("Accedi")
     with st.form("login_form"):
         email = st.text_input("Email").strip().lower()
