@@ -1,5 +1,6 @@
 import io
 import re
+import base64
 from pathlib import Path
 from datetime import datetime, date
 
@@ -766,6 +767,19 @@ def format_index_value(value):
     except Exception:
         return "0,0000"
 
+def render_logo(path):
+    suffix = path.suffix.lower()
+    mime = "image/png" if suffix == ".png" else "image/jpeg"
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    st.markdown(
+        f"""
+        <div style="display:flex;justify-content:center;margin:0.25rem 0 1.5rem;">
+            <img src="data:{mime};base64,{encoded}" style="width:300px;max-width:50%;height:auto;" alt="Energia Solidale">
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 def build_comparison_table_rows(values=None):
     values = values or build_comparison_values()
     comm = values["commodity"]
@@ -833,9 +847,7 @@ def bolletta_is_valid():
 # -----------------------------
 logo_path = LOGO_JPG if LOGO_JPG.exists() else LOGO_PNG
 if logo_path.exists():
-    logo_left, logo_center, logo_right = st.columns([2, 1, 2])
-    with logo_center:
-        st.image(str(logo_path), width=300)
+    render_logo(logo_path)
 
 left, center, right = st.columns([1, 3, 1])
 with center:
