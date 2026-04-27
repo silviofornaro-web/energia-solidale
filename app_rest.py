@@ -48,9 +48,6 @@ ss("nome_cliente", "")
 ss("commodity", "GAS")          # GAS / EE
 if st.session_state["commodity"] not in ("GAS", "EE"):
     st.session_state["commodity"] = "GAS"
-ss("form_segmento", st.session_state["segmento"])
-ss("form_nome_cliente", st.session_state["nome_cliente"])
-ss("form_commodity", st.session_state["commodity"])
 ss("prev_segmento", st.session_state["segmento"])
 ss("prev_commodity", st.session_state["commodity"])
 ss("consumo", 0.0)
@@ -810,39 +807,70 @@ left, center, right = st.columns([1, 3, 1])
 with center:
     st.title("Energia Solidale — Confronto bollette vs Illumia")
 
-    with st.form("dati_cliente_fornitura"):
-        top_name, top_segment, top_supply = st.columns([2, 1, 1])
-        with top_name:
-            st.text_input("Nome cliente *", key="form_nome_cliente")
-        with top_segment:
-            st.radio(
-                "Segmento tariffario",
-                ["RESIDENZIALE", "BUSINESS"],
-                key="form_segmento",
-                horizontal=True,
-            )
-        with top_supply:
-            st.radio(
-                "Tipo fornitura",
-                ["GAS", "EE"],
-                key="form_commodity",
-                horizontal=True,
-            )
-        apply_identity = st.form_submit_button("Applica dati", use_container_width=True)
+    top_name, top_segment, top_supply = st.columns([2, 1, 1])
+    with top_name:
+        st.text_input("Nome cliente *", key="nome_cliente")
 
-    if apply_identity:
-        next_segmento = st.session_state["form_segmento"]
-        next_commodity = st.session_state["form_commodity"]
-        if (
-            next_segmento != st.session_state["segmento"]
-            or next_commodity != st.session_state["commodity"]
-        ):
-            reset_illumia_results()
-        st.session_state["nome_cliente"] = st.session_state["form_nome_cliente"]
-        st.session_state["segmento"] = next_segmento
-        st.session_state["commodity"] = next_commodity
-        st.session_state["prev_segmento"] = next_segmento
-        st.session_state["prev_commodity"] = next_commodity
+    with top_segment:
+        st.caption("Segmento tariffario")
+        seg_res, seg_bus = st.columns(2)
+        with seg_res:
+            if st.button(
+                "RES",
+                key="btn_segmento_res",
+                type="primary" if st.session_state["segmento"] == "RESIDENZIALE" else "secondary",
+                use_container_width=True,
+            ):
+                if st.session_state["segmento"] != "RESIDENZIALE":
+                    reset_illumia_results()
+                st.session_state["segmento"] = "RESIDENZIALE"
+        with seg_bus:
+            if st.button(
+                "BUS",
+                key="btn_segmento_bus",
+                type="primary" if st.session_state["segmento"] == "BUSINESS" else "secondary",
+                use_container_width=True,
+            ):
+                if st.session_state["segmento"] != "BUSINESS":
+                    reset_illumia_results()
+                st.session_state["segmento"] = "BUSINESS"
+
+    with top_supply:
+        st.caption("Tipo fornitura")
+        gas_col, ee_col = st.columns(2)
+        with gas_col:
+            if st.button(
+                "GAS",
+                key="btn_supply_gas",
+                type="primary" if st.session_state["commodity"] == "GAS" else "secondary",
+                use_container_width=True,
+            ):
+                if st.session_state["commodity"] != "GAS":
+                    reset_illumia_results()
+                st.session_state["commodity"] = "GAS"
+        with ee_col:
+            if st.button(
+                "LUCE",
+                key="btn_supply_ee",
+                type="primary" if st.session_state["commodity"] == "EE" else "secondary",
+                use_container_width=True,
+            ):
+                if st.session_state["commodity"] != "EE":
+                    reset_illumia_results()
+                st.session_state["commodity"] = "EE"
+
+    if (
+        st.session_state["segmento"] != st.session_state["prev_segmento"]
+        or st.session_state["commodity"] != st.session_state["prev_commodity"]
+    ):
+        reset_illumia_results()
+        st.session_state["prev_segmento"] = st.session_state["segmento"]
+        st.session_state["prev_commodity"] = st.session_state["commodity"]
+
+    st.caption(
+        f"Selezione attiva: {st.session_state['segmento']} | "
+        f"{'Luce' if st.session_state['commodity'] == 'EE' else 'Gas'}"
+    )
     print(
         "APP_RERUN "
         f"segmento={st.session_state['segmento']} "
