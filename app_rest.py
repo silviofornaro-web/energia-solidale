@@ -980,7 +980,8 @@ with center:
         if st.session_state["offers_loaded"]:
             st.markdown(f"**Cliente:** {st.session_state['nome_cliente']}")
         else:
-            st.text_input("Nome e Cognome cliente", key="nome_cliente_input")
+            st.caption("Cliente")
+            st.text_input("Nome e Cognome", key="nome_cliente_input")
             st.session_state["nome_cliente"] = st.session_state["nome_cliente_input"].strip() or "Cliente"
 
     with top_segment:
