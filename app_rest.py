@@ -990,7 +990,7 @@ with center:
     st.divider()
 
     # 2) Bolletta
-    st.header("2️⃣ Bolletta")
+    st.markdown("## 2️⃣ Bolletta <small>(scontrino dell'energia)</small>", unsafe_allow_html=True)
 
     unit = "Smc" if st.session_state["commodity"] == "GAS" else "kWh"
 
