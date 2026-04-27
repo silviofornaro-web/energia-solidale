@@ -88,7 +88,6 @@ ss("psv_override", 0.0)
 ss("indice_month", "")
 ss("indice_source", "")
 ss("indice_file_path", "")
-ss("apply_loss", True)
 ss("include_dispbt", True)
 
 # Illumia outputs
@@ -516,7 +515,7 @@ def calc_illumia_vendite(rows_offer, commodity, offer, consumo, pun, psv, billin
             fee = comp_sum(rows_offer, "EE", "VARIABILE", "fee_energia")
             ccv_var = comp_sum(rows_offer, "EE", "VARIABILE", "ccv_quota_variabile")
             sbil = comp_sum(rows_offer, "EE", "VARIABILE", "sbilanciamento")
-            base = pun * (1.10 if st.session_state.get("apply_loss", True) else 1.0)
+            base = pun * 1.10
             prezzo = base + fee + ccv_var + sbil
             vend_cons = consumo * prezzo
             vend_fix = fixed_annua("EE", "VARIABILE") / float(billing_divisor)
@@ -760,6 +759,12 @@ def format_eur(value):
     sign = "-" if amount < 0 else ""
     formatted = f"{abs(amount):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     return f"{sign}€ {formatted}"
+
+def format_index_value(value):
+    try:
+        return f"{float(value):.4f}".replace(".", ",")
+    except Exception:
+        return "0,0000"
 
 def build_comparison_table_rows(values=None):
     values = values or build_comparison_values()
@@ -1110,28 +1115,11 @@ with center:
         st.error("❌ Nessun indice PUN/PSV trovato nel file indici_pun_psv_2025_2026.xlsx.")
 
     if st.session_state["commodity"] == "EE":
-        st.caption("EE variabile: perdite rete 10% su PUN")
-        loss_yes, loss_no = st.columns(2)
-        with loss_yes:
-            if st.button(
-                "Perdite SI",
-                key="btn_apply_loss_yes",
-                type="primary" if st.session_state["apply_loss"] else "secondary",
-                use_container_width=True,
-            ):
-                st.session_state["apply_loss"] = True
-        with loss_no:
-            if st.button(
-                "Perdite NO",
-                key="btn_apply_loss_no",
-                type="primary" if not st.session_state["apply_loss"] else "secondary",
-                use_container_width=True,
-            ):
-                st.session_state["apply_loss"] = False
-        st.number_input("PUN (€/kWh) da file indici *", step=0.001, format="%.4f", key="pun_override", disabled=True)
+        st.caption("EE variabile: perdite rete 10% su PUN applicate automaticamente")
+        st.markdown(f"**PUN (€/kWh) da file indici:** {format_index_value(st.session_state['pun_override'])}")
         indice_ok = float(st.session_state["pun_override"]) > 0
     else:
-        st.number_input("PSV (€/Smc) da file indici *", step=0.001, format="%.4f", key="psv_override", disabled=True)
+        st.markdown(f"**PSV (€/Smc) da file indici:** {format_index_value(st.session_state['psv_override'])}")
         indice_ok = float(st.session_state["psv_override"]) > 0
 
     s1, s2 = st.columns(2)
