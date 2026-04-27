@@ -104,6 +104,7 @@ ss("ill_sconto_fix", -3.0)
 
 # Tariffe: upload override
 ss("tariffe_uploaded_bytes", None)
+ss("offers_loaded", False)
 
 # Offerte selezionate automaticamente dall'app
 ss("offer_var_name", "")
@@ -833,6 +834,7 @@ with center:
             ):
                 if st.session_state["segmento"] != "RESIDENZIALE":
                     reset_illumia_results()
+                    st.session_state["offers_loaded"] = False
                 st.session_state["segmento"] = "RESIDENZIALE"
         with seg_bus:
             if st.button(
@@ -843,6 +845,7 @@ with center:
             ):
                 if st.session_state["segmento"] != "BUSINESS":
                     reset_illumia_results()
+                    st.session_state["offers_loaded"] = False
                 st.session_state["segmento"] = "BUSINESS"
 
     with top_supply:
@@ -857,6 +860,7 @@ with center:
             ):
                 if st.session_state["commodity"] != "GAS":
                     reset_illumia_results()
+                    st.session_state["offers_loaded"] = False
                 st.session_state["commodity"] = "GAS"
         with ee_col:
             if st.button(
@@ -867,6 +871,7 @@ with center:
             ):
                 if st.session_state["commodity"] != "EE":
                     reset_illumia_results()
+                    st.session_state["offers_loaded"] = False
                 st.session_state["commodity"] = "EE"
 
     if (
@@ -874,6 +879,7 @@ with center:
         or st.session_state["commodity"] != st.session_state["prev_commodity"]
     ):
         reset_illumia_results()
+        st.session_state["offers_loaded"] = False
         st.session_state["prev_segmento"] = st.session_state["segmento"]
         st.session_state["prev_commodity"] = st.session_state["commodity"]
 
@@ -951,6 +957,7 @@ with center:
         f"Divisore periodo = {float(st.session_state['billing_divisor']):g} | "
         f"Moltiplicatore quote fisse bolletta = {bill_fixed_multiplier()}"
     )
+    print("APP_SECTION periodicita_ok", flush=True)
     st.divider()
 
     # 2) Bolletta
@@ -975,10 +982,20 @@ with center:
     bol_ok = bolletta_is_valid()
     if not bol_ok:
         st.warning("⚠️ Bolletta incompleta: inserisci almeno una voce tra Vendita/Rete.")
+    print("APP_SECTION bolletta_ok", flush=True)
     st.divider()
 
     # 3) Offerta più recente (validità bloccata) + indici + selezione offerta + calcolo
     st.header("3️⃣ Offerta Illumia (più recente) + Indici + Offerta automatica + Calcolo")
+    if not st.session_state["offers_loaded"]:
+        st.info("Carica tariffe e indici quando hai completato i dati della bolletta.")
+        if st.button("Carica tariffe e indici", use_container_width=True):
+            st.session_state["offers_loaded"] = True
+            st.rerun()
+        print("APP_SECTION waiting_offer_load", flush=True)
+        st.stop()
+
+    print("APP_SECTION loading_offers_start", flush=True)
 
     # Override upload (opzionale)
     tariffe_upload = st.file_uploader("Carica tariffe Illumia (.xlsx) — override opzionale", type=["xlsx"])
@@ -1080,6 +1097,8 @@ with center:
         st.success(f"✅ Offerta FISSA selezionata dall’app: {offer_fix}")
     else:
         st.info("ℹ️ Offerta FISSA non selezionata (assente/non vendibile).")
+
+    print("APP_SECTION offers_loaded_ok", flush=True)
 
     missing = []
     if not nome_ok:
