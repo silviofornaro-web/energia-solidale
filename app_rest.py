@@ -15,6 +15,16 @@ TEMPLATE_XLSX = BASE_DIR / "esempio_confronto_corretto.xlsx"
 TARIFFE_BASE = BASE_DIR / "tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
 
+if str(st.query_params.get("debug", "")).lower() in {"1", "true", "si", "yes"}:
+    st.title("Energia Solidale")
+    st.success("Modalita test: Streamlit sta renderizzando la pagina.")
+    st.write(
+        "Se vedi questo messaggio, il browser riesce a mostrare Streamlit. "
+        "Il problema e in un componente della pagina principale."
+    )
+    print("APP_DEBUG_RENDER", flush=True)
+    st.stop()
+
 # Legacy fallback (solo se non hai ancora tariffe/)
 LEGACY_RES_FILES = [
     BASE_DIR / "tariffe_illumia_template.xlsx",
