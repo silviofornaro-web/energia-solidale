@@ -1,2 +1,2 @@
-streamlit
-openpyxl
+streamlit==1.55.0
+openpyxl==3.1.5

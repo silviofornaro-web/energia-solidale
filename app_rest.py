@@ -47,6 +47,9 @@ def ss(k, v):
 ss("segmento", "RESIDENZIALE")  # RESIDENZIALE / BUSINESS
 ss("nome_cliente", "")
 ss("commodity", "GAS")          # GAS / EE
+ss("commodity_ui", "GAS")
+ss("last_segment", "RESIDENZIALE")
+ss("last_commodity", "GAS")
 ss("consumo", 0.0)
 
 # Periodo bolletta (solo informativo/controllo; NON è validità offerta)
@@ -664,6 +667,13 @@ def fill_column_na(ws, rm, col):
 def fill_column_nd(ws, rm, col):
     fill_column_text(ws, rm, col, "N.D.")
 
+def reset_illumia_results():
+    st.session_state["illumia_calculated"] = False
+    st.session_state["c_vendita_consumo"] = 0.0
+    st.session_state["c_vendita_fissa"] = 0.0
+    st.session_state["d_vendita_consumo"] = 0.0
+    st.session_state["d_vendita_fissa"] = 0.0
+
 def comparison_subtotal(vals, commodity):
     subtotal = (
         float(vals["vendita_consumo"])
@@ -829,7 +839,14 @@ with center:
         st.selectbox("Segmento tariffario", ["RESIDENZIALE", "BUSINESS"], key="segmento")
     with top_supply:
         st.selectbox("Tipo fornitura", ["GAS", "EE (Luce)"], index=0 if st.session_state["commodity"] == "GAS" else 1, key="commodity_ui")
-    st.session_state["commodity"] = "GAS" if st.session_state["commodity_ui"] == "GAS" else "EE"
+    selected_commodity = "GAS" if st.session_state["commodity_ui"] == "GAS" else "EE"
+    if st.session_state["segmento"] != st.session_state["last_segment"]:
+        reset_illumia_results()
+    if selected_commodity != st.session_state["last_commodity"]:
+        reset_illumia_results()
+    st.session_state["commodity"] = selected_commodity
+    st.session_state["last_segment"] = st.session_state["segmento"]
+    st.session_state["last_commodity"] = selected_commodity
     nome_ok = bool(st.session_state["nome_cliente"].strip())
 
     # Reset buttons
