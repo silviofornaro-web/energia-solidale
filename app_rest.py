@@ -10,7 +10,7 @@ from datetime import datetime, date
 import streamlit as st
 import openpyxl
 
-st.set_page_config(page_title="Energia Solidale — Confronto bollette vs Illumia", layout="wide")
+st.set_page_config(page_title="Confronto bollette vs Illumia", layout="wide")
 
 BASE_DIR = Path(__file__).parent
 LOGO_JPG = BASE_DIR / "assets" / "logo_energia_solidale.jpg"
@@ -966,7 +966,7 @@ if logo_path.exists():
 
 left, center, right = st.columns([1, 3, 1])
 with center:
-    st.title("Energia Solidale — Confronto bollette vs Illumia")
+    st.title("Confronto bollette vs Illumia")
 
     top_name, top_segment, top_supply = st.columns([2, 1, 1])
     with top_name:
