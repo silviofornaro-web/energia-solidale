@@ -101,6 +101,8 @@ ss("illumia_calculated", False)
 # Sconti Illumia
 ss("ill_sconto_var", -3.0)
 ss("ill_sconto_fix", -3.0)
+ss("ill_sconto_var_text", "-3,00")
+ss("ill_sconto_fix_text", "-3,00")
 
 # Tariffe: upload override
 ss("tariffe_uploaded_bytes", None)
@@ -797,6 +799,22 @@ def build_comparison_table_rows(values=None):
         )
     return rows
 
+def build_markdown_table(rows):
+    lines = ["| VOCE | Bolletta | Illumia Variabile | Illumia Fissa |", "|---|---:|---:|---:|"]
+    for row in rows:
+        lines.append(
+            "| "
+            + str(row["VOCE"]).replace("|", "/")
+            + " | "
+            + str(row["Bolletta"]).replace("|", "/")
+            + " | "
+            + str(row["Illumia Variabile"]).replace("|", "/")
+            + " | "
+            + str(row["Illumia Fissa"]).replace("|", "/")
+            + " |"
+        )
+    return "\n".join(lines)
+
 def bolletta_is_valid():
     v1 = float(st.session_state["b_vendita_consumo"])
     v2 = float(st.session_state["b_vendita_fissa"])
@@ -898,7 +916,7 @@ with center:
     # Reset buttons
     cA, cB = st.columns(2)
     with cA:
-        if st.button("🔁 Nuovo confronto (mantieni tariffe)", use_container_width=True):
+        if st.button("🔁 Nuovo confronto (mantieni tariffe)", key="btn_new_compare", use_container_width=True):
             st.session_state["consumo"] = 0.0
             for k in KEYS:
                 st.session_state[f"b_{k}"] = 0.0
@@ -912,7 +930,7 @@ with center:
             st.session_state["offer_fix_name"] = ""
             st.success("✅ Nuovo confronto pronto (tariffe mantenute).")
     with cB:
-        if st.button("🗑 Reset totale", use_container_width=True):
+        if st.button("🗑 Reset totale", key="btn_reset_total", use_container_width=True):
             st.session_state.clear()
             st.info("🔄 Reset totale effettuato. Ricarica la pagina (F5).")
             st.stop()
@@ -1118,9 +1136,12 @@ with center:
 
     s1, s2 = st.columns(2)
     with s1:
-        st.number_input("Sconto Illumia Variabile", step=0.01, key="ill_sconto_var")
+        st.text_input("Sconto Illumia Variabile", key="ill_sconto_var_text")
     with s2:
-        st.number_input("Sconto Illumia Fissa", step=0.01, key="ill_sconto_fix")
+        st.text_input("Sconto Illumia Fissa", key="ill_sconto_fix_text")
+    st.session_state["ill_sconto_var"] = parse_number(st.session_state["ill_sconto_var_text"])
+    st.session_state["ill_sconto_fix"] = parse_number(st.session_state["ill_sconto_fix_text"])
+    print("APP_SECTION sconti_ok", flush=True)
 
     # Offerta automatica dall’app
     offer_var = select_offer_name(tariffe_rows, st.session_state["commodity"], "VARIABILE", st.session_state["segmento"]) if tariffe_rows else ""
@@ -1160,7 +1181,8 @@ with center:
         badge_ok()
         can_calc = True
 
-    if st.button("📐 Calcola Illumia", use_container_width=True, disabled=not can_calc):
+    if st.button("📐 Calcola Illumia", key="btn_calc_illumia", use_container_width=True, disabled=not can_calc):
+        print("APP_SECTION calc_illumia_start", flush=True)
         comm = st.session_state["commodity"]
         consumo = float(st.session_state["consumo"])
         div = float(st.session_state["billing_divisor"])
@@ -1184,6 +1206,7 @@ with center:
         st.session_state["d_vendita_consumo"] = f_cons
         st.session_state["d_vendita_fissa"] = f_fix
         st.session_state["illumia_calculated"] = True
+        print("APP_SECTION calc_illumia_done", flush=True)
         st.success("✅ Calcolo Illumia completato.")
 
     st.divider()
@@ -1191,6 +1214,7 @@ with center:
     # 4) Confronto in dashboard
     st.header("4️⃣ Confronto")
     if st.session_state["illumia_calculated"]:
+        print("APP_SECTION comparison_render_start", flush=True)
         comparison_values = build_comparison_values()
         offer_var_label = st.session_state.get("offer_var_name") or "N.D."
         offer_fix_label = st.session_state.get("offer_fix_name") or "N.D."
@@ -1198,11 +1222,8 @@ with center:
             f"Offerta variabile: {offer_var_label} | "
             f"Offerta fissa: {offer_fix_label}"
         )
-        st.dataframe(
-            build_comparison_table_rows(comparison_values),
-            hide_index=True,
-            width="stretch",
-        )
+        st.markdown(build_markdown_table(build_comparison_table_rows(comparison_values)))
+        print("APP_SECTION comparison_render_done", flush=True)
     else:
         st.info("Premi “Calcola Illumia” per visualizzare il confronto prima di scaricare l’Excel.")
 
@@ -1210,7 +1231,32 @@ with center:
 
     # 5) Export Excel
     st.header("5️⃣ Scarica Excel")
-    st.radio("Export", ["ENTRAMBE", "VARIABILE", "FISSA"], key="export_mode", horizontal=True)
+    st.caption("Export")
+    exp_all, exp_var, exp_fix = st.columns(3)
+    with exp_all:
+        if st.button(
+            "ENTRAMBE",
+            key="btn_export_entrambe",
+            type="primary" if st.session_state["export_mode"] == "ENTRAMBE" else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state["export_mode"] = "ENTRAMBE"
+    with exp_var:
+        if st.button(
+            "VARIABILE",
+            key="btn_export_variabile",
+            type="primary" if st.session_state["export_mode"] == "VARIABILE" else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state["export_mode"] = "VARIABILE"
+    with exp_fix:
+        if st.button(
+            "FISSA",
+            key="btn_export_fissa",
+            type="primary" if st.session_state["export_mode"] == "FISSA" else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state["export_mode"] = "FISSA"
 
     def build_excel_bytes():
         wb = openpyxl.load_workbook(TEMPLATE_XLSX)
@@ -1277,7 +1323,7 @@ with center:
         wb.save(out)
         return out.getvalue()
 
-    if st.button("✅ Genera e scarica Excel", use_container_width=True, disabled=not can_calc):
+    if st.button("✅ Genera e scarica Excel", key="btn_generate_excel", use_container_width=True, disabled=not can_calc):
         try:
             data = build_excel_bytes()
         except Exception as exc:
