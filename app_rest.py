@@ -101,8 +101,6 @@ ss("illumia_calculated", False)
 # Sconti Illumia
 ss("ill_sconto_var", -3.0)
 ss("ill_sconto_fix", -3.0)
-ss("ill_sconto_var_text", "-3,00")
-ss("ill_sconto_fix_text", "-3,00")
 
 # Tariffe: upload override
 ss("tariffe_uploaded_bytes", None)
@@ -780,6 +778,22 @@ def render_logo(path):
         unsafe_allow_html=True,
     )
 
+def adjust_discount(state_key, delta):
+    st.session_state[state_key] = round(float(st.session_state[state_key]) + float(delta), 2)
+
+def reset_discount(state_key):
+    st.session_state[state_key] = 0.0
+
+def render_discount_control(title, state_key, key_prefix):
+    st.markdown(f"**{title}:** {format_eur(st.session_state[state_key])}")
+    dec, reset, inc = st.columns(3)
+    with dec:
+        st.button("-0,50", key=f"{key_prefix}_minus", use_container_width=True, on_click=adjust_discount, args=(state_key, -0.5))
+    with reset:
+        st.button("0", key=f"{key_prefix}_zero", use_container_width=True, on_click=reset_discount, args=(state_key,))
+    with inc:
+        st.button("+0,50", key=f"{key_prefix}_plus", use_container_width=True, on_click=adjust_discount, args=(state_key, 0.5))
+
 def build_comparison_table_rows(values=None):
     values = values or build_comparison_values()
     comm = values["commodity"]
@@ -1136,11 +1150,9 @@ with center:
 
     s1, s2 = st.columns(2)
     with s1:
-        st.text_input("Sconto Illumia Variabile", key="ill_sconto_var_text")
+        render_discount_control("Sconto Illumia Variabile", "ill_sconto_var", "ill_sconto_var")
     with s2:
-        st.text_input("Sconto Illumia Fissa", key="ill_sconto_fix_text")
-    st.session_state["ill_sconto_var"] = parse_number(st.session_state["ill_sconto_var_text"])
-    st.session_state["ill_sconto_fix"] = parse_number(st.session_state["ill_sconto_fix_text"])
+        render_discount_control("Sconto Illumia Fissa", "ill_sconto_fix", "ill_sconto_fix")
     print("APP_SECTION sconti_ok", flush=True)
 
     # Offerta automatica dall’app
