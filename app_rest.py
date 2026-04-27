@@ -57,6 +57,7 @@ def ss(k, v):
 # Stato base
 ss("segmento", "RESIDENZIALE")  # RESIDENZIALE / BUSINESS
 ss("nome_cliente", "")
+ss("nome_cliente_input", st.session_state["nome_cliente"] or "Cliente")
 ss("commodity", "GAS")          # GAS / EE
 if st.session_state["commodity"] not in ("GAS", "EE"):
     st.session_state["commodity"] = "GAS"
@@ -897,19 +898,31 @@ with center:
         cliente_param = query_value("cliente")
         if cliente_param:
             st.session_state["nome_cliente"] = cliente_param
+            st.session_state["nome_cliente_input"] = cliente_param
         elif not st.session_state["nome_cliente"].strip():
             st.session_state["nome_cliente"] = "Cliente"
-        st.text_input("Nome e Cognome cliente", key="nome_cliente")
+            st.session_state["nome_cliente_input"] = "Cliente"
+        if st.session_state["offers_loaded"]:
+            st.markdown(f"**Cliente:** {st.session_state['nome_cliente']}")
+        else:
+            st.text_input("Nome e Cognome cliente", key="nome_cliente_input")
+            st.session_state["nome_cliente"] = st.session_state["nome_cliente_input"].strip() or "Cliente"
 
     with top_segment:
-        st.caption("Segmento: 1 RES / 2 BUS")
-        st.number_input("Segmento", min_value=1, max_value=2, step=1, key="segmento_choice")
-        st.session_state["segmento"] = "RESIDENZIALE" if int(st.session_state["segmento_choice"]) == 1 else "BUSINESS"
+        if st.session_state["offers_loaded"]:
+            st.markdown(f"**Segmento:** {st.session_state['segmento']}")
+        else:
+            st.caption("Segmento: 1 RES / 2 BUS")
+            st.number_input("Segmento", min_value=1, max_value=2, step=1, key="segmento_choice")
+            st.session_state["segmento"] = "RESIDENZIALE" if int(st.session_state["segmento_choice"]) == 1 else "BUSINESS"
 
     with top_supply:
-        st.caption("Fornitura: 1 GAS / 2 LUCE")
-        st.number_input("Fornitura", min_value=1, max_value=2, step=1, key="commodity_choice")
-        st.session_state["commodity"] = "GAS" if int(st.session_state["commodity_choice"]) == 1 else "EE"
+        if st.session_state["offers_loaded"]:
+            st.markdown(f"**Fornitura:** {'Luce' if st.session_state['commodity'] == 'EE' else 'Gas'}")
+        else:
+            st.caption("Fornitura: 1 GAS / 2 LUCE")
+            st.number_input("Fornitura", min_value=1, max_value=2, step=1, key="commodity_choice")
+            st.session_state["commodity"] = "GAS" if int(st.session_state["commodity_choice"]) == 1 else "EE"
 
     if (
         st.session_state["segmento"] != st.session_state["prev_segmento"]
@@ -924,6 +937,8 @@ with center:
         f"Selezione attiva: {st.session_state['segmento']} | "
         f"{'Luce' if st.session_state['commodity'] == 'EE' else 'Gas'}"
     )
+    if st.session_state["offers_loaded"]:
+        st.info("Dati bolletta bloccati in modalità risultato. Per modificarli, ricarica la pagina e reinserisci i valori prima di caricare tariffe e indici.")
     print(
         "APP_RERUN "
         f"segmento={st.session_state['segmento']} "
@@ -936,14 +951,20 @@ with center:
 
     # 1) Periodicità
     st.header("1️⃣ Periodicità")
-    p1, p2 = st.columns(2)
-    with p1:
-        render_date_parts("Dal (bolletta)", "bill_start")
-    with p2:
-        render_date_parts("Al (bolletta)", "bill_end")
+    if st.session_state["offers_loaded"]:
+        st.markdown(
+            f"**Periodo:** {st.session_state['bill_start'].strftime('%d/%m/%Y')} - "
+            f"{st.session_state['bill_end'].strftime('%d/%m/%Y')}"
+        )
+    else:
+        p1, p2 = st.columns(2)
+        with p1:
+            render_date_parts("Dal (bolletta)", "bill_start")
+        with p2:
+            render_date_parts("Al (bolletta)", "bill_end")
 
-    st.session_state["bill_start"] = date_from_parts("bill_start")
-    st.session_state["bill_end"] = date_from_parts("bill_end")
+        st.session_state["bill_start"] = date_from_parts("bill_start")
+        st.session_state["bill_end"] = date_from_parts("bill_end")
 
     billing_months = billing_months_from_dates(st.session_state["bill_start"], st.session_state["bill_end"])
     st.session_state["billing_months"] = billing_months
@@ -973,19 +994,39 @@ with center:
 
     unit = "Smc" if st.session_state["commodity"] == "GAS" else "kWh"
 
-    b1, b2 = st.columns(2)
-    with b1:
-        st.number_input(f"Consumo ({unit})", min_value=0.0, step=0.01, key="consumo")
-        st.number_input("Vendita consumo", step=0.01, key="b_vendita_consumo")
-        st.number_input("Rete/oneri consumi", step=0.01, key="b_rete_consumi")
-        st.number_input("Vendita fissa (scontrino)", step=0.01, key="b_vendita_fissa")
-        st.number_input("Rete/oneri fissa", step=0.01, key="b_rete_fissa")
-    with b2:
-        st.number_input("Quota potenza (solo luce)", step=0.01, key="b_quota_potenza", disabled=(st.session_state["commodity"] == "GAS"))
-        st.number_input("Sconti", step=0.01, key="b_sconti")
-        st.number_input("Ricalcoli", step=0.01, key="b_ricalcoli")
-        st.number_input("Arrotondamenti", step=0.01, key="b_arrotondamenti")
-        st.number_input("Accise + IVA", step=0.01, key="b_accise_iva")
+    if st.session_state["offers_loaded"]:
+        st.markdown(
+            "\n".join(
+                [
+                    "| Voce | Valore |",
+                    "|---|---:|",
+                    f"| Consumo ({unit}) | {float(st.session_state['consumo']):,.2f} |".replace(",", "X").replace(".", ",").replace("X", "."),
+                    f"| Vendita consumo | {format_eur(st.session_state['b_vendita_consumo'])} |",
+                    f"| Rete/oneri consumi | {format_eur(st.session_state['b_rete_consumi'])} |",
+                    f"| Vendita fissa | {format_eur(st.session_state['b_vendita_fissa'])} |",
+                    f"| Rete/oneri fissa | {format_eur(st.session_state['b_rete_fissa'])} |",
+                    f"| Quota potenza | {format_eur(st.session_state['b_quota_potenza'])} |",
+                    f"| Sconti | {format_eur(st.session_state['b_sconti'])} |",
+                    f"| Ricalcoli | {format_eur(st.session_state['b_ricalcoli'])} |",
+                    f"| Arrotondamenti | {format_eur(st.session_state['b_arrotondamenti'])} |",
+                    f"| Accise + IVA | {format_eur(st.session_state['b_accise_iva'])} |",
+                ]
+            )
+        )
+    else:
+        b1, b2 = st.columns(2)
+        with b1:
+            st.number_input(f"Consumo ({unit})", min_value=0.0, step=0.01, key="consumo")
+            st.number_input("Vendita consumo", step=0.01, key="b_vendita_consumo")
+            st.number_input("Rete/oneri consumi", step=0.01, key="b_rete_consumi")
+            st.number_input("Vendita fissa (scontrino)", step=0.01, key="b_vendita_fissa")
+            st.number_input("Rete/oneri fissa", step=0.01, key="b_rete_fissa")
+        with b2:
+            st.number_input("Quota potenza (solo luce)", step=0.01, key="b_quota_potenza", disabled=(st.session_state["commodity"] == "GAS"))
+            st.number_input("Sconti", step=0.01, key="b_sconti")
+            st.number_input("Ricalcoli", step=0.01, key="b_ricalcoli")
+            st.number_input("Arrotondamenti", step=0.01, key="b_arrotondamenti")
+            st.number_input("Accise + IVA", step=0.01, key="b_accise_iva")
 
     bol_ok = bolletta_is_valid()
     if not bol_ok:
