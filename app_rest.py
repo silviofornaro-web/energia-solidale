@@ -1,4 +1,3 @@
-import base64
 import io
 import re
 from pathlib import Path
@@ -49,6 +48,8 @@ ss("nome_cliente", "")
 ss("commodity", "GAS")          # GAS / EE
 if st.session_state["commodity"] not in ("GAS", "EE"):
     st.session_state["commodity"] = "GAS"
+ss("prev_segmento", st.session_state["segmento"])
+ss("prev_commodity", st.session_state["commodity"])
 ss("consumo", 0.0)
 
 # Periodo bolletta (solo informativo/controllo; NON è validità offerta)
@@ -793,39 +794,14 @@ def bolletta_is_valid():
     return not (v1 == 0.0 and v2 == 0.0 and v3 == 0.0 and v4 == 0.0)
 
 
-def render_header_logo(path):
-    mime = "image/jpeg" if path.suffix.lower() in {".jpg", ".jpeg"} else "image/png"
-    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-    st.markdown(
-        f"""
-        <style>
-        .es-logo-header {{
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin: 0.15rem 0 1.35rem;
-        }}
-        .es-logo-header img {{
-            width: min(50vw, 320px);
-            max-width: 82%;
-            height: auto;
-            display: block;
-        }}
-        </style>
-        <div class="es-logo-header">
-            <img src="data:{mime};base64,{encoded}" alt="Energia Solidale">
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 # -----------------------------
 # UI
 # -----------------------------
 logo_path = LOGO_JPG if LOGO_JPG.exists() else LOGO_PNG
 if logo_path.exists():
-    render_header_logo(logo_path)
+    logo_left, logo_center, logo_right = st.columns([2, 1, 2])
+    with logo_center:
+        st.image(str(logo_path), width=300)
 
 left, center, right = st.columns([1, 3, 1])
 with center:
@@ -835,20 +811,32 @@ with center:
     with top_name:
         st.text_input("Nome cliente *", key="nome_cliente")
     with top_segment:
-        st.selectbox(
+        st.radio(
             "Segmento tariffario",
             ["RESIDENZIALE", "BUSINESS"],
             key="segmento",
-            on_change=reset_illumia_results,
+            horizontal=True,
         )
     with top_supply:
-        st.selectbox(
+        st.radio(
             "Tipo fornitura",
             ["GAS", "EE"],
             key="commodity",
-            format_func=lambda value: "EE (Luce)" if value == "EE" else "GAS",
-            on_change=reset_illumia_results,
+            horizontal=True,
         )
+    if (
+        st.session_state["segmento"] != st.session_state["prev_segmento"]
+        or st.session_state["commodity"] != st.session_state["prev_commodity"]
+    ):
+        reset_illumia_results()
+        st.session_state["prev_segmento"] = st.session_state["segmento"]
+        st.session_state["prev_commodity"] = st.session_state["commodity"]
+    print(
+        "APP_RERUN "
+        f"segmento={st.session_state['segmento']} "
+        f"commodity={st.session_state['commodity']}",
+        flush=True,
+    )
     nome_ok = bool(st.session_state["nome_cliente"].strip())
 
     # Reset buttons
