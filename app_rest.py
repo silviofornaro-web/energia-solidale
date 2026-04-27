@@ -899,7 +899,7 @@ with center:
             st.session_state["nome_cliente"] = cliente_param
         elif not st.session_state["nome_cliente"].strip():
             st.session_state["nome_cliente"] = "Cliente"
-        st.markdown(f"**Cliente:** {st.session_state['nome_cliente']}")
+        st.text_input("Nome e Cognome cliente", key="nome_cliente")
 
     with top_segment:
         st.caption("Segmento: 1 RES / 2 BUS")
