@@ -1322,3 +1322,12 @@ with center:
         )
     else:
         st.info("Il file Excel sarà disponibile appena il confronto è completo.")
+
+    st.markdown(
+        """
+        <div style="text-align:center;color:#1597d3;font-size:0.95rem;margin:2.5rem 0 0.75rem;">
+            Energia Solidale - Associazione senza scopo di lucro - Chioggia (VE) - info@energiasolidale.org
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
