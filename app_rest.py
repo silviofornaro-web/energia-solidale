@@ -2,6 +2,8 @@ import io
 import re
 import base64
 import calendar
+import hashlib
+import hmac
 from pathlib import Path
 from datetime import datetime, date
 
@@ -189,6 +191,78 @@ def truthy(v):
     if s in ("false", "0", "no", "n"):
         return False
     return None
+
+def get_auth_config():
+    try:
+        return st.secrets.get("auth", {})
+    except Exception:
+        return {}
+
+def auth_enabled():
+    return truthy(get_auth_config().get("enabled", False)) is True
+
+def verify_password(password, stored_hash):
+    try:
+        algo, iterations, salt, expected = str(stored_hash).split("$", 3)
+        if algo != "pbkdf2_sha256":
+            return False
+        iterations = int(iterations)
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), iterations)
+        actual = base64.b64encode(digest).decode("ascii")
+        return hmac.compare_digest(actual, expected)
+    except Exception:
+        return False
+
+def logout():
+    st.session_state["auth_logged_in"] = False
+    st.session_state["auth_email"] = ""
+    st.session_state["auth_name"] = ""
+
+def require_authentication():
+    if not auth_enabled():
+        return
+
+    ss("auth_logged_in", False)
+    ss("auth_email", "")
+    ss("auth_name", "")
+    ss("auth_error", "")
+
+    if st.session_state["auth_logged_in"]:
+        with st.sidebar:
+            st.caption(f"Accesso: {st.session_state['auth_name'] or st.session_state['auth_email']}")
+            if st.button("Esci", key="auth_logout"):
+                logout()
+                st.rerun()
+        return
+
+    auth = get_auth_config()
+    users = auth.get("users", {})
+    names = auth.get("names", {})
+    if not users:
+        st.error("Accesso non configurato: aggiungi gli utenti nei Secrets di Streamlit Cloud.")
+        st.stop()
+
+    st.title("Energia Solidale")
+    st.subheader("Accedi")
+    with st.form("login_form"):
+        email = st.text_input("Email").strip().lower()
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Accedi")
+
+    if submitted:
+        stored_hash = users.get(email, "")
+        if stored_hash and verify_password(password, stored_hash):
+            st.session_state["auth_logged_in"] = True
+            st.session_state["auth_email"] = email
+            st.session_state["auth_name"] = names.get(email, email) if names else email
+            st.session_state["auth_error"] = ""
+            st.rerun()
+        else:
+            st.session_state["auth_error"] = "Email o password non valide."
+
+    if st.session_state["auth_error"]:
+        st.error(st.session_state["auth_error"])
+    st.stop()
 
 def clean_text(v) -> str:
     if v is None:
@@ -881,6 +955,7 @@ def bolletta_is_valid():
     v4 = float(st.session_state["b_rete_fissa"])
     return not (v1 == 0.0 and v2 == 0.0 and v3 == 0.0 and v4 == 0.0)
 
+require_authentication()
 
 # -----------------------------
 # UI

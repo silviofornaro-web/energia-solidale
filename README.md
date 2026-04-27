@@ -35,3 +35,26 @@ Per Streamlit Community Cloud:
 - `esempio_confronto_corretto.xlsx`: template per l'export del confronto.
 - `indici_pun_psv_2025_2026.xlsx`: indici PUN/PSV.
 - `tariffe/`: tariffe Illumia per segmento e mese.
+
+## Accesso con utenti autorizzati
+
+Il login interno si abilita dai Secrets di Streamlit Cloud. Le password non vanno mai inserite in chiaro: genera prima un hash con:
+
+```bash
+python generate_password_hash.py
+```
+
+Poi in Streamlit Cloud, nella sezione Secrets, inserisci:
+
+```toml
+[auth]
+enabled = true
+
+[auth.users]
+"utente@example.com" = "HASH_GENERATO"
+
+[auth.names]
+"utente@example.com" = "Nome Cognome"
+```
+
+Se `auth.enabled` manca o vale `false`, l'app resta aperta senza login.
