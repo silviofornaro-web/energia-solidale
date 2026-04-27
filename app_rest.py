@@ -664,6 +664,118 @@ def fill_column_na(ws, rm, col):
 def fill_column_nd(ws, rm, col):
     fill_column_text(ws, rm, col, "N.D.")
 
+def comparison_subtotal(vals, commodity):
+    subtotal = (
+        float(vals["vendita_consumo"])
+        + float(vals["rete_consumi"])
+        + float(vals["vendita_fissa"])
+        + float(vals["rete_fissa"])
+        + float(vals["sconti"])
+        + float(vals["ricalcoli"])
+        + float(vals["arrotondamenti"])
+    )
+    if commodity == "EE":
+        subtotal += float(vals["quota_potenza"])
+    return subtotal
+
+def comparison_total(vals, commodity):
+    return comparison_subtotal(vals, commodity) + float(vals["accise_iva"])
+
+def build_comparison_values():
+    comm = st.session_state["commodity"]
+
+    b_vals = {k: float(st.session_state[f"b_{k}"]) for k in KEYS}
+    if st.session_state["assume_fixed_is_monthly"]:
+        fixed_multiplier = bill_fixed_multiplier()
+        b_vals["vendita_fissa"] *= fixed_multiplier
+        b_vals["rete_fissa"] *= fixed_multiplier
+
+    c_vals = b_vals.copy()
+    d_vals = b_vals.copy()
+
+    c_vals["vendita_consumo"] = float(st.session_state["c_vendita_consumo"])
+    c_vals["vendita_fissa"] = float(st.session_state["c_vendita_fissa"])
+    c_vals["sconti"] = float(st.session_state["ill_sconto_var"])
+    c_vals["ricalcoli"] = 0.0
+    c_vals["arrotondamenti"] = 0.0
+
+    d_vals["vendita_consumo"] = float(st.session_state["d_vendita_consumo"])
+    d_vals["vendita_fissa"] = float(st.session_state["d_vendita_fissa"])
+    d_vals["sconti"] = float(st.session_state["ill_sconto_fix"])
+    d_vals["ricalcoli"] = 0.0
+    d_vals["arrotondamenti"] = 0.0
+
+    base_subtotal = comparison_subtotal(b_vals, comm)
+    tax_rate = float(b_vals["accise_iva"]) / base_subtotal if base_subtotal else 0.0
+    c_vals["accise_iva"] = tax_rate * comparison_subtotal(c_vals, comm)
+    d_vals["accise_iva"] = tax_rate * comparison_subtotal(d_vals, comm)
+
+    return {
+        "commodity": comm,
+        "bolletta": b_vals,
+        "variabile": c_vals,
+        "fissa": d_vals,
+        "has_offer_var": bool(st.session_state.get("offer_var_name")),
+        "has_offer_fix": bool(st.session_state.get("offer_fix_name")),
+    }
+
+def comparison_value(vals, key, commodity):
+    if key == "vendita_fissa_luce":
+        return float(vals["vendita_fissa"]) if commodity == "EE" else "N.A."
+    if key == "vendita_fissa_gas":
+        return float(vals["vendita_fissa"]) if commodity == "GAS" else "N.A."
+    if key == "quota_potenza":
+        return float(vals["quota_potenza"]) if commodity == "EE" else "N.A."
+    if key == "totale":
+        return comparison_total(vals, commodity)
+    return float(vals[key])
+
+def format_eur(value):
+    if isinstance(value, str):
+        return value
+    amount = float(value)
+    sign = "-" if amount < 0 else ""
+    formatted = f"{abs(amount):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{sign}€ {formatted}"
+
+def build_comparison_table_rows(values=None):
+    values = values or build_comparison_values()
+    comm = values["commodity"]
+    rows_config = [
+        ("vendita_consumo", "Vendita Consumo"),
+        ("rete_consumi", "Rete e oneri di sistema Consumi"),
+        ("vendita_fissa_luce", "Vendita Fissa Luce"),
+        ("vendita_fissa_gas", "Vendita Fissa  Gas"),
+        ("rete_fissa", "Rete e oneri di sistema Fissa"),
+        ("quota_potenza", "Quota Potenza"),
+        ("sconti", "Sconti"),
+        ("ricalcoli", "Ricalcoli/Partite pregresse"),
+        ("arrotondamenti", "Arrotondamenti"),
+        ("accise_iva", "Accise e Iva"),
+        ("totale", "Totale"),
+    ]
+    rows = []
+    for key, label in rows_config:
+        var_value = (
+            comparison_value(values["variabile"], key, comm)
+            if values["has_offer_var"]
+            else "N.D."
+        )
+        fix_value = (
+            comparison_value(values["fissa"], key, comm)
+            if values["has_offer_fix"]
+            else "N.D."
+        )
+        rows.append(
+            {
+                "VOCE": label,
+                "Bolletta": format_eur(comparison_value(values["bolletta"], key, comm)),
+                "Illumia Variabile": format_eur(var_value),
+                "Illumia Fissa": format_eur(fix_value),
+            }
+        )
+    return rows
+
 def bolletta_is_valid():
     v1 = float(st.session_state["b_vendita_consumo"])
     v2 = float(st.session_state["b_vendita_fissa"])
@@ -959,8 +1071,28 @@ with center:
 
     st.divider()
 
-    # 4) Export Excel
-    st.header("4️⃣ Export Excel (template + accise conformi)")
+    # 4) Confronto in dashboard
+    st.header("4️⃣ Confronto")
+    if st.session_state["illumia_calculated"]:
+        comparison_values = build_comparison_values()
+        offer_var_label = st.session_state.get("offer_var_name") or "N.D."
+        offer_fix_label = st.session_state.get("offer_fix_name") or "N.D."
+        st.caption(
+            f"Offerta variabile: {offer_var_label} | "
+            f"Offerta fissa: {offer_fix_label}"
+        )
+        st.dataframe(
+            build_comparison_table_rows(comparison_values),
+            hide_index=True,
+            width="stretch",
+        )
+    else:
+        st.info("Premi “Calcola Illumia” per visualizzare il confronto prima di scaricare l’Excel.")
+
+    st.divider()
+
+    # 5) Export Excel
+    st.header("5️⃣ Scarica Excel")
     st.radio("Export", ["ENTRAMBE", "VARIABILE", "FISSA"], key="export_mode", horizontal=True)
 
     def build_excel_bytes():
@@ -974,28 +1106,11 @@ with center:
         ws["C1"] = float(st.session_state["consumo"])
         write_export_metadata(ws)
 
-        comm = st.session_state["commodity"]
-
-        b_vals = {k: float(st.session_state[f"b_{k}"]) for k in KEYS}
-        if st.session_state["assume_fixed_is_monthly"]:
-            fixed_multiplier = bill_fixed_multiplier()
-            b_vals["vendita_fissa"] *= fixed_multiplier
-            b_vals["rete_fissa"] *= fixed_multiplier
-
-        c_vals = b_vals.copy()
-        d_vals = b_vals.copy()
-
-        c_vals["vendita_consumo"] = float(st.session_state["c_vendita_consumo"])
-        c_vals["vendita_fissa"] = float(st.session_state["c_vendita_fissa"])
-        c_vals["sconti"] = float(st.session_state["ill_sconto_var"])
-        c_vals["ricalcoli"] = 0.0
-        c_vals["arrotondamenti"] = 0.0
-
-        d_vals["vendita_consumo"] = float(st.session_state["d_vendita_consumo"])
-        d_vals["vendita_fissa"] = float(st.session_state["d_vendita_fissa"])
-        d_vals["sconti"] = float(st.session_state["ill_sconto_fix"])
-        d_vals["ricalcoli"] = 0.0
-        d_vals["arrotondamenti"] = 0.0
+        comparison_values = build_comparison_values()
+        comm = comparison_values["commodity"]
+        b_vals = comparison_values["bolletta"]
+        c_vals = comparison_values["variabile"]
+        d_vals = comparison_values["fissa"]
 
         # B
         write_column(ws, rm, "B", b_vals, comm)
@@ -1003,8 +1118,8 @@ with center:
         apply_total_formula(ws, rm, "B")
 
         mode = st.session_state["export_mode"]
-        has_offer_var = bool(st.session_state.get("offer_var_name"))
-        has_offer_fix = bool(st.session_state.get("offer_fix_name"))
+        has_offer_var = comparison_values["has_offer_var"]
+        has_offer_fix = comparison_values["has_offer_fix"]
         if mode == "ENTRAMBE":
             if has_offer_var:
                 write_column(ws, rm, "C", c_vals, comm)
