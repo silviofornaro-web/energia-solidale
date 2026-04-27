@@ -18,6 +18,7 @@ LOGO_PNG = BASE_DIR / "assets" / "logo_energia_solidale.png"
 TEMPLATE_XLSX = BASE_DIR / "esempio_confronto_corretto.xlsx"
 TARIFFE_BASE = BASE_DIR / "tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
+APP_STATE_VERSION = "2026-04-27-session-reset-1"
 
 if str(st.query_params.get("debug", "")).lower() in {"1", "true", "si", "yes"}:
     st.title("Energia Solidale")
@@ -55,6 +56,26 @@ KEYS = [
 def ss(k, v):
     if k not in st.session_state:
         st.session_state[k] = v
+
+def reset_state_on_app_update():
+    if str(st.query_params.get("reset", "")).lower() in {"1", "true", "si", "yes"}:
+        st.session_state.clear()
+        st.query_params.clear()
+        st.rerun()
+    if st.session_state.get("_app_state_version") == APP_STATE_VERSION:
+        return
+    keep = {
+        "auth_logged_in": st.session_state.get("auth_logged_in", False),
+        "auth_email": st.session_state.get("auth_email", ""),
+        "auth_name": st.session_state.get("auth_name", ""),
+    }
+    st.session_state.clear()
+    for key, value in keep.items():
+        if value:
+            st.session_state[key] = value
+    st.session_state["_app_state_version"] = APP_STATE_VERSION
+
+reset_state_on_app_update()
 
 # Stato base
 ss("segmento", "RESIDENZIALE")  # RESIDENZIALE / BUSINESS
