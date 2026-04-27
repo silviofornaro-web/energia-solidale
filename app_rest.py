@@ -48,6 +48,9 @@ ss("nome_cliente", "")
 ss("commodity", "GAS")          # GAS / EE
 if st.session_state["commodity"] not in ("GAS", "EE"):
     st.session_state["commodity"] = "GAS"
+ss("form_segmento", st.session_state["segmento"])
+ss("form_nome_cliente", st.session_state["nome_cliente"])
+ss("form_commodity", st.session_state["commodity"])
 ss("prev_segmento", st.session_state["segmento"])
 ss("prev_commodity", st.session_state["commodity"])
 ss("consumo", 0.0)
@@ -807,30 +810,39 @@ left, center, right = st.columns([1, 3, 1])
 with center:
     st.title("Energia Solidale — Confronto bollette vs Illumia")
 
-    top_name, top_segment, top_supply = st.columns([2, 1, 1])
-    with top_name:
-        st.text_input("Nome cliente *", key="nome_cliente")
-    with top_segment:
-        st.radio(
-            "Segmento tariffario",
-            ["RESIDENZIALE", "BUSINESS"],
-            key="segmento",
-            horizontal=True,
-        )
-    with top_supply:
-        st.radio(
-            "Tipo fornitura",
-            ["GAS", "EE"],
-            key="commodity",
-            horizontal=True,
-        )
-    if (
-        st.session_state["segmento"] != st.session_state["prev_segmento"]
-        or st.session_state["commodity"] != st.session_state["prev_commodity"]
-    ):
-        reset_illumia_results()
-        st.session_state["prev_segmento"] = st.session_state["segmento"]
-        st.session_state["prev_commodity"] = st.session_state["commodity"]
+    with st.form("dati_cliente_fornitura"):
+        top_name, top_segment, top_supply = st.columns([2, 1, 1])
+        with top_name:
+            st.text_input("Nome cliente *", key="form_nome_cliente")
+        with top_segment:
+            st.radio(
+                "Segmento tariffario",
+                ["RESIDENZIALE", "BUSINESS"],
+                key="form_segmento",
+                horizontal=True,
+            )
+        with top_supply:
+            st.radio(
+                "Tipo fornitura",
+                ["GAS", "EE"],
+                key="form_commodity",
+                horizontal=True,
+            )
+        apply_identity = st.form_submit_button("Applica dati", use_container_width=True)
+
+    if apply_identity:
+        next_segmento = st.session_state["form_segmento"]
+        next_commodity = st.session_state["form_commodity"]
+        if (
+            next_segmento != st.session_state["segmento"]
+            or next_commodity != st.session_state["commodity"]
+        ):
+            reset_illumia_results()
+        st.session_state["nome_cliente"] = st.session_state["form_nome_cliente"]
+        st.session_state["segmento"] = next_segmento
+        st.session_state["commodity"] = next_commodity
+        st.session_state["prev_segmento"] = next_segmento
+        st.session_state["prev_commodity"] = next_commodity
     print(
         "APP_RERUN "
         f"segmento={st.session_state['segmento']} "
