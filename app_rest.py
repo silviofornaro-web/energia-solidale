@@ -9,6 +9,7 @@ import openpyxl
 st.set_page_config(page_title="Energia Solidale — Confronto bollette vs Illumia", layout="wide")
 
 BASE_DIR = Path(__file__).parent
+LOGO_PNG = BASE_DIR / "assets" / "logo_energia_solidale.png"
 TEMPLATE_XLSX = BASE_DIR / "esempio_confronto_corretto.xlsx"
 TARIFFE_BASE = BASE_DIR / "tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
@@ -672,6 +673,9 @@ def bolletta_is_valid():
 # -----------------------------
 # UI
 # -----------------------------
+if LOGO_PNG.exists():
+    st.image(str(LOGO_PNG), use_container_width=True)
+
 left, center, right = st.columns([1, 3, 1])
 with center:
     st.title("Energia Solidale — Confronto bollette vs Illumia")
