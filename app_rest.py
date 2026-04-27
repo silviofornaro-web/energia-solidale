@@ -1,6 +1,7 @@
 import io
 import re
 import base64
+import calendar
 from pathlib import Path
 from datetime import datetime, date
 
@@ -59,6 +60,8 @@ ss("nome_cliente", "")
 ss("commodity", "GAS")          # GAS / EE
 if st.session_state["commodity"] not in ("GAS", "EE"):
     st.session_state["commodity"] = "GAS"
+ss("segmento_choice", 1 if st.session_state["segmento"] == "RESIDENZIALE" else 2)
+ss("commodity_choice", 1 if st.session_state["commodity"] == "GAS" else 2)
 ss("prev_segmento", st.session_state["segmento"])
 ss("prev_commodity", st.session_state["commodity"])
 ss("consumo", 0.0)
@@ -66,7 +69,12 @@ ss("consumo", 0.0)
 # Periodo bolletta (solo informativo/controllo; NON è validità offerta)
 ss("bill_start", date.today())
 ss("bill_end", date.today())
-ss("bill_dates_locked", False)
+ss("bill_start_day", st.session_state["bill_start"].day)
+ss("bill_start_month", st.session_state["bill_start"].month)
+ss("bill_start_year", st.session_state["bill_start"].year)
+ss("bill_end_day", st.session_state["bill_end"].day)
+ss("bill_end_month", st.session_state["bill_end"].month)
+ss("bill_end_year", st.session_state["bill_end"].year)
 
 # Periodicità (per quota fissa scontrino)
 ss("billing_divisor", 12)
@@ -155,6 +163,19 @@ def parse_date_any(x):
         except Exception:
             pass
     return None
+
+def date_from_parts(prefix):
+    try:
+        year = int(st.session_state[f"{prefix}_year"])
+        month = int(st.session_state[f"{prefix}_month"])
+        day = int(st.session_state[f"{prefix}_day"])
+    except Exception:
+        return date.today()
+
+    year = min(max(year, 2000), 2100)
+    month = min(max(month, 1), 12)
+    day = min(max(day, 1), calendar.monthrange(year, month)[1])
+    return date(year, month, day)
 
 def truthy(v):
     if v is None:
@@ -778,21 +799,25 @@ def render_logo(path):
         unsafe_allow_html=True,
     )
 
-def adjust_discount(state_key, delta):
-    st.session_state[state_key] = round(float(st.session_state[state_key]) + float(delta), 2)
+def render_date_parts(title, prefix):
+    st.markdown(f"**{title}**")
+    d_col, m_col, y_col = st.columns([1, 1, 1.2])
+    with d_col:
+        st.number_input("Giorno", min_value=1, max_value=31, step=1, key=f"{prefix}_day")
+    with m_col:
+        st.number_input("Mese", min_value=1, max_value=12, step=1, key=f"{prefix}_month")
+    with y_col:
+        st.number_input("Anno", min_value=2000, max_value=2100, step=1, key=f"{prefix}_year")
 
-def reset_discount(state_key):
-    st.session_state[state_key] = 0.0
+def query_value(name):
+    value = st.query_params.get(name, "")
+    if isinstance(value, list):
+        value = value[0] if value else ""
+    return str(value).strip()
 
-def render_discount_control(title, state_key, key_prefix):
-    st.markdown(f"**{title}:** {format_eur(st.session_state[state_key])}")
-    dec, reset, inc = st.columns(3)
-    with dec:
-        st.button("-0,50", key=f"{key_prefix}_minus", use_container_width=True, on_click=adjust_discount, args=(state_key, -0.5))
-    with reset:
-        st.button("0", key=f"{key_prefix}_zero", use_container_width=True, on_click=reset_discount, args=(state_key,))
-    with inc:
-        st.button("+0,50", key=f"{key_prefix}_plus", use_container_width=True, on_click=adjust_discount, args=(state_key, 0.5))
+def query_float(name, default):
+    raw = query_value(name)
+    return parse_number(raw) if raw else float(default)
 
 def build_comparison_table_rows(values=None):
     values = values or build_comparison_values()
@@ -869,59 +894,22 @@ with center:
 
     top_name, top_segment, top_supply = st.columns([2, 1, 1])
     with top_name:
-        st.text_input("Nome cliente *", key="nome_cliente")
+        cliente_param = query_value("cliente")
+        if cliente_param:
+            st.session_state["nome_cliente"] = cliente_param
+        elif not st.session_state["nome_cliente"].strip():
+            st.session_state["nome_cliente"] = "Cliente"
+        st.markdown(f"**Cliente:** {st.session_state['nome_cliente']}")
 
     with top_segment:
-        st.caption("Segmento tariffario")
-        seg_res, seg_bus = st.columns(2)
-        with seg_res:
-            if st.button(
-                "RES",
-                key="btn_segmento_res",
-                type="primary" if st.session_state["segmento"] == "RESIDENZIALE" else "secondary",
-                use_container_width=True,
-            ):
-                if st.session_state["segmento"] != "RESIDENZIALE":
-                    reset_illumia_results()
-                    st.session_state["offers_loaded"] = False
-                st.session_state["segmento"] = "RESIDENZIALE"
-        with seg_bus:
-            if st.button(
-                "BUS",
-                key="btn_segmento_bus",
-                type="primary" if st.session_state["segmento"] == "BUSINESS" else "secondary",
-                use_container_width=True,
-            ):
-                if st.session_state["segmento"] != "BUSINESS":
-                    reset_illumia_results()
-                    st.session_state["offers_loaded"] = False
-                st.session_state["segmento"] = "BUSINESS"
+        st.caption("Segmento: 1 RES / 2 BUS")
+        st.number_input("Segmento", min_value=1, max_value=2, step=1, key="segmento_choice")
+        st.session_state["segmento"] = "RESIDENZIALE" if int(st.session_state["segmento_choice"]) == 1 else "BUSINESS"
 
     with top_supply:
-        st.caption("Tipo fornitura")
-        gas_col, ee_col = st.columns(2)
-        with gas_col:
-            if st.button(
-                "GAS",
-                key="btn_supply_gas",
-                type="primary" if st.session_state["commodity"] == "GAS" else "secondary",
-                use_container_width=True,
-            ):
-                if st.session_state["commodity"] != "GAS":
-                    reset_illumia_results()
-                    st.session_state["offers_loaded"] = False
-                st.session_state["commodity"] = "GAS"
-        with ee_col:
-            if st.button(
-                "LUCE",
-                key="btn_supply_ee",
-                type="primary" if st.session_state["commodity"] == "EE" else "secondary",
-                use_container_width=True,
-            ):
-                if st.session_state["commodity"] != "EE":
-                    reset_illumia_results()
-                    st.session_state["offers_loaded"] = False
-                st.session_state["commodity"] = "EE"
+        st.caption("Fornitura: 1 GAS / 2 LUCE")
+        st.number_input("Fornitura", min_value=1, max_value=2, step=1, key="commodity_choice")
+        st.session_state["commodity"] = "GAS" if int(st.session_state["commodity_choice"]) == 1 else "EE"
 
     if (
         st.session_state["segmento"] != st.session_state["prev_segmento"]
@@ -944,45 +932,18 @@ with center:
     )
     nome_ok = bool(st.session_state["nome_cliente"].strip())
 
-    # Reset buttons
-    cA, cB = st.columns(2)
-    with cA:
-        if st.button("🔁 Nuovo confronto (mantieni tariffe)", key="btn_new_compare", use_container_width=True):
-            st.session_state["consumo"] = 0.0
-            for k in KEYS:
-                st.session_state[f"b_{k}"] = 0.0
-            st.session_state["illumia_calculated"] = False
-            st.session_state["c_vendita_consumo"] = 0.0
-            st.session_state["c_vendita_fissa"] = 0.0
-            st.session_state["d_vendita_consumo"] = 0.0
-            st.session_state["d_vendita_fissa"] = 0.0
-            st.session_state["bill_dates_locked"] = False
-            st.session_state["offer_var_name"] = ""
-            st.session_state["offer_fix_name"] = ""
-            st.success("✅ Nuovo confronto pronto (tariffe mantenute).")
-    with cB:
-        if st.button("🗑 Reset totale", key="btn_reset_total", use_container_width=True):
-            st.session_state.clear()
-            st.info("🔄 Reset totale effettuato. Ricarica la pagina (F5).")
-            st.stop()
-
     st.divider()
 
     # 1) Periodicità
     st.header("1️⃣ Periodicità")
     p1, p2 = st.columns(2)
     with p1:
-        st.date_input(
-            "Dal (bolletta)",
-            key="bill_start",
-            on_change=lambda: st.session_state.__setitem__("bill_dates_locked", True),
-        )
+        render_date_parts("Dal (bolletta)", "bill_start")
     with p2:
-        st.date_input(
-            "Al (bolletta)",
-            key="bill_end",
-            on_change=lambda: st.session_state.__setitem__("bill_dates_locked", True),
-        )
+        render_date_parts("Al (bolletta)", "bill_end")
+
+    st.session_state["bill_start"] = date_from_parts("bill_start")
+    st.session_state["bill_end"] = date_from_parts("bill_end")
 
     billing_months = billing_months_from_dates(st.session_state["bill_start"], st.session_state["bill_end"])
     st.session_state["billing_months"] = billing_months
@@ -990,30 +951,14 @@ with center:
 
     f1, f2 = st.columns([2, 3])
     with f1:
-        st.text_input(
-            "Periodicità calcolata",
-            value=billing_label_from_months(billing_months),
-            disabled=True,
+        st.markdown(f"**Periodicità:** {billing_label_from_months(billing_months)}")
+        st.caption(
+            f"Periodo: {st.session_state['bill_start'].strftime('%d/%m/%Y')} - "
+            f"{st.session_state['bill_end'].strftime('%d/%m/%Y')}"
         )
     with f2:
+        st.session_state["assume_fixed_is_monthly"] = True
         st.caption("Quote fisse inserite come importo mensile")
-        fixed_yes, fixed_no = st.columns(2)
-        with fixed_yes:
-            if st.button(
-                "SI",
-                key="btn_fixed_monthly_yes",
-                type="primary" if st.session_state["assume_fixed_is_monthly"] else "secondary",
-                use_container_width=True,
-            ):
-                st.session_state["assume_fixed_is_monthly"] = True
-        with fixed_no:
-            if st.button(
-                "NO",
-                key="btn_fixed_monthly_no",
-                type="primary" if not st.session_state["assume_fixed_is_monthly"] else "secondary",
-                use_container_width=True,
-            ):
-                st.session_state["assume_fixed_is_monthly"] = False
 
     st.caption(
         f"Mesi fatturati = {billing_months} | "
@@ -1148,11 +1093,13 @@ with center:
         st.markdown(f"**PSV (€/Smc) da file indici:** {format_index_value(st.session_state['psv_override'])}")
         indice_ok = float(st.session_state["psv_override"]) > 0
 
+    st.session_state["ill_sconto_var"] = query_float("sconto_var", st.session_state["ill_sconto_var"])
+    st.session_state["ill_sconto_fix"] = query_float("sconto_fissa", st.session_state["ill_sconto_fix"])
     s1, s2 = st.columns(2)
     with s1:
-        render_discount_control("Sconto Illumia Variabile", "ill_sconto_var", "ill_sconto_var")
+        st.markdown(f"**Sconto Illumia Variabile:** {format_eur(st.session_state['ill_sconto_var'])}")
     with s2:
-        render_discount_control("Sconto Illumia Fissa", "ill_sconto_fix", "ill_sconto_fix")
+        st.markdown(f"**Sconto Illumia Fissa:** {format_eur(st.session_state['ill_sconto_fix'])}")
     print("APP_SECTION sconti_ok", flush=True)
 
     # Offerta automatica dall’app
@@ -1193,7 +1140,7 @@ with center:
         badge_ok()
         can_calc = True
 
-    if st.button("📐 Calcola Illumia", key="btn_calc_illumia", use_container_width=True, disabled=not can_calc):
+    if can_calc:
         print("APP_SECTION calc_illumia_start", flush=True)
         comm = st.session_state["commodity"]
         consumo = float(st.session_state["consumo"])
@@ -1219,7 +1166,9 @@ with center:
         st.session_state["d_vendita_fissa"] = f_fix
         st.session_state["illumia_calculated"] = True
         print("APP_SECTION calc_illumia_done", flush=True)
-        st.success("✅ Calcolo Illumia completato.")
+        st.success("✅ Calcolo Illumia aggiornato automaticamente.")
+    else:
+        st.session_state["illumia_calculated"] = False
 
     st.divider()
 
@@ -1237,38 +1186,14 @@ with center:
         st.markdown(build_markdown_table(build_comparison_table_rows(comparison_values)))
         print("APP_SECTION comparison_render_done", flush=True)
     else:
-        st.info("Premi “Calcola Illumia” per visualizzare il confronto prima di scaricare l’Excel.")
+        st.info("Completa i dati richiesti per visualizzare il confronto.")
 
     st.divider()
 
     # 5) Export Excel
     st.header("5️⃣ Scarica Excel")
-    st.caption("Export")
-    exp_all, exp_var, exp_fix = st.columns(3)
-    with exp_all:
-        if st.button(
-            "ENTRAMBE",
-            key="btn_export_entrambe",
-            type="primary" if st.session_state["export_mode"] == "ENTRAMBE" else "secondary",
-            use_container_width=True,
-        ):
-            st.session_state["export_mode"] = "ENTRAMBE"
-    with exp_var:
-        if st.button(
-            "VARIABILE",
-            key="btn_export_variabile",
-            type="primary" if st.session_state["export_mode"] == "VARIABILE" else "secondary",
-            use_container_width=True,
-        ):
-            st.session_state["export_mode"] = "VARIABILE"
-    with exp_fix:
-        if st.button(
-            "FISSA",
-            key="btn_export_fissa",
-            type="primary" if st.session_state["export_mode"] == "FISSA" else "secondary",
-            use_container_width=True,
-        ):
-            st.session_state["export_mode"] = "FISSA"
+    st.session_state["export_mode"] = "ENTRAMBE"
+    st.caption("Export: Bolletta + Illumia variabile + Illumia fissa")
 
     def build_excel_bytes():
         wb = openpyxl.load_workbook(TEMPLATE_XLSX)
@@ -1335,7 +1260,7 @@ with center:
         wb.save(out)
         return out.getvalue()
 
-    if st.button("✅ Genera e scarica Excel", key="btn_generate_excel", use_container_width=True, disabled=not can_calc):
+    if can_calc:
         try:
             data = build_excel_bytes()
         except Exception as exc:
@@ -1352,5 +1277,7 @@ with center:
             file_name=file_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
+            on_click="ignore",
         )
-        st.success(f"✅ Creato: {file_name}")
+    else:
+        st.info("Il file Excel sarà disponibile appena il confronto è completo.")
