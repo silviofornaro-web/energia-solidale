@@ -367,7 +367,7 @@ def load_tariffe_file_for_segment(segmento: str):
 
 def get_file_valid_range(xlsx_path: Path):
     try:
-        wb = openpyxl.load_workbook(xlsx_path, data_only=True)
+        wb = openpyxl.load_workbook(xlsx_path, data_only=True, read_only=True)
         if "tariffe" not in wb.sheetnames:
             return None, None
         ws = wb["tariffe"]
@@ -397,7 +397,7 @@ def get_file_valid_range(xlsx_path: Path):
         return None, None
 
 def load_tariffe_from_path(path: Path):
-    wb = openpyxl.load_workbook(path, data_only=True)
+    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
     if "tariffe" not in wb.sheetnames:
         return []
     ws = wb["tariffe"]
@@ -997,28 +997,29 @@ with center:
 
     print("APP_SECTION loading_offers_start", flush=True)
 
-    # Override upload (opzionale)
-    tariffe_upload = st.file_uploader("Carica tariffe Illumia (.xlsx) — override opzionale", type=["xlsx"])
-    if tariffe_upload:
-        st.session_state["tariffe_uploaded_bytes"] = tariffe_upload.read()
-        st.success("✅ Tariffe caricate in override (manuale).")
-
     tariffe_rows = []
     offer_vf, offer_vt = None, None
 
-    if st.session_state.get("tariffe_uploaded_bytes"):
-        tariffe_rows = load_tariffe_from_bytes(st.session_state["tariffe_uploaded_bytes"])
-        st.session_state["offer_file_path"] = "UPLOAD"
-        offer_vf, offer_vt = None, None
-    else:
+    try:
+        print("APP_SECTION select_offer_file_start", flush=True)
         offer_file = load_tariffe_file_for_segment(st.session_state["segmento"])
+        print(f"APP_SECTION select_offer_file_done file={offer_file}", flush=True)
         if offer_file is None:
             st.error("❌ Nessun file tariffe trovato (né tariffe/ né legacy).")
         else:
+            print("APP_SECTION load_tariffe_start", flush=True)
             tariffe_rows = load_tariffe_from_path(offer_file)
+            print(f"APP_SECTION load_tariffe_done rows={len(tariffe_rows)}", flush=True)
+            print("APP_SECTION valid_range_start", flush=True)
             offer_vf, offer_vt = get_file_valid_range(offer_file)
+            print(f"APP_SECTION valid_range_done from={offer_vf} to={offer_vt}", flush=True)
             st.session_state["offer_valid_from"] = offer_vf
             st.session_state["offer_valid_to"] = offer_vt
+    except Exception as exc:
+        print(f"APP_ERROR tariffe {type(exc).__name__}: {exc}", flush=True)
+        st.error(f"Errore nel caricamento tariffe: {exc}")
+        tariffe_rows = []
+        offer_vf, offer_vt = None, None
 
     # MOSTRA VALIDITÀ OFFERTA SOLO COME TESTO (NON MODIFICABILE)
     if offer_vf and offer_vt:
@@ -1034,12 +1035,21 @@ with center:
         st.info("Validità offerta: N.D. (override upload)")
 
     # Indici PUN/PSV automatici dal file indici, sul mese più recente del periodo bolletta.
-    indici_rows = load_indici_rows(INDICI_XLSX)
-    selected_indice, indice_source = select_indice_for_bill_period(
-        indici_rows,
-        st.session_state["bill_start"],
-        st.session_state["bill_end"],
-    )
+    try:
+        print("APP_SECTION load_indici_start", flush=True)
+        indici_rows = load_indici_rows(INDICI_XLSX)
+        print(f"APP_SECTION load_indici_done rows={len(indici_rows)}", flush=True)
+        selected_indice, indice_source = select_indice_for_bill_period(
+            indici_rows,
+            st.session_state["bill_start"],
+            st.session_state["bill_end"],
+        )
+        print(f"APP_SECTION select_indice_done month={selected_indice['mese'] if selected_indice else None}", flush=True)
+    except Exception as exc:
+        print(f"APP_ERROR indici {type(exc).__name__}: {exc}", flush=True)
+        st.error(f"Errore nel caricamento indici PUN/PSV: {exc}")
+        indici_rows = []
+        selected_indice, indice_source = None, "missing"
 
     if selected_indice:
         st.session_state["pun_override"] = float(selected_indice["pun"])
