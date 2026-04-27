@@ -47,9 +47,8 @@ def ss(k, v):
 ss("segmento", "RESIDENZIALE")  # RESIDENZIALE / BUSINESS
 ss("nome_cliente", "")
 ss("commodity", "GAS")          # GAS / EE
-ss("commodity_ui", "GAS")
-ss("last_segment", "RESIDENZIALE")
-ss("last_commodity", "GAS")
+if st.session_state["commodity"] not in ("GAS", "EE"):
+    st.session_state["commodity"] = "GAS"
 ss("consumo", 0.0)
 
 # Periodo bolletta (solo informativo/controllo; NON è validità offerta)
@@ -836,17 +835,20 @@ with center:
     with top_name:
         st.text_input("Nome cliente *", key="nome_cliente")
     with top_segment:
-        st.selectbox("Segmento tariffario", ["RESIDENZIALE", "BUSINESS"], key="segmento")
+        st.selectbox(
+            "Segmento tariffario",
+            ["RESIDENZIALE", "BUSINESS"],
+            key="segmento",
+            on_change=reset_illumia_results,
+        )
     with top_supply:
-        st.selectbox("Tipo fornitura", ["GAS", "EE (Luce)"], index=0 if st.session_state["commodity"] == "GAS" else 1, key="commodity_ui")
-    selected_commodity = "GAS" if st.session_state["commodity_ui"] == "GAS" else "EE"
-    if st.session_state["segmento"] != st.session_state["last_segment"]:
-        reset_illumia_results()
-    if selected_commodity != st.session_state["last_commodity"]:
-        reset_illumia_results()
-    st.session_state["commodity"] = selected_commodity
-    st.session_state["last_segment"] = st.session_state["segmento"]
-    st.session_state["last_commodity"] = selected_commodity
+        st.selectbox(
+            "Tipo fornitura",
+            ["GAS", "EE"],
+            key="commodity",
+            format_func=lambda value: "EE (Luce)" if value == "EE" else "GAS",
+            on_change=reset_illumia_results,
+        )
     nome_ok = bool(st.session_state["nome_cliente"].strip())
 
     # Reset buttons
