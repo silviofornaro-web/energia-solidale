@@ -19,7 +19,7 @@ LOGO_PNG = BASE_DIR / "assets" / "logo_energia_solidale.png"
 TEMPLATE_XLSX = BASE_DIR / "esempio_confronto_corretto.xlsx"
 TARIFFE_BASE = BASE_DIR / "tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
-APP_STATE_VERSION = "2026-04-28-stable-disabled-widgets-1"
+APP_STATE_VERSION = "2026-04-28-minimal-result-render-1"
 
 if str(st.query_params.get("debug", "")).lower() in {"1", "true", "si", "yes"}:
     st.title("Energia Solidale")
@@ -973,17 +973,18 @@ def build_markdown_table(rows):
     return "\n".join(lines)
 
 def render_comparison_rows(rows):
-    h1, h2, h3, h4 = st.columns([2.8, 1.25, 1.25, 1.25])
-    h1.markdown("**VOCE**")
-    h2.markdown("**Bolletta**")
-    h3.markdown("**Illumia Variabile**")
-    h4.markdown("**Illumia Fissa**")
+    lines = [
+        f"{'VOCE':<38} {'Bolletta':>15} {'Illumia Variabile':>20} {'Illumia Fissa':>18}",
+        "-" * 95,
+    ]
     for row in rows:
-        c1, c2, c3, c4 = st.columns([2.8, 1.25, 1.25, 1.25])
-        c1.write(row["VOCE"])
-        c2.write(row["Bolletta"])
-        c3.write(row["Illumia Variabile"])
-        c4.write(row["Illumia Fissa"])
+        lines.append(
+            f"{str(row['VOCE'])[:38]:<38} "
+            f"{str(row['Bolletta']):>15} "
+            f"{str(row['Illumia Variabile']):>20} "
+            f"{str(row['Illumia Fissa']):>18}"
+        )
+    st.text("\n".join(lines))
 
 def render_excel_download_link(data, file_name):
     encoded = base64.b64encode(data).decode("ascii")
@@ -1118,7 +1119,7 @@ with center:
     st.divider()
 
     # 2) Bolletta
-    st.markdown("## 2️⃣ Bolletta <small>(scontrino dell'energia)</small>", unsafe_allow_html=True)
+    st.subheader("2️⃣ Bolletta (scontrino dell'energia)")
 
     unit = "Smc" if st.session_state["commodity"] == "GAS" else "kWh"
 
@@ -1126,21 +1127,20 @@ with center:
         fixed_multiplier = bill_fixed_multiplier()
         vendita_fissa_periodo = bill_fixed_period_amount(st.session_state["b_vendita_fissa"])
         rete_fissa_periodo = bill_fixed_period_amount(st.session_state["b_rete_fissa"])
-        st.markdown(
+        consumo_fmt = f"{float(st.session_state['consumo']):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        st.text(
             "\n".join(
                 [
-                    "| Voce | Valore |",
-                    "|---|---:|",
-                    f"| Consumo ({unit}) | {float(st.session_state['consumo']):,.2f} |".replace(",", "X").replace(".", ",").replace("X", "."),
-                    f"| Vendita consumo | {format_eur(st.session_state['b_vendita_consumo'])} |",
-                    f"| Rete/oneri consumi | {format_eur(st.session_state['b_rete_consumi'])} |",
-                    f"| Vendita fissa totale periodo ({fixed_multiplier} mesi) | {format_eur(vendita_fissa_periodo)} |",
-                    f"| Rete/oneri fissa totale periodo ({fixed_multiplier} mesi) | {format_eur(rete_fissa_periodo)} |",
-                    f"| Quota potenza | {format_eur(st.session_state['b_quota_potenza'])} |",
-                    f"| Sconti | {format_eur(st.session_state['b_sconti'])} |",
-                    f"| Ricalcoli | {format_eur(st.session_state['b_ricalcoli'])} |",
-                    f"| Arrotondamenti | {format_eur(st.session_state['b_arrotondamenti'])} |",
-                    f"| Accise + IVA | {format_eur(st.session_state['b_accise_iva'])} |",
+                    f"Consumo ({unit}): {consumo_fmt}",
+                    f"Vendita consumo: {format_eur(st.session_state['b_vendita_consumo'])}",
+                    f"Rete/oneri consumi: {format_eur(st.session_state['b_rete_consumi'])}",
+                    f"Vendita fissa totale periodo ({fixed_multiplier} mesi): {format_eur(vendita_fissa_periodo)}",
+                    f"Rete/oneri fissa totale periodo ({fixed_multiplier} mesi): {format_eur(rete_fissa_periodo)}",
+                    f"Quota potenza: {format_eur(st.session_state['b_quota_potenza'])}",
+                    f"Sconti: {format_eur(st.session_state['b_sconti'])}",
+                    f"Ricalcoli: {format_eur(st.session_state['b_ricalcoli'])}",
+                    f"Arrotondamenti: {format_eur(st.session_state['b_arrotondamenti'])}",
+                    f"Accise + IVA: {format_eur(st.session_state['b_accise_iva'])}",
                 ]
             )
         )
@@ -1468,13 +1468,7 @@ with center:
     else:
         st.info("Il file Excel sarà disponibile appena il confronto è completo.")
 
-    st.markdown(
-        """
-        <div style="text-align:center;color:#1597d3;margin:2.5rem 0 0.75rem;line-height:1.35;">
-            <div style="font-size:1.25rem;font-weight:700;">Energia Solidale</div>
-            <div style="font-size:0.95rem;">Associazione senza scopo di lucro - Chioggia (VE) - info@energiasolidale.org</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.divider()
+    st.caption("Energia Solidale")
+    st.caption("Associazione senza scopo di lucro - Chioggia (VE) - info@energiasolidale.org")
     print("APP_SECTION footer_render_done", flush=True)
