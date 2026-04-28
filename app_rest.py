@@ -19,7 +19,7 @@ LOGO_PNG = BASE_DIR / "assets" / "logo_energia_solidale.png"
 TEMPLATE_XLSX = BASE_DIR / "esempio_confronto_corretto.xlsx"
 TARIFFE_BASE = BASE_DIR / "tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
-APP_STATE_VERSION = "2026-04-28-html-excel-download-1"
+APP_STATE_VERSION = "2026-04-28-stable-disabled-widgets-1"
 
 if str(st.query_params.get("debug", "")).lower() in {"1", "true", "si", "yes"}:
     st.title("Energia Solidale")
@@ -150,6 +150,7 @@ ss("offer_file_path", "")
 
 # UI
 ss("export_mode", "ENTRAMBE")
+ss("excel_ready", False)
 
 
 # -----------------------------
@@ -897,15 +898,15 @@ def render_logo(path):
         unsafe_allow_html=True,
     )
 
-def render_date_parts(title, prefix):
+def render_date_parts(title, prefix, disabled=False):
     st.markdown(f"**{title}**")
     d_col, m_col, y_col = st.columns([1, 1, 1.2])
     with d_col:
-        st.number_input("Giorno", min_value=1, max_value=31, step=1, key=f"{prefix}_day")
+        st.number_input("Giorno", min_value=1, max_value=31, step=1, key=f"{prefix}_day", disabled=disabled)
     with m_col:
-        st.number_input("Mese", min_value=1, max_value=12, step=1, key=f"{prefix}_month")
+        st.number_input("Mese", min_value=1, max_value=12, step=1, key=f"{prefix}_month", disabled=disabled)
     with y_col:
-        st.number_input("Anno", min_value=2000, max_value=2100, step=1, key=f"{prefix}_year")
+        st.number_input("Anno", min_value=2000, max_value=2100, step=1, key=f"{prefix}_year", disabled=disabled)
 
 def query_value(name):
     value = st.query_params.get(name, "")
@@ -1040,28 +1041,19 @@ with center:
         elif not st.session_state["nome_cliente"].strip():
             st.session_state["nome_cliente"] = "Cliente"
             st.session_state["nome_cliente_input"] = "Cliente"
-        if st.session_state["offers_loaded"]:
-            st.markdown(f"**Cliente:** {st.session_state['nome_cliente']}")
-        else:
-            st.caption("Cliente")
-            st.text_input("Nome e Cognome", key="nome_cliente_input")
-            st.session_state["nome_cliente"] = st.session_state["nome_cliente_input"].strip() or "Cliente"
+        st.caption("Cliente")
+        st.text_input("Nome e Cognome", key="nome_cliente_input", disabled=st.session_state["offers_loaded"])
+        st.session_state["nome_cliente"] = st.session_state["nome_cliente_input"].strip() or "Cliente"
 
     with top_segment:
-        if st.session_state["offers_loaded"]:
-            st.markdown(f"**Segmento:** {st.session_state['segmento']}")
-        else:
-            st.caption("Segmento: 1 RES / 2 BUS")
-            st.number_input("Segmento", min_value=1, max_value=2, step=1, key="segmento_choice")
-            st.session_state["segmento"] = "RESIDENZIALE" if int(st.session_state["segmento_choice"]) == 1 else "BUSINESS"
+        st.caption("Segmento: 1 RES / 2 BUS")
+        st.number_input("Segmento", min_value=1, max_value=2, step=1, key="segmento_choice", disabled=st.session_state["offers_loaded"])
+        st.session_state["segmento"] = "RESIDENZIALE" if int(st.session_state["segmento_choice"]) == 1 else "BUSINESS"
 
     with top_supply:
-        if st.session_state["offers_loaded"]:
-            st.markdown(f"**Fornitura:** {'Luce' if st.session_state['commodity'] == 'EE' else 'Gas'}")
-        else:
-            st.caption("Fornitura: 1 GAS / 2 LUCE")
-            st.number_input("Fornitura", min_value=1, max_value=2, step=1, key="commodity_choice")
-            st.session_state["commodity"] = "GAS" if int(st.session_state["commodity_choice"]) == 1 else "EE"
+        st.caption("Fornitura: 1 GAS / 2 LUCE")
+        st.number_input("Fornitura", min_value=1, max_value=2, step=1, key="commodity_choice", disabled=st.session_state["offers_loaded"])
+        st.session_state["commodity"] = "GAS" if int(st.session_state["commodity_choice"]) == 1 else "EE"
 
     if (
         st.session_state["segmento"] != st.session_state["prev_segmento"]
@@ -1090,20 +1082,14 @@ with center:
 
     # 1) Periodicità
     st.header("1️⃣ Periodicità")
-    if st.session_state["offers_loaded"]:
-        st.markdown(
-            f"**Periodo:** {st.session_state['bill_start'].strftime('%d/%m/%Y')} - "
-            f"{st.session_state['bill_end'].strftime('%d/%m/%Y')}"
-        )
-    else:
-        p1, p2 = st.columns(2)
-        with p1:
-            render_date_parts("Dal (bolletta)", "bill_start")
-        with p2:
-            render_date_parts("Al (bolletta)", "bill_end")
+    p1, p2 = st.columns(2)
+    with p1:
+        render_date_parts("Dal (bolletta)", "bill_start", disabled=st.session_state["offers_loaded"])
+    with p2:
+        render_date_parts("Al (bolletta)", "bill_end", disabled=st.session_state["offers_loaded"])
 
-        st.session_state["bill_start"] = date_from_parts("bill_start")
-        st.session_state["bill_end"] = date_from_parts("bill_end")
+    st.session_state["bill_start"] = date_from_parts("bill_start")
+    st.session_state["bill_end"] = date_from_parts("bill_end")
 
     billing_months = billing_months_from_dates(st.session_state["bill_start"], st.session_state["bill_end"])
     st.session_state["billing_months"] = billing_months
@@ -1158,20 +1144,21 @@ with center:
                 ]
             )
         )
-    else:
-        b1, b2 = st.columns(2)
-        with b1:
-            st.number_input(f"Consumo ({unit})", min_value=0.0, step=0.01, key="consumo")
-            st.number_input("Vendita consumo", step=0.01, key="b_vendita_consumo")
-            st.number_input("Rete/oneri consumi", step=0.01, key="b_rete_consumi")
-            st.number_input("Vendita fissa mensile (scontrino)", step=0.01, key="b_vendita_fissa")
-            st.number_input("Rete/oneri fissa mensile", step=0.01, key="b_rete_fissa")
-        with b2:
-            st.number_input("Quota potenza (solo luce)", step=0.01, key="b_quota_potenza", disabled=(st.session_state["commodity"] == "GAS"))
-            st.number_input("Sconti", step=0.01, key="b_sconti")
-            st.number_input("Ricalcoli", step=0.01, key="b_ricalcoli")
-            st.number_input("Arrotondamenti", step=0.01, key="b_arrotondamenti")
-            st.number_input("Accise + IVA", step=0.01, key="b_accise_iva")
+
+    bill_inputs_disabled = st.session_state["offers_loaded"]
+    b1, b2 = st.columns(2)
+    with b1:
+        st.number_input(f"Consumo ({unit})", min_value=0.0, step=0.01, key="consumo", disabled=bill_inputs_disabled)
+        st.number_input("Vendita consumo", step=0.01, key="b_vendita_consumo", disabled=bill_inputs_disabled)
+        st.number_input("Rete/oneri consumi", step=0.01, key="b_rete_consumi", disabled=bill_inputs_disabled)
+        st.number_input("Vendita fissa mensile (scontrino)", step=0.01, key="b_vendita_fissa", disabled=bill_inputs_disabled)
+        st.number_input("Rete/oneri fissa mensile", step=0.01, key="b_rete_fissa", disabled=bill_inputs_disabled)
+    with b2:
+        st.number_input("Quota potenza (solo luce)", step=0.01, key="b_quota_potenza", disabled=(bill_inputs_disabled or st.session_state["commodity"] == "GAS"))
+        st.number_input("Sconti", step=0.01, key="b_sconti", disabled=bill_inputs_disabled)
+        st.number_input("Ricalcoli", step=0.01, key="b_ricalcoli", disabled=bill_inputs_disabled)
+        st.number_input("Arrotondamenti", step=0.01, key="b_arrotondamenti", disabled=bill_inputs_disabled)
+        st.number_input("Accise + IVA", step=0.01, key="b_accise_iva", disabled=bill_inputs_disabled)
 
     bol_ok = bolletta_is_valid()
     if not bol_ok:
@@ -1185,6 +1172,7 @@ with center:
         st.info("Carica tariffe e indici quando hai completato i dati della bolletta.")
         if st.button("Carica tariffe e indici", use_container_width=True):
             st.session_state["offers_loaded"] = True
+            st.session_state["excel_ready"] = False
             st.rerun()
         print("APP_SECTION waiting_offer_load", flush=True)
         st.stop()
@@ -1455,21 +1443,28 @@ with center:
         return out.getvalue()
 
     if can_calc:
-        try:
-            print("APP_SECTION excel_build_start", flush=True)
-            data = build_excel_bytes()
-            print("APP_SECTION excel_build_done", flush=True)
-        except Exception as exc:
-            print(f"APP_ERROR excel_build {type(exc).__name__}: {exc}", flush=True)
-            st.error(f"❌ Errore durante la generazione Excel: {exc}")
-            st.stop()
-        nome_file = safe_nome_cognome(st.session_state["nome_cliente"])
-        comm_lab = commodity_label(st.session_state["commodity"])
-        mode = st.session_state["export_mode"]
-        file_name = f"confronto_illumia_{nome_file}_{comm_lab}_{mode}.xlsx"
+        if not st.session_state["excel_ready"]:
+            st.info("Il confronto è pronto. Prepara l'Excel solo quando vuoi scaricarlo.")
+            if st.button("Prepara Excel", use_container_width=True):
+                st.session_state["excel_ready"] = True
+            else:
+                print("APP_SECTION excel_waiting_user_action", flush=True)
+        if st.session_state["excel_ready"]:
+            try:
+                print("APP_SECTION excel_build_start", flush=True)
+                data = build_excel_bytes()
+                print("APP_SECTION excel_build_done", flush=True)
+            except Exception as exc:
+                print(f"APP_ERROR excel_build {type(exc).__name__}: {exc}", flush=True)
+                st.error(f"❌ Errore durante la generazione Excel: {exc}")
+                st.stop()
+            nome_file = safe_nome_cognome(st.session_state["nome_cliente"])
+            comm_lab = commodity_label(st.session_state["commodity"])
+            mode = st.session_state["export_mode"]
+            file_name = f"confronto_illumia_{nome_file}_{comm_lab}_{mode}.xlsx"
 
-        render_excel_download_link(data, file_name)
-        print("APP_SECTION excel_link_render_done", flush=True)
+            render_excel_download_link(data, file_name)
+            print("APP_SECTION excel_link_render_done", flush=True)
     else:
         st.info("Il file Excel sarà disponibile appena il confronto è completo.")
 
