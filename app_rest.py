@@ -2,12 +2,14 @@ import io
 import re
 import base64
 import calendar
+import json
 import hashlib
 import hmac
 from pathlib import Path
 from datetime import datetime, date
 
 import streamlit as st
+import streamlit.components.v1 as components
 import openpyxl
 
 st.set_page_config(page_title="Confronto bollette vs Illumia", layout="wide")
@@ -20,7 +22,7 @@ TARIFFE_BASE = BASE_DIR / "tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
 STATIC_DIR = BASE_DIR / "static"
 STATIC_DOWNLOADS_DIR = STATIC_DIR / "downloads"
-APP_STATE_VERSION = "2026-04-28-static-download-same-tab-1"
+APP_STATE_VERSION = "2026-04-28-blob-excel-download-1"
 
 if str(st.query_params.get("debug", "")).lower() in {"1", "true", "si", "yes"}:
     st.title("Energia Solidale")
@@ -1005,6 +1007,51 @@ def render_comparison_rows(rows):
         )
     st.code("\n".join(lines), language=None)
 
+def render_blob_download_button(data: bytes, file_name: str):
+    encoded = base64.b64encode(data).decode("ascii")
+    safe_name = safe_download_filename(file_name)
+    html_doc = f"""
+    <button id="download-xlsx" style="
+        width:100%;
+        padding:0.65rem 1rem;
+        border:0;
+        border-radius:0.5rem;
+        background:#1597d3;
+        color:white;
+        font-weight:700;
+        cursor:pointer;
+        font-family:Arial, sans-serif;
+        font-size:16px;
+    ">Scarica Excel</button>
+    <script>
+    const data = {json.dumps(encoded)};
+    const fileName = {json.dumps(safe_name)};
+    function base64ToBytes(base64) {{
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {{
+            bytes[i] = binary.charCodeAt(i);
+        }}
+        return bytes;
+    }}
+    document.getElementById("download-xlsx").addEventListener("click", function () {{
+        const bytes = base64ToBytes(data);
+        const blob = new Blob([bytes], {{
+            type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }});
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }});
+    </script>
+    """
+    components.html(html_doc, height=56)
+
 def bolletta_is_valid():
     v1 = float(st.session_state["b_vendita_consumo"])
     v2 = float(st.session_state["b_vendita_fissa"])
@@ -1456,19 +1503,10 @@ with center:
             file_name = f"confronto_illumia_{nome_file}_{comm_lab}_{mode}.xlsx"
 
             href, download_name = write_static_download(data, file_name)
-            st.markdown(
-                f"""
-                <a href="{href}" download="{download_name}"
-                   style="display:block;text-align:center;padding:0.65rem 1rem;border-radius:0.5rem;
-                          background:#1597d3;color:white;font-weight:700;text-decoration:none;">
-                    Scarica Excel
-                </a>
-                """,
-                unsafe_allow_html=True,
-            )
-            st.caption("Se Chrome non scarica subito: clic destro su Scarica Excel > Salva link con nome.")
+            render_blob_download_button(data, file_name)
+            st.caption("Se il pulsante non scarica, copia il link diretto qui sotto in una nuova scheda.")
             st.caption(f"Link diretto file: {href}")
-            print(f"APP_SECTION excel_static_link_done href={href}", flush=True)
+            print(f"APP_SECTION excel_blob_button_done href={href}", flush=True)
     else:
         st.info("Il file Excel sarà disponibile appena il confronto è completo.")
 
