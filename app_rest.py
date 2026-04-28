@@ -53,6 +53,7 @@ KEYS = [
     "quota_potenza",
     "sconti",
     "ricalcoli",
+    "bonus_sociale",
     "arrotondamenti",
     "accise_iva",
 ]
@@ -710,6 +711,8 @@ def find_row_map(ws):
             rm["sconti"] = r
         elif "ricalc" in t:
             rm["ricalcoli"] = r
+        elif "bonus social" in t:
+            rm["bonus_sociale"] = r
         elif "arrotond" in t:
             rm["arrotondamenti"] = r
         elif "accise" in t:
@@ -717,7 +720,7 @@ def find_row_map(ws):
         elif t == "totale":
             rm["totale"] = r
 
-    if "arrotondamenti" not in rm and "accise_iva" in rm:
+    if "arrotondamenti" not in rm and "bonus_sociale" not in rm and "accise_iva" in rm:
         candidate = rm["accise_iva"] - 1
         if candidate > 0:
             rm["arrotondamenti"] = candidate
@@ -737,7 +740,7 @@ def apply_export_labels(ws, nome_cliente: str):
         9: "Quota Potenza",
         10: "Sconti",
         11: "Ricalcoli/Partite pregresse",
-        12: None,
+        12: "Bonus Sociale",
         13: "Accise e Iva",
         14: "Totale",
     }
@@ -767,7 +770,7 @@ def validate_row_map(rm):
         "quota_potenza",
         "sconti",
         "ricalcoli",
-        "arrotondamenti",
+        "bonus_sociale",
         "accise_iva",
         "totale",
     ]
@@ -778,13 +781,13 @@ def validate_row_map(rm):
 def apply_accise_formula_conforme(ws, rm, col_letter):
     acc = rm["accise_iva"]
     start = rm["vendita_consumo"]
-    end = rm["arrotondamenti"]
+    end = acc - 1
     ws[f"{col_letter}{acc}"] = f"=SUM({col_letter}{start}:{col_letter}{end})*B{acc}/SUM(B{start}:B{end})"
 
 def apply_total_formula(ws, rm, col_letter):
     acc = rm["accise_iva"]
     start = rm["vendita_consumo"]
-    end = rm["arrotondamenti"]
+    end = acc - 1
     ws[f"{col_letter}{rm['totale']}"] = f"=SUM({col_letter}{start}:{col_letter}{end})+{col_letter}{acc}"
 
 def write_column(ws, rm, col, vals, commodity):
@@ -802,7 +805,10 @@ def write_column(ws, rm, col, vals, commodity):
     ws[f"{col}{rm['rete_fissa']}"] = float(vals["rete_fissa"])
     ws[f"{col}{rm['sconti']}"] = float(vals["sconti"])
     ws[f"{col}{rm['ricalcoli']}"] = float(vals["ricalcoli"])
-    ws[f"{col}{rm['arrotondamenti']}"] = float(vals["arrotondamenti"])
+    if "bonus_sociale" in rm:
+        ws[f"{col}{rm['bonus_sociale']}"] = float(vals.get("bonus_sociale", 0.0))
+    if "arrotondamenti" in rm:
+        ws[f"{col}{rm['arrotondamenti']}"] = float(vals["arrotondamenti"])
 
 def fill_column_text(ws, rm, col, text):
     for key, r in rm.items():
@@ -831,6 +837,7 @@ def comparison_subtotal(vals, commodity):
         + float(vals["rete_fissa"])
         + float(vals["sconti"])
         + float(vals["ricalcoli"])
+        + float(vals.get("bonus_sociale", 0.0))
         + float(vals["arrotondamenti"])
     )
     if commodity == "EE":
@@ -844,6 +851,7 @@ def build_comparison_values():
     comm = st.session_state["commodity"]
 
     b_vals = {k: float(st.session_state[f"b_{k}"]) for k in KEYS}
+    b_vals["bonus_sociale"] = -abs(float(b_vals.get("bonus_sociale", 0.0)))
     b_vals["vendita_fissa"] = bill_fixed_period_amount(b_vals["vendita_fissa"])
     b_vals["rete_fissa"] = bill_fixed_period_amount(b_vals["rete_fissa"])
 
@@ -946,6 +954,7 @@ def build_comparison_table_rows(values=None):
         ("quota_potenza", "Quota Potenza"),
         ("sconti", "Sconti"),
         ("ricalcoli", "Ricalcoli/Partite pregresse"),
+        ("bonus_sociale", "Bonus Sociale"),
         ("arrotondamenti", "Arrotondamenti"),
         ("accise_iva", "Accise e Iva"),
         ("totale", "Totale"),
@@ -1178,6 +1187,7 @@ with center:
                     f"Quota potenza: {format_eur(st.session_state['b_quota_potenza'])}",
                     f"Sconti: {format_eur(st.session_state['b_sconti'])}",
                     f"Ricalcoli: {format_eur(st.session_state['b_ricalcoli'])}",
+                    f"Bonus Sociale: {format_eur(-abs(float(st.session_state['b_bonus_sociale'])))}",
                     f"Arrotondamenti: {format_eur(st.session_state['b_arrotondamenti'])}",
                     f"Accise + IVA: {format_eur(st.session_state['b_accise_iva'])}",
                 ]
@@ -1196,6 +1206,7 @@ with center:
         st.number_input("Quota potenza (solo luce)", step=0.01, key="b_quota_potenza", disabled=(bill_inputs_disabled or st.session_state["commodity"] == "GAS"))
         st.number_input("Sconti", step=0.01, key="b_sconti", disabled=bill_inputs_disabled)
         st.number_input("Ricalcoli", step=0.01, key="b_ricalcoli", disabled=bill_inputs_disabled)
+        st.number_input("Bonus Sociale (negativo)", step=0.01, key="b_bonus_sociale", disabled=bill_inputs_disabled)
         st.number_input("Arrotondamenti", step=0.01, key="b_arrotondamenti", disabled=bill_inputs_disabled)
         st.number_input("Accise + IVA", step=0.01, key="b_accise_iva", disabled=bill_inputs_disabled)
 

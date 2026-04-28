@@ -20,6 +20,7 @@ KEYS = [
     "quota_potenza",
     "sconti",
     "ricalcoli",
+    "bonus_sociale",
     "arrotondamenti",
     "accise_iva",
 ]
@@ -322,6 +323,7 @@ def comparison_subtotal(vals, commodity):
         + float(vals["rete_fissa"])
         + float(vals["sconti"])
         + float(vals["ricalcoli"])
+        + float(vals.get("bonus_sociale", 0.0))
         + float(vals["arrotondamenti"])
     )
     if commodity == "EE":
@@ -356,6 +358,7 @@ def build_comparison_table_rows(values):
         ("quota_potenza", "Quota Potenza"),
         ("sconti", "Sconti"),
         ("ricalcoli", "Ricalcoli/Partite pregresse"),
+        ("bonus_sociale", "Bonus Sociale"),
         ("arrotondamenti", "Arrotondamenti"),
         ("accise_iva", "Accise e Iva"),
         ("totale", "Totale"),
@@ -379,6 +382,7 @@ def build_comparison_values(data, calc):
     comm = data["commodity"]
     months = calc["billing_months"]
     b_vals = {k: float(data.get(f"b_{k}", 0.0)) for k in KEYS}
+    b_vals["bonus_sociale"] = -abs(float(b_vals.get("bonus_sociale", 0.0)))
     b_vals["vendita_fissa"] *= months
     b_vals["rete_fissa"] *= months
 
@@ -483,13 +487,15 @@ def find_row_map(ws):
             rm["sconti"] = r
         elif "ricalcoli" in t or "partite" in t:
             rm["ricalcoli"] = r
+        elif "bonus social" in t:
+            rm["bonus_sociale"] = r
         elif "arrotondamenti" in t:
             rm["arrotondamenti"] = r
         elif "accise" in t or "iva" in t:
             rm["accise_iva"] = r
         elif t == "totale":
             rm["totale"] = r
-    if "arrotondamenti" not in rm and "accise_iva" in rm:
+    if "arrotondamenti" not in rm and "bonus_sociale" not in rm and "accise_iva" in rm:
         candidate = rm["accise_iva"] - 1
         if candidate > 0:
             rm["arrotondamenti"] = candidate
@@ -506,7 +512,7 @@ def validate_row_map(rm):
         "quota_potenza",
         "sconti",
         "ricalcoli",
-        "arrotondamenti",
+        "bonus_sociale",
         "accise_iva",
         "totale",
     ]
@@ -527,7 +533,7 @@ def apply_export_labels(ws, nome_cliente: str):
         9: "Quota Potenza",
         10: "Sconti",
         11: "Ricalcoli/Partite pregresse",
-        12: "",
+        12: "Bonus Sociale",
         13: "Accise e Iva",
         14: "Totale",
     }
@@ -551,14 +557,14 @@ def write_export_metadata(ws, prepared):
 def apply_accise_formula_conforme(ws, rm, col_letter):
     acc = rm["accise_iva"]
     start = rm["vendita_consumo"]
-    end = rm["arrotondamenti"]
+    end = acc - 1
     ws[f"{col_letter}{acc}"] = f"=SUM({col_letter}{start}:{col_letter}{end})*B{acc}/SUM(B{start}:B{end})"
 
 
 def apply_total_formula(ws, rm, col_letter):
     acc = rm["accise_iva"]
     start = rm["vendita_consumo"]
-    end = rm["arrotondamenti"]
+    end = acc - 1
     ws[f"{col_letter}{rm['totale']}"] = f"=SUM({col_letter}{start}:{col_letter}{end})+{col_letter}{acc}"
 
 
@@ -576,7 +582,10 @@ def write_column(ws, rm, col, vals, commodity):
     ws[f"{col}{rm['rete_fissa']}"] = float(vals["rete_fissa"])
     ws[f"{col}{rm['sconti']}"] = float(vals["sconti"])
     ws[f"{col}{rm['ricalcoli']}"] = float(vals["ricalcoli"])
-    ws[f"{col}{rm['arrotondamenti']}"] = float(vals["arrotondamenti"])
+    if "bonus_sociale" in rm:
+        ws[f"{col}{rm['bonus_sociale']}"] = float(vals.get("bonus_sociale", 0.0))
+    if "arrotondamenti" in rm:
+        ws[f"{col}{rm['arrotondamenti']}"] = float(vals["arrotondamenti"])
 
 
 def fill_column_text(ws, rm, col, text):

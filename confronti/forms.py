@@ -23,6 +23,13 @@ class ConfrontoForm(forms.Form):
     b_quota_potenza = forms.DecimalField(label="Quota potenza", decimal_places=4, max_digits=12, initial=0)
     b_sconti = forms.DecimalField(label="Sconti", decimal_places=4, max_digits=12, initial=0)
     b_ricalcoli = forms.DecimalField(label="Ricalcoli/Partite pregresse", decimal_places=4, max_digits=12, initial=0)
+    b_bonus_sociale = forms.DecimalField(
+        label="Bonus Sociale",
+        decimal_places=4,
+        max_digits=12,
+        initial=0,
+        help_text="Inserire l'importo come valore negativo.",
+    )
     b_arrotondamenti = forms.DecimalField(label="Arrotondamenti", decimal_places=4, max_digits=12, initial=0)
     b_accise_iva = forms.DecimalField(label="Accise + IVA", decimal_places=4, max_digits=12, initial=0)
 
@@ -30,6 +37,9 @@ class ConfrontoForm(forms.Form):
         cleaned = super().clean()
         if cleaned.get("bill_start") and cleaned.get("bill_end") and cleaned["bill_end"] < cleaned["bill_start"]:
             raise forms.ValidationError("La data finale non può essere precedente alla data iniziale.")
+        bonus = cleaned.get("b_bonus_sociale")
+        if bonus:
+            cleaned["b_bonus_sociale"] = -abs(bonus)
         return cleaned
 
     def service_data(self):
