@@ -25,6 +25,21 @@ KEYS = [
     "accise_iva",
 ]
 
+MONTH_NAMES_IT = {
+    1: "Gennaio",
+    2: "Febbraio",
+    3: "Marzo",
+    4: "Aprile",
+    5: "Maggio",
+    6: "Giugno",
+    7: "Luglio",
+    8: "Agosto",
+    9: "Settembre",
+    10: "Ottobre",
+    11: "Novembre",
+    12: "Dicembre",
+}
+
 
 def clean_text(v) -> str:
     return "" if v is None else str(v).strip()
@@ -86,6 +101,18 @@ def billing_divisor_from_months(months) -> float:
 def billing_label_from_months(months) -> str:
     labels = {1: "MENSILE", 2: "BIMESTRALE", 3: "TRIMESTRALE"}
     return labels.get(int(months), f"{int(months)} MESI")
+
+
+def month_year_label(d: date) -> str:
+    return f"{MONTH_NAMES_IT[d.month]} {d.year}"
+
+
+def bill_period_label(start: date, end: date) -> str:
+    if end < start:
+        start, end = end, start
+    if start.year == end.year and start.month == end.month:
+        return month_year_label(start)
+    return f"{month_year_label(start)} - {month_year_label(end)}"
 
 
 def parse_index_month(x):
@@ -449,6 +476,7 @@ def prepare_comparison(data):
         "billing_months": billing_months,
         "billing_divisor": billing_divisor,
         "billing_label": billing_label_from_months(billing_months),
+        "period_label": bill_period_label(bill_start, bill_end),
         "offer_file": str(offer_file) if offer_file else "",
         "offer_valid_from": offer_valid_from,
         "offer_valid_to": offer_valid_to,

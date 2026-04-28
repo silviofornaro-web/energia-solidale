@@ -1,3 +1,4 @@
+from calendar import monthrange
 from datetime import date
 
 from django import forms
@@ -8,12 +9,23 @@ from . import services
 class ConfrontoForm(forms.Form):
     SEGMENTI = [("RESIDENZIALE", "Residenziale"), ("BUSINESS", "Business")]
     COMMODITIES = [("GAS", "Gas"), ("EE", "Luce")]
+    MONTH_INPUT_FORMATS = ["%Y-%m", "%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"]
 
     nome_cliente = forms.CharField(label="Nome e Cognome", max_length=120, initial="Cliente")
     segmento = forms.ChoiceField(label="Segmento", choices=SEGMENTI, initial="RESIDENZIALE")
     commodity = forms.ChoiceField(label="Fornitura", choices=COMMODITIES, initial="GAS")
-    bill_start = forms.DateField(label="Dal", initial=date.today, widget=forms.DateInput(attrs={"type": "date"}))
-    bill_end = forms.DateField(label="Al", initial=date.today, widget=forms.DateInput(attrs={"type": "date"}))
+    bill_start = forms.DateField(
+        label="Dal mese",
+        initial=date.today,
+        input_formats=MONTH_INPUT_FORMATS,
+        widget=forms.DateInput(format="%Y-%m", attrs={"type": "month"}),
+    )
+    bill_end = forms.DateField(
+        label="Al mese",
+        initial=date.today,
+        input_formats=MONTH_INPUT_FORMATS,
+        widget=forms.DateInput(format="%Y-%m", attrs={"type": "month"}),
+    )
     consumo = forms.DecimalField(label="Consumo", min_value=0, decimal_places=4, max_digits=12, initial=0)
 
     b_vendita_consumo = forms.DecimalField(label="Vendita consumo", decimal_places=4, max_digits=12, initial=0)
@@ -36,8 +48,17 @@ class ConfrontoForm(forms.Form):
 
     def clean(self):
         cleaned = super().clean()
+        bill_start = cleaned.get("bill_start")
+        bill_end = cleaned.get("bill_end")
+        if bill_start:
+            cleaned["bill_start"] = date(bill_start.year, bill_start.month, 1)
+            bill_start = cleaned["bill_start"]
+        if bill_end:
+            last_day = monthrange(bill_end.year, bill_end.month)[1]
+            cleaned["bill_end"] = date(bill_end.year, bill_end.month, last_day)
+            bill_end = cleaned["bill_end"]
         if cleaned.get("bill_start") and cleaned.get("bill_end") and cleaned["bill_end"] < cleaned["bill_start"]:
-            raise forms.ValidationError("La data finale non può essere precedente alla data iniziale.")
+            raise forms.ValidationError("Il mese finale non può essere precedente al mese iniziale.")
         bonus = cleaned.get("b_bonus_sociale")
         cleaned["b_bonus_sociale"] = -abs(bonus) if bonus else 0
         return cleaned
