@@ -11,12 +11,22 @@ def confronto(request):
     prepared = None
     rows = None
     if request.method == "POST":
-        form = ConfrontoForm(request.POST)
-        if form.is_valid():
-            data = form.service_data()
-            prepared = prepare_comparison(data)
-            rows = prepared["rows"]
-            request.session["last_confronto"] = form.session_data()
+        if request.POST.get("action") == "reset_bill":
+            request.session.pop("last_confronto", None)
+            form = ConfrontoForm(
+                initial={
+                    "nome_cliente": request.POST.get("nome_cliente") or "Cliente",
+                    "segmento": request.POST.get("segmento") or "RESIDENZIALE",
+                    "commodity": request.POST.get("commodity") or "GAS",
+                }
+            )
+        else:
+            form = ConfrontoForm(request.POST)
+            if form.is_valid():
+                data = form.service_data()
+                prepared = prepare_comparison(data)
+                rows = prepared["rows"]
+                request.session["last_confronto"] = form.session_data()
     else:
         form = ConfrontoForm()
 

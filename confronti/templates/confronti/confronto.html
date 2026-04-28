@@ -34,7 +34,10 @@
         <label>{{ form.b_accise_iva.label }}{{ form.b_accise_iva }}</label>
     </div>
 
-    <button type="submit">Calcola confronto</button>
+    <div class="form-actions">
+        <button type="submit" name="action" value="calculate">Calcola confronto</button>
+        <button type="submit" name="action" value="reset_bill" class="secondary">Cambia bolletta</button>
+    </div>
 </form>
 
 {% if prepared %}
