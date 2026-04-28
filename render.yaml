@@ -10,8 +10,7 @@ services:
     plan: free
     region: frankfurt
     buildCommand: ./build.sh
-    preDeployCommand: python3 manage.py migrate && python3 manage.py create_initial_superuser
-    startCommand: gunicorn energia_solidale_django.wsgi:application
+    startCommand: python3 manage.py migrate && python3 manage.py create_initial_superuser && gunicorn energia_solidale_django.wsgi:application
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.13
