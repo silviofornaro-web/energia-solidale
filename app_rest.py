@@ -20,7 +20,7 @@ TARIFFE_BASE = BASE_DIR / "tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
 STATIC_DIR = BASE_DIR / "static"
 STATIC_DOWNLOADS_DIR = STATIC_DIR / "downloads"
-APP_STATE_VERSION = "2026-04-28-static-excel-download-1"
+APP_STATE_VERSION = "2026-04-28-static-download-same-tab-1"
 
 if str(st.query_params.get("debug", "")).lower() in {"1", "true", "si", "yes"}:
     st.title("Energia Solidale")
@@ -1458,7 +1458,7 @@ with center:
             href, download_name = write_static_download(data, file_name)
             st.markdown(
                 f"""
-                <a href="{href}" download="{download_name}" target="_blank" rel="noopener"
+                <a href="{href}" download="{download_name}"
                    style="display:block;text-align:center;padding:0.65rem 1rem;border-radius:0.5rem;
                           background:#1597d3;color:white;font-weight:700;text-decoration:none;">
                     Scarica Excel
@@ -1466,7 +1466,8 @@ with center:
                 """,
                 unsafe_allow_html=True,
             )
-            st.caption("Se il browser apre una nuova scheda invece del download, torna alla scheda dell'app.")
+            st.caption("Se Chrome non scarica subito: clic destro su Scarica Excel > Salva link con nome.")
+            st.caption(f"Link diretto file: {href}")
             print(f"APP_SECTION excel_static_link_done href={href}", flush=True)
     else:
         st.info("Il file Excel sarà disponibile appena il confronto è completo.")
