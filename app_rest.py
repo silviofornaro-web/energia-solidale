@@ -18,7 +18,7 @@ LOGO_PNG = BASE_DIR / "assets" / "logo_energia_solidale.png"
 TEMPLATE_XLSX = BASE_DIR / "esempio_confronto_corretto.xlsx"
 TARIFFE_BASE = BASE_DIR / "tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
-APP_STATE_VERSION = "2026-04-27-fixed-bill-mandatory-1"
+APP_STATE_VERSION = "2026-04-28-comparison-render-safe-1"
 
 if str(st.query_params.get("debug", "")).lower() in {"1", "true", "si", "yes"}:
     st.title("Energia Solidale")
@@ -970,6 +970,19 @@ def build_markdown_table(rows):
         )
     return "\n".join(lines)
 
+def render_comparison_rows(rows):
+    h1, h2, h3, h4 = st.columns([2.8, 1.25, 1.25, 1.25])
+    h1.markdown("**VOCE**")
+    h2.markdown("**Bolletta**")
+    h3.markdown("**Illumia Variabile**")
+    h4.markdown("**Illumia Fissa**")
+    for row in rows:
+        c1, c2, c3, c4 = st.columns([2.8, 1.25, 1.25, 1.25])
+        c1.write(row["VOCE"])
+        c2.write(row["Bolletta"])
+        c3.write(row["Illumia Variabile"])
+        c4.write(row["Illumia Fissa"])
+
 def bolletta_is_valid():
     v1 = float(st.session_state["b_vendita_consumo"])
     v2 = float(st.session_state["b_vendita_fissa"])
@@ -1321,15 +1334,23 @@ with center:
     st.header("4️⃣ Confronto")
     if st.session_state["illumia_calculated"]:
         print("APP_SECTION comparison_render_start", flush=True)
-        comparison_values = build_comparison_values()
-        offer_var_label = st.session_state.get("offer_var_name") or "N.D."
-        offer_fix_label = st.session_state.get("offer_fix_name") or "N.D."
-        st.caption(
-            f"Offerta variabile: {offer_var_label} | "
-            f"Offerta fissa: {offer_fix_label}"
-        )
-        st.markdown(build_markdown_table(build_comparison_table_rows(comparison_values)))
-        print("APP_SECTION comparison_render_done", flush=True)
+        try:
+            comparison_values = build_comparison_values()
+            print("APP_SECTION comparison_values_ok", flush=True)
+            comparison_rows = build_comparison_table_rows(comparison_values)
+            print(f"APP_SECTION comparison_rows_ok rows={len(comparison_rows)}", flush=True)
+            offer_var_label = st.session_state.get("offer_var_name") or "N.D."
+            offer_fix_label = st.session_state.get("offer_fix_name") or "N.D."
+            st.caption(
+                f"Offerta variabile: {offer_var_label} | "
+                f"Offerta fissa: {offer_fix_label}"
+            )
+            render_comparison_rows(comparison_rows)
+            print("APP_SECTION comparison_render_done", flush=True)
+        except Exception as exc:
+            print(f"APP_ERROR comparison_render {type(exc).__name__}: {exc}", flush=True)
+            st.error(f"Errore nella visualizzazione del confronto: {exc}")
+            st.stop()
     else:
         st.info("Completa i dati richiesti per visualizzare il confronto.")
 
@@ -1407,8 +1428,11 @@ with center:
 
     if can_calc:
         try:
+            print("APP_SECTION excel_build_start", flush=True)
             data = build_excel_bytes()
+            print("APP_SECTION excel_build_done", flush=True)
         except Exception as exc:
+            print(f"APP_ERROR excel_build {type(exc).__name__}: {exc}", flush=True)
             st.error(f"❌ Errore durante la generazione Excel: {exc}")
             st.stop()
         nome_file = safe_nome_cognome(st.session_state["nome_cliente"])
