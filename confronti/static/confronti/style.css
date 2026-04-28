@@ -1,0 +1,164 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #f6f8fb;
+    color: #1f2937;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+.page {
+    width: min(1120px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 24px 0 40px;
+}
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.topbar img {
+    width: 260px;
+    max-width: 52vw;
+    height: auto;
+}
+
+h1 {
+    margin: 0 0 18px;
+    font-size: 32px;
+}
+
+h2 {
+    margin: 24px 0 12px;
+    font-size: 20px;
+}
+
+h2 span {
+    font-size: 14px;
+    font-weight: 400;
+}
+
+.panel {
+    background: white;
+    border: 1px solid #d8e1ea;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 22px;
+}
+
+.narrow {
+    max-width: 420px;
+    margin: 0 auto 22px;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.form-grid.top {
+    grid-template-columns: 2fr 1fr 1fr;
+}
+
+.form-grid.one {
+    grid-template-columns: 1fr;
+}
+
+label {
+    display: grid;
+    gap: 6px;
+    font-weight: 700;
+    font-size: 14px;
+}
+
+input,
+select {
+    width: 100%;
+    min-height: 42px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font: inherit;
+    font-weight: 400;
+}
+
+button,
+.download {
+    display: inline-block;
+    border: 0;
+    border-radius: 6px;
+    padding: 11px 18px;
+    margin-top: 20px;
+    background: #1597d3;
+    color: white;
+    font: inherit;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.link-button {
+    background: transparent;
+    color: #1597d3;
+    margin: 0;
+    padding: 8px 0;
+}
+
+.meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 16px;
+    margin-bottom: 18px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+}
+
+th,
+td {
+    border-bottom: 1px solid #e5e7eb;
+    padding: 10px 8px;
+    text-align: right;
+}
+
+th:first-child,
+td:first-child {
+    text-align: left;
+}
+
+th {
+    background: #eef6fb;
+}
+
+.error {
+    color: #b91c1c;
+    font-weight: 700;
+}
+
+footer {
+    text-align: center;
+    color: #1597d3;
+    line-height: 1.45;
+    margin-top: 26px;
+}
+
+@media (max-width: 760px) {
+    .form-grid,
+    .form-grid.top,
+    .meta {
+        grid-template-columns: 1fr;
+    }
+
+    table {
+        font-size: 13px;
+    }
+}

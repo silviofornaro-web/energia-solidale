@@ -1,0 +1,28 @@
+{% load static %}
+<!doctype html>
+<html lang="it">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Confronto bollette vs Illumia{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'confronti/style.css' %}">
+</head>
+<body>
+    <main class="page">
+        <header class="topbar">
+            <img src="{% static 'confronti/logo_energia_solidale.jpg' %}" alt="Energia Solidale">
+            {% if user.is_authenticated %}
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="link-button">Esci</button>
+                </form>
+            {% endif %}
+        </header>
+        {% block content %}{% endblock %}
+        <footer>
+            <strong>Energia Solidale</strong><br>
+            Associazione senza scopo di lucro - Chioggia (VE) - info@energiasolidale.org
+        </footer>
+    </main>
+</body>
+</html>

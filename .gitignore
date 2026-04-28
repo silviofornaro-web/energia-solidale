@@ -6,6 +6,8 @@ __pycache__/
 venv/
 venv 2/
 .venv/
+.venv-django/
+db.sqlite3
 
 .streamlit/secrets.toml
 

@@ -1,0 +1,73 @@
+{% extends "confronti/base.html" %}
+
+{% block content %}
+<h1>Confronto bollette vs Illumia</h1>
+
+<form method="post" class="panel">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <div class="form-grid top">
+        <label>{{ form.nome_cliente.label }}{{ form.nome_cliente }}</label>
+        <label>{{ form.segmento.label }}{{ form.segmento }}</label>
+        <label>{{ form.commodity.label }}{{ form.commodity }}</label>
+    </div>
+
+    <h2>Periodicità</h2>
+    <div class="form-grid">
+        <label>{{ form.bill_start.label }}{{ form.bill_start }}</label>
+        <label>{{ form.bill_end.label }}{{ form.bill_end }}</label>
+        <label>{{ form.consumo.label }}{{ form.consumo }}</label>
+    </div>
+
+    <h2>Bolletta <span>(scontrino dell'energia)</span></h2>
+    <div class="form-grid">
+        <label>{{ form.b_vendita_consumo.label }}{{ form.b_vendita_consumo }}</label>
+        <label>{{ form.b_rete_consumi.label }}{{ form.b_rete_consumi }}</label>
+        <label>{{ form.b_vendita_fissa.label }}{{ form.b_vendita_fissa }}</label>
+        <label>{{ form.b_rete_fissa.label }}{{ form.b_rete_fissa }}</label>
+        <label>{{ form.b_quota_potenza.label }}{{ form.b_quota_potenza }}</label>
+        <label>{{ form.b_sconti.label }}{{ form.b_sconti }}</label>
+        <label>{{ form.b_ricalcoli.label }}{{ form.b_ricalcoli }}</label>
+        <label>{{ form.b_arrotondamenti.label }}{{ form.b_arrotondamenti }}</label>
+        <label>{{ form.b_accise_iva.label }}{{ form.b_accise_iva }}</label>
+    </div>
+
+    <button type="submit">Calcola confronto</button>
+</form>
+
+{% if prepared %}
+<section class="panel result">
+    <div class="meta">
+        <div><strong>Periodicità:</strong> {{ prepared.calc.billing_label }}</div>
+        <div><strong>Mesi fatturati:</strong> {{ prepared.calc.billing_months }}</div>
+        <div><strong>Indice usato:</strong> {{ prepared.calc.indice.mese|default:"N.D." }}</div>
+        <div><strong>Offerta variabile:</strong> {{ prepared.calc.offer_var|default:"N.D." }}</div>
+        <div><strong>Offerta fissa:</strong> {{ prepared.calc.offer_fix|default:"N.D." }}</div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>VOCE</th>
+                <th>Bolletta</th>
+                <th>Illumia Variabile</th>
+                <th>Illumia Fissa</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+                <tr>
+                    <td>{{ row.voce }}</td>
+                    <td>{{ row.bolletta }}</td>
+                    <td>{{ row.variabile }}</td>
+                    <td>{{ row.fissa }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <a class="download" href="{% url 'scarica_excel' %}">Scarica Excel</a>
+</section>
+{% endif %}
+{% endblock %}
