@@ -2,6 +2,7 @@ import io
 import re
 import base64
 import calendar
+import html
 import hashlib
 import hmac
 from pathlib import Path
@@ -18,7 +19,7 @@ LOGO_PNG = BASE_DIR / "assets" / "logo_energia_solidale.png"
 TEMPLATE_XLSX = BASE_DIR / "esempio_confronto_corretto.xlsx"
 TARIFFE_BASE = BASE_DIR / "tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
-APP_STATE_VERSION = "2026-04-28-comparison-render-safe-1"
+APP_STATE_VERSION = "2026-04-28-html-excel-download-1"
 
 if str(st.query_params.get("debug", "")).lower() in {"1", "true", "si", "yes"}:
     st.title("Energia Solidale")
@@ -983,6 +984,33 @@ def render_comparison_rows(rows):
         c3.write(row["Illumia Variabile"])
         c4.write(row["Illumia Fissa"])
 
+def render_excel_download_link(data, file_name):
+    encoded = base64.b64encode(data).decode("ascii")
+    safe_file_name = html.escape(file_name, quote=True)
+    st.markdown(
+        f"""
+        <a
+            href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{encoded}"
+            download="{safe_file_name}"
+            style="
+                display:block;
+                width:100%;
+                box-sizing:border-box;
+                text-align:center;
+                padding:0.65rem 1rem;
+                border-radius:0.5rem;
+                background:#1597d3;
+                color:white;
+                font-weight:700;
+                text-decoration:none;
+            "
+        >
+            Scarica Excel
+        </a>
+        """,
+        unsafe_allow_html=True,
+    )
+
 def bolletta_is_valid():
     v1 = float(st.session_state["b_vendita_consumo"])
     v2 = float(st.session_state["b_vendita_fissa"])
@@ -1440,14 +1468,8 @@ with center:
         mode = st.session_state["export_mode"]
         file_name = f"confronto_illumia_{nome_file}_{comm_lab}_{mode}.xlsx"
 
-        st.download_button(
-            "📥 Scarica Excel",
-            data=data,
-            file_name=file_name,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            on_click="ignore",
-        )
+        render_excel_download_link(data, file_name)
+        print("APP_SECTION excel_link_render_done", flush=True)
     else:
         st.info("Il file Excel sarà disponibile appena il confronto è completo.")
 
@@ -1460,3 +1482,4 @@ with center:
         """,
         unsafe_allow_html=True,
     )
+    print("APP_SECTION footer_render_done", flush=True)
