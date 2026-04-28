@@ -19,7 +19,7 @@ LOGO_PNG = BASE_DIR / "assets" / "logo_energia_solidale.png"
 TEMPLATE_XLSX = BASE_DIR / "esempio_confronto_corretto.xlsx"
 TARIFFE_BASE = BASE_DIR / "tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
-APP_STATE_VERSION = "2026-04-28-minimal-result-render-1"
+APP_STATE_VERSION = "2026-04-28-aligned-comparison-code-1"
 
 if str(st.query_params.get("debug", "")).lower() in {"1", "true", "si", "yes"}:
     st.title("Energia Solidale")
@@ -973,18 +973,23 @@ def build_markdown_table(rows):
     return "\n".join(lines)
 
 def render_comparison_rows(rows):
+    voce_w = 32
+    value_w = 12
     lines = [
-        f"{'VOCE':<38} {'Bolletta':>15} {'Illumia Variabile':>20} {'Illumia Fissa':>18}",
-        "-" * 95,
+        f"{'VOCE':<{voce_w}} {'BOLLETTA':>{value_w}} {'ILL. VAR.':>{value_w}} {'ILL. FISSA':>{value_w}}",
+        "-" * (voce_w + (value_w * 3) + 3),
     ]
     for row in rows:
+        voce = str(row["VOCE"])
+        if len(voce) > voce_w:
+            voce = voce[: voce_w - 1] + "."
         lines.append(
-            f"{str(row['VOCE'])[:38]:<38} "
-            f"{str(row['Bolletta']):>15} "
-            f"{str(row['Illumia Variabile']):>20} "
-            f"{str(row['Illumia Fissa']):>18}"
+            f"{voce:<{voce_w}} "
+            f"{str(row['Bolletta']):>{value_w}} "
+            f"{str(row['Illumia Variabile']):>{value_w}} "
+            f"{str(row['Illumia Fissa']):>{value_w}}"
         )
-    st.text("\n".join(lines))
+    st.code("\n".join(lines), language=None)
 
 def render_excel_download_link(data, file_name):
     encoded = base64.b64encode(data).decode("ascii")
