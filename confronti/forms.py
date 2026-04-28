@@ -28,6 +28,7 @@ class ConfrontoForm(forms.Form):
         decimal_places=4,
         max_digits=12,
         initial=0,
+        required=False,
         help_text="Inserire l'importo come valore negativo.",
     )
     b_arrotondamenti = forms.DecimalField(label="Arrotondamenti", decimal_places=4, max_digits=12, initial=0)
@@ -38,8 +39,7 @@ class ConfrontoForm(forms.Form):
         if cleaned.get("bill_start") and cleaned.get("bill_end") and cleaned["bill_end"] < cleaned["bill_start"]:
             raise forms.ValidationError("La data finale non può essere precedente alla data iniziale.")
         bonus = cleaned.get("b_bonus_sociale")
-        if bonus:
-            cleaned["b_bonus_sociale"] = -abs(bonus)
+        cleaned["b_bonus_sociale"] = -abs(bonus) if bonus else 0
         return cleaned
 
     def service_data(self):
