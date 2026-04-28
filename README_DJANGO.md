@@ -35,6 +35,32 @@ http://127.0.0.1:8000/admin/
 
 Puoi creare utenti con username uguale alla loro email.
 
+## Pubblicazione su Render
+
+Il repository contiene `render.yaml`, quindi su Render puoi creare un Blueprint collegato al repository GitHub.
+
+Durante la creazione ti verranno chieste queste variabili:
+
+- `DJANGO_SUPERUSER_USERNAME`: username amministratore iniziale
+- `DJANGO_SUPERUSER_EMAIL`: email amministratore iniziale
+- `DJANGO_SUPERUSER_PASSWORD`: password amministratore iniziale
+
+Render creerà anche un database PostgreSQL e avvierà l'app con:
+
+```text
+gunicorn energia_solidale_django.wsgi:application
+```
+
+Dopo il primo deploy puoi entrare in:
+
+```text
+https://indirizzo-render/admin/
+```
+
+Da lì puoi creare gli utenti autorizzati all'uso dell'app.
+
+Per aggiungere un dominio personalizzato come `app.energiasolidale.org`, aggiungi il dominio su Render e poi imposta nel DNS del dominio il record richiesto da Render.
+
 ## Note
 
 I file usati sono gli stessi della versione Streamlit:

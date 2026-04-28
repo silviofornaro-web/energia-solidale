@@ -1,0 +1,31 @@
+databases:
+  - name: energia-solidale-db
+    plan: free
+    region: frankfurt
+
+services:
+  - type: web
+    name: energia-solidale
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: ./build.sh
+    preDeployCommand: python3 manage.py migrate && python3 manage.py create_initial_superuser
+    startCommand: gunicorn energia_solidale_django.wsgi:application
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.13
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: energia-solidale-db
+          property: connectionString
+      - key: DJANGO_SUPERUSER_USERNAME
+        sync: false
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false
