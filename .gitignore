@@ -11,6 +11,7 @@ venv 2/
 
 ~$*.xlsx
 confronto_illumia_*.xlsx
+static/downloads/*.xlsx
 FILE_GENERATO.xlsx
 *.zip
 *.backup

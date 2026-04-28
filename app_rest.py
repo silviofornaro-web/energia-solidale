@@ -18,7 +18,9 @@ LOGO_PNG = BASE_DIR / "assets" / "logo_energia_solidale.png"
 TEMPLATE_XLSX = BASE_DIR / "esempio_confronto_corretto.xlsx"
 TARIFFE_BASE = BASE_DIR / "tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
-APP_STATE_VERSION = "2026-04-28-native-excel-download-1"
+STATIC_DIR = BASE_DIR / "static"
+STATIC_DOWNLOADS_DIR = STATIC_DIR / "downloads"
+APP_STATE_VERSION = "2026-04-28-static-excel-download-1"
 
 if str(st.query_params.get("debug", "")).lower() in {"1", "true", "si", "yes"}:
     st.title("Energia Solidale")
@@ -406,6 +408,19 @@ def safe_nome_cognome(nome_cliente: str) -> str:
     if len(parts) >= 2:
         return f"{parts[0]}_{parts[1]}"
     return parts[0]
+
+def safe_download_filename(name: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", str(name).strip())
+    return cleaned or "confronto_illumia.xlsx"
+
+def write_static_download(data: bytes, file_name: str):
+    STATIC_DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = safe_download_filename(file_name)
+    stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    stored_name = f"{stamp}_{safe_name}"
+    path = STATIC_DOWNLOADS_DIR / stored_name
+    path.write_bytes(data)
+    return f"app/static/downloads/{stored_name}", safe_name
 
 def badge_ok():
     st.markdown(
@@ -1440,16 +1455,19 @@ with center:
             mode = st.session_state["export_mode"]
             file_name = f"confronto_illumia_{nome_file}_{comm_lab}_{mode}.xlsx"
 
-            st.download_button(
-                "Scarica Excel",
-                data=data,
-                file_name=file_name,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-                key="download_excel_ready",
-                on_click="ignore",
+            href, download_name = write_static_download(data, file_name)
+            st.markdown(
+                f"""
+                <a href="{href}" download="{download_name}" target="_blank" rel="noopener"
+                   style="display:block;text-align:center;padding:0.65rem 1rem;border-radius:0.5rem;
+                          background:#1597d3;color:white;font-weight:700;text-decoration:none;">
+                    Scarica Excel
+                </a>
+                """,
+                unsafe_allow_html=True,
             )
-            print("APP_SECTION excel_download_button_done", flush=True)
+            st.caption("Se il browser apre una nuova scheda invece del download, torna alla scheda dell'app.")
+            print(f"APP_SECTION excel_static_link_done href={href}", flush=True)
     else:
         st.info("Il file Excel sarà disponibile appena il confronto è completo.")
 
