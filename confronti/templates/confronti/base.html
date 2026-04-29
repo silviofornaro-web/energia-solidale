@@ -10,7 +10,7 @@
 <body>
     <main class="page">
         <header class="topbar">
-            <img src="{% static 'confronti/logo_energia_solidale.jpg' %}" alt="Energia Solidale">
+            <img src="{% static 'confronti/logo_energia_solidale.png' %}" alt="Energia Solidale">
             {% if user.is_authenticated %}
                 <form method="post" action="{% url 'logout' %}">
                     {% csrf_token %}
