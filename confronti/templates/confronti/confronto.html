@@ -1,7 +1,7 @@
 {% extends "confronti/base.html" %}
 
 {% block content %}
-<h1>Confronto bollette vs Illumia</h1>
+<h1>Confronto bollette</h1>
 
 <form method="post" class="panel">
     {% csrf_token %}
@@ -11,6 +11,13 @@
         <label>{{ form.nome_cliente.label }}{{ form.nome_cliente }}</label>
         <label>{{ form.segmento.label }}{{ form.segmento }}</label>
         <label>{{ form.commodity.label }}{{ form.commodity }}</label>
+        <label>{{ form.provider.label }}{{ form.provider }}</label>
+    </div>
+
+    <h2>Offerte confronto</h2>
+    <div class="form-grid">
+        <label>{{ form.offer_var_choice.label }}{{ form.offer_var_choice }}</label>
+        <label>{{ form.offer_fix_choice.label }}{{ form.offer_fix_choice }}</label>
     </div>
 
     <h2>Periodicità</h2>
@@ -47,6 +54,7 @@
         <div><strong>Periodo:</strong> {{ prepared.calc.period_label }}</div>
         <div><strong>Mesi fatturati:</strong> {{ prepared.calc.billing_months }}</div>
         <div><strong>Indice usato:</strong> {{ prepared.calc.indice.mese|default:"N.D." }}</div>
+        <div><strong>Fornitore confronto:</strong> {{ prepared.calc.provider_label }}</div>
         <div><strong>Offerta variabile:</strong> {{ prepared.calc.offer_var|default:"N.D." }}</div>
         <div><strong>Offerta fissa:</strong> {{ prepared.calc.offer_fix|default:"N.D." }}</div>
     </div>
@@ -56,8 +64,8 @@
             <tr>
                 <th>VOCE</th>
                 <th>Bolletta</th>
-                <th>Illumia Variabile</th>
-                <th>Illumia Fissa</th>
+                <th>{{ prepared.calc.provider_label }} Variabile</th>
+                <th>{{ prepared.calc.provider_label }} Fissa</th>
             </tr>
         </thead>
         <tbody>
@@ -75,4 +83,48 @@
     <a class="download" href="{% url 'scarica_excel' %}">Scarica Excel</a>
 </section>
 {% endif %}
+{{ offer_options|json_script:"offer-options-data" }}
+<script>
+(() => {
+    const dataElement = document.getElementById("offer-options-data");
+    if (!dataElement) return;
+    const offerOptions = JSON.parse(dataElement.textContent);
+    const provider = document.getElementById("id_provider");
+    const segmento = document.getElementById("id_segmento");
+    const commodity = document.getElementById("id_commodity");
+    const variable = document.getElementById("id_offer_var_choice");
+    const fixed = document.getElementById("id_offer_fix_choice");
+    if (!provider || !segmento || !commodity || !variable || !fixed) return;
+
+    const populate = (select, type) => {
+        const selected = select.value;
+        const key = `${provider.value}|${segmento.value}|${commodity.value}`;
+        const names = (offerOptions[key] && offerOptions[key][type]) || [];
+        select.innerHTML = "";
+        const automatic = document.createElement("option");
+        automatic.value = "";
+        automatic.textContent = names.length ? "Automatica" : "N.D.";
+        select.appendChild(automatic);
+        names.forEach((name) => {
+            const option = document.createElement("option");
+            option.value = name;
+            option.textContent = name;
+            select.appendChild(option);
+        });
+        if (names.includes(selected)) {
+            select.value = selected;
+        }
+    };
+
+    const refreshOffers = () => {
+        populate(variable, "VARIABILE");
+        populate(fixed, "FISSA");
+    };
+
+    provider.addEventListener("change", refreshOffers);
+    segmento.addEventListener("change", refreshOffers);
+    commodity.addEventListener("change", refreshOffers);
+    refreshOffers();
+})();
+</script>
 {% endblock %}

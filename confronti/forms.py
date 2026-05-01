@@ -9,11 +9,15 @@ from . import services
 class ConfrontoForm(forms.Form):
     SEGMENTI = [("RESIDENZIALE", "Residenziale"), ("BUSINESS", "Business")]
     COMMODITIES = [("GAS", "Gas"), ("EE", "Luce")]
+    PROVIDERS = [("ILLUMIA", "Illumia"), ("EON", "E.ON")]
     MONTH_INPUT_FORMATS = ["%Y-%m", "%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"]
 
     nome_cliente = forms.CharField(label="Nome e Cognome", max_length=120, initial="Cliente")
     segmento = forms.ChoiceField(label="Segmento", choices=SEGMENTI, initial="RESIDENZIALE")
     commodity = forms.ChoiceField(label="Fornitura", choices=COMMODITIES, initial="GAS")
+    provider = forms.ChoiceField(label="Fornitore confronto", choices=PROVIDERS, initial="ILLUMIA")
+    offer_var_choice = forms.ChoiceField(label="Offerta variabile", required=False)
+    offer_fix_choice = forms.ChoiceField(label="Offerta fissa", required=False)
     bill_start = forms.DateField(
         label="Dal mese",
         initial=date.today,
@@ -45,6 +49,25 @@ class ConfrontoForm(forms.Form):
     )
     b_arrotondamenti = forms.DecimalField(label="Arrotondamenti", decimal_places=4, max_digits=12, initial=0)
     b_accise_iva = forms.DecimalField(label="Accise + IVA", decimal_places=4, max_digits=12, initial=0)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        provider = self._current_value("provider", "ILLUMIA")
+        segmento = self._current_value("segmento", "RESIDENZIALE")
+        commodity = self._current_value("commodity", "GAS")
+        self.fields["offer_var_choice"].choices = self._offer_choices(provider, segmento, commodity, "VARIABILE")
+        self.fields["offer_fix_choice"].choices = self._offer_choices(provider, segmento, commodity, "FISSA")
+
+    def _current_value(self, field_name, default):
+        if self.data and field_name in self.data:
+            return self.data.get(field_name) or default
+        return self.initial.get(field_name, self.fields[field_name].initial or default)
+
+    def _offer_choices(self, provider, segmento, commodity, offer_type):
+        payload = services.offer_options_payload()
+        key = f"{services.normalize_provider(provider)}|{str(segmento).upper()}|{str(commodity).upper()}"
+        names = payload.get(key, {}).get(offer_type, [])
+        return [("", "Automatica")] + [(name, name) for name in names]
 
     def clean(self):
         cleaned = super().clean()
@@ -86,4 +109,7 @@ def session_to_service_data(raw):
     data["bill_end"] = services.parse_date_any(data.get("bill_end"))
     for key in ["consumo"] + [f"b_{k}" for k in services.KEYS] + ["ill_sconto_var", "ill_sconto_fix"]:
         data[key] = services.parse_number(data.get(key))
+    data["provider"] = services.normalize_provider(data.get("provider", "ILLUMIA"))
+    data["offer_var_choice"] = data.get("offer_var_choice", "")
+    data["offer_fix_choice"] = data.get("offer_fix_choice", "")
     return data

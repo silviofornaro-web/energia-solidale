@@ -10,7 +10,12 @@ from django.conf import settings
 BASE_DIR = Path(settings.BASE_DIR)
 TEMPLATE_XLSX = BASE_DIR / "esempio_confronto_corretto.xlsx"
 TARIFFE_BASE = BASE_DIR / "tariffe"
+EON_TARIFFE_XLSX = BASE_DIR / "estrazioni_tariffe" / "eon_tariffe_2026-04.xlsx"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
+PROVIDERS = {
+    "ILLUMIA": "Illumia",
+    "EON": "E.ON",
+}
 
 KEYS = [
     "vendita_consumo",
@@ -45,9 +50,20 @@ def clean_text(v) -> str:
     return "" if v is None else str(v).strip()
 
 
+def normalize_provider(value) -> str:
+    cleaned = clean_text(value or "ILLUMIA").upper().replace(".", "").replace("-", "").replace(" ", "")
+    if cleaned == "EON":
+        return "EON"
+    return "ILLUMIA"
+
+
+def provider_label(value) -> str:
+    return PROVIDERS.get(normalize_provider(value), "Illumia")
+
+
 def safe_download_filename(name: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", str(name).strip())
-    return cleaned or "confronto_illumia.xlsx"
+    return cleaned or "confronto_bollette.xlsx"
 
 
 def parse_number(x) -> float:
@@ -202,7 +218,9 @@ def tariff_matches_segment(path: Path, segmento: str) -> bool:
     return ("residenziale" in parts or "template" in name) and "business" not in name
 
 
-def load_tariffe_file_for_segment(segmento: str):
+def load_tariffe_file_for_segment(segmento: str, provider: str = "ILLUMIA"):
+    if normalize_provider(provider) == "EON":
+        return EON_TARIFFE_XLSX if EON_TARIFFE_XLSX.exists() else None
     if not TARIFFE_BASE.exists():
         return None
     candidates = [p for p in TARIFFE_BASE.rglob("*.xlsx") if tariff_matches_segment(p, segmento)]
@@ -240,6 +258,18 @@ def get_file_valid_range(xlsx_path: Path):
     return min(dfs), max(dts)
 
 
+def valid_range_from_rows(rows):
+    dfs, dts = [], []
+    for r in rows:
+        vf = parse_date_any(r.get("valid_from"))
+        vt = parse_date_any(r.get("valid_to"))
+        if vf:
+            dfs.append(vf)
+        if vt:
+            dts.append(vt)
+    return (min(dfs) if dfs else None, max(dts) if dts else None)
+
+
 def load_tariffe_from_path(path: Path):
     wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
     if "tariffe" not in wb.sheetnames:
@@ -258,9 +288,25 @@ def load_tariffe_from_path(path: Path):
         d["offer_type"] = clean_text(d.get("offer_type")).upper()
         d["offer_name"] = clean_text(d.get("offer_name"))
         d["component"] = clean_text(d.get("component")).lower()
+        d["provider"] = normalize_provider(d.get("provider"))
+        d["segmento"] = clean_text(d.get("segmento")).upper()
+        d["is_sellable"] = clean_text(d.get("is_sellable")).upper()
         d["value_num"] = parse_number(d.get("value"))
         out.append(d)
     return out
+
+
+def filter_rows_by_context(rows, provider, segmento):
+    provider_norm = normalize_provider(provider)
+    segment_norm = clean_text(segmento).upper()
+    if provider_norm == "ILLUMIA":
+        return [r for r in rows if normalize_provider(r.get("provider")) == "ILLUMIA"]
+    return [
+        r
+        for r in rows
+        if normalize_provider(r.get("provider")) == provider_norm
+        and clean_text(r.get("segmento")).upper() == segment_norm
+    ]
 
 
 def filter_rows_by_offer(rows, commodity, offer_type, offer_name):
@@ -269,20 +315,48 @@ def filter_rows_by_offer(rows, commodity, offer_type, offer_name):
     return [r for r in rows if r.get("commodity") == c and r.get("offer_type") == o and clean_text(r.get("offer_name")) == offer_name]
 
 
-def select_offer_name(rows, commodity, offer_type, segmento):
+def row_is_sellable(row):
+    marker = clean_text(row.get("is_sellable")).upper()
+    return marker not in {"FALSE", "NO", "0"}
+
+
+def offer_names(rows, commodity, offer_type):
     c = commodity.upper()
     o = offer_type.upper()
-    subset = [r for r in rows if r.get("commodity") == c and r.get("offer_type") == o]
-    if segmento == "BUSINESS" and o == "FISSA":
-        return ""
+    subset = [r for r in rows if r.get("commodity") == c and r.get("offer_type") == o and row_is_sellable(r)]
     counts = {}
     for r in subset:
         name = clean_text(r.get("offer_name"))
         if name:
             counts[name] = counts.get(name, 0) + 1
-    if not counts:
+    return [name for name, _count in sorted(counts.items(), key=lambda x: (-x[1], x[0]))]
+
+
+def select_offer_name(rows, commodity, offer_type, segmento, preferred=""):
+    names = offer_names(rows, commodity, offer_type)
+    preferred = clean_text(preferred)
+    if preferred and preferred in names:
+        return preferred
+    if segmento == "BUSINESS" and offer_type.upper() == "FISSA" and not names:
         return ""
-    return sorted(counts.items(), key=lambda x: (-x[1], x[0]))[0][0]
+    if not names:
+        return ""
+    return names[0]
+
+
+def offer_options_payload():
+    payload = {}
+    for provider in PROVIDERS:
+        for segmento in ("RESIDENZIALE", "BUSINESS"):
+            offer_file = load_tariffe_file_for_segment(segmento, provider)
+            rows = filter_rows_by_context(load_tariffe_from_path(offer_file), provider, segmento) if offer_file else []
+            for commodity in ("GAS", "EE"):
+                key = f"{provider}|{segmento}|{commodity}"
+                payload[key] = {
+                    "VARIABILE": offer_names(rows, commodity, "VARIABILE"),
+                    "FISSA": offer_names(rows, commodity, "FISSA"),
+                }
+    return payload
 
 
 def comp_sum(rows, commodity, offer, component):
@@ -330,6 +404,7 @@ def calc_illumia_vendite(rows_offer, commodity, offer, consumo, pun, psv, billin
         prezzo = psv + fee + ccv_var + bil
         return float(consumo * prezzo), float(fixed_annua("GAS", "VARIABILE") / float(billing_divisor))
     prezzo = comp_first(rows_offer, "GAS", "FISSA", "prezzo_fisso")
+    prezzo += comp_sum(rows_offer, "GAS", "FISSA", "ccv_quota_variabile")
     return float(consumo * prezzo), float(fixed_annua("GAS", "FISSA") / float(billing_divisor))
 
 
@@ -417,12 +492,12 @@ def build_comparison_values(data, calc):
     d_vals = b_vals.copy()
     c_vals["vendita_consumo"] = calc["v_cons"]
     c_vals["vendita_fissa"] = calc["v_fix"]
-    c_vals["sconti"] = float(data.get("ill_sconto_var", -3.0))
+    c_vals["sconti"] = float(calc.get("sconto_var", data.get("ill_sconto_var", -3.0)))
     c_vals["ricalcoli"] = 0.0
     c_vals["arrotondamenti"] = 0.0
     d_vals["vendita_consumo"] = calc["f_cons"]
     d_vals["vendita_fissa"] = calc["f_fix"]
-    d_vals["sconti"] = float(data.get("ill_sconto_fix", -3.0))
+    d_vals["sconti"] = float(calc.get("sconto_fix", data.get("ill_sconto_fix", -3.0)))
     d_vals["ricalcoli"] = 0.0
     d_vals["arrotondamenti"] = 0.0
 
@@ -445,34 +520,50 @@ def prepare_comparison(data):
     bill_end = data["bill_end"]
     segmento = data["segmento"]
     commodity = data["commodity"]
+    provider = normalize_provider(data.get("provider", "ILLUMIA"))
     consumo = float(data["consumo"])
     billing_months = billing_months_from_dates(bill_start, bill_end)
     billing_divisor = billing_divisor_from_months(billing_months)
 
-    offer_file = load_tariffe_file_for_segment(segmento)
-    tariffe_rows = load_tariffe_from_path(offer_file) if offer_file else []
+    offer_file = load_tariffe_file_for_segment(segmento, provider)
+    tariffe_rows = filter_rows_by_context(load_tariffe_from_path(offer_file), provider, segmento) if offer_file else []
     offer_valid_from, offer_valid_to = get_file_valid_range(offer_file) if offer_file else (None, None)
-    offer_var = select_offer_name(tariffe_rows, commodity, "VARIABILE", segmento)
-    offer_fix = select_offer_name(tariffe_rows, commodity, "FISSA", segmento)
+    offer_var = select_offer_name(tariffe_rows, commodity, "VARIABILE", segmento, data.get("offer_var_choice", ""))
+    offer_fix = select_offer_name(tariffe_rows, commodity, "FISSA", segmento, data.get("offer_fix_choice", ""))
 
     indici_rows = load_indici_rows(INDICI_XLSX)
     indice, indice_reason = select_indice_for_bill_period(indici_rows, bill_start, bill_end)
     pun = float(indice["pun"]) if indice else 0.0
     psv = float(indice["psv"]) if indice else 0.0
 
+    sconto_var = float(data.get("ill_sconto_var", -3.0)) if provider == "ILLUMIA" else 0.0
+    sconto_fix = float(data.get("ill_sconto_fix", -3.0)) if provider == "ILLUMIA" else 0.0
+    rows_var = []
+    rows_fix = []
+
     if offer_var:
         rows_var = filter_rows_by_offer(tariffe_rows, commodity, "VARIABILE", offer_var)
         v_cons, v_fix = calc_illumia_vendite(rows_var, commodity, "VARIABILE", consumo, pun, psv, billing_divisor)
+        if provider != "ILLUMIA":
+            sconto_var = comp_sum(rows_var, commodity, "VARIABILE", "sconto_bonus")
     else:
         v_cons, v_fix = 0.0, 0.0
 
     if offer_fix:
         rows_fix = filter_rows_by_offer(tariffe_rows, commodity, "FISSA", offer_fix)
         f_cons, f_fix = calc_illumia_vendite(rows_fix, commodity, "FISSA", consumo, pun, psv, billing_divisor)
+        if provider != "ILLUMIA":
+            sconto_fix = comp_sum(rows_fix, commodity, "FISSA", "sconto_bonus")
     else:
         f_cons, f_fix = 0.0, 0.0
 
+    selected_valid_from, selected_valid_to = valid_range_from_rows(rows_var + rows_fix)
+    if selected_valid_from or selected_valid_to:
+        offer_valid_from, offer_valid_to = selected_valid_from, selected_valid_to
+
     calc = {
+        "provider": provider,
+        "provider_label": provider_label(provider),
         "billing_months": billing_months,
         "billing_divisor": billing_divisor,
         "billing_label": billing_label_from_months(billing_months),
@@ -488,6 +579,8 @@ def prepare_comparison(data):
         "v_fix": v_fix,
         "f_cons": f_cons,
         "f_fix": f_fix,
+        "sconto_var": sconto_var,
+        "sconto_fix": sconto_fix,
     }
     values = build_comparison_values(data, calc)
     return {"calc": calc, "values": values, "rows": build_comparison_table_rows(values)}
@@ -571,10 +664,15 @@ def apply_export_labels(ws, nome_cliente: str):
 
 def write_export_metadata(ws, prepared):
     calc = prepared["calc"]
-    ws["F1"] = f"Offerta Illumia VARIABILE: {calc['offer_var'] or 'N.D.'}"
-    ws["F2"] = f"Offerta Illumia FISSA: {calc['offer_fix'] or 'N.D.'}"
+    label = calc.get("provider_label", "Illumia")
+    ws["F1"] = f"Offerta {label} VARIABILE: {calc['offer_var'] or 'N.D.'}"
+    ws["F2"] = f"Offerta {label} FISSA: {calc['offer_fix'] or 'N.D.'}"
     if calc["offer_valid_from"] and calc["offer_valid_to"]:
         ws["F3"] = f"Validità offerta: {calc['offer_valid_from']} → {calc['offer_valid_to']}"
+    elif calc["offer_valid_to"]:
+        ws["F3"] = f"Validità offerta: fino a {calc['offer_valid_to']}"
+    elif calc["offer_valid_from"]:
+        ws["F3"] = f"Validità offerta: dal {calc['offer_valid_from']}"
     else:
         ws["F3"] = "Validità offerta: N.D."
     ws["F4"] = f"File tariffe: {calc['offer_file']}"
@@ -632,6 +730,10 @@ def build_excel_bytes(data, prepared=None):
     validate_row_map(rm)
     ws["B1"] = None
     ws["C1"] = float(data["consumo"])
+    provider_name = prepared["calc"].get("provider_label", "Illumia")
+    ws["B3"] = "Bolletta"
+    ws["C3"] = f"{provider_name} Variabile"
+    ws["D3"] = f"{provider_name} Fissa"
     write_export_metadata(ws, prepared)
 
     values = prepared["values"]

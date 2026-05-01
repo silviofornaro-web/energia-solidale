@@ -15,6 +15,9 @@ def valid_payload(**overrides):
         "nome_cliente": "Mario Rossi",
         "segmento": "RESIDENZIALE",
         "commodity": "EE",
+        "provider": "ILLUMIA",
+        "offer_var_choice": "",
+        "offer_fix_choice": "",
         "bill_start": "2026-01",
         "bill_end": "2026-03",
         "consumo": "100",
@@ -111,6 +114,29 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertTrue(all(row["variabile"] == "N.D." for row in rows))
         self.assertTrue(all(row["fissa"] == "N.D." for row in rows))
 
+    def test_eon_offer_options_include_residential_and_business(self):
+        options = services.offer_options_payload()
+        self.assertIn("E.ON Flex Gas", options["EON|RESIDENZIALE|GAS"]["VARIABILE"])
+        self.assertIn("E.ON Gas Tua", options["EON|RESIDENZIALE|GAS"]["FISSA"])
+        self.assertIn("E.ON Gas Impresa CLSC", options["EON|BUSINESS|GAS"]["VARIABILE"])
+        self.assertIn("E.ON LuceDinamica ECO CLSE", options["EON|BUSINESS|EE"]["VARIABILE"])
+
+    def test_prepare_comparison_uses_selected_eon_fixed_gas_offer(self):
+        data = service_data(
+            provider="EON",
+            commodity="GAS",
+            offer_var_choice="E.ON Flex Gas",
+            offer_fix_choice="E.ON Gas Tua",
+        )
+        prepared = services.prepare_comparison(data)
+        self.assertEqual(prepared["calc"]["provider_label"], "E.ON")
+        self.assertEqual(prepared["calc"]["offer_var"], "E.ON Flex Gas")
+        self.assertEqual(prepared["calc"]["offer_fix"], "E.ON Gas Tua")
+        self.assertEqual(prepared["calc"]["offer_valid_to"], date(2026, 4, 9))
+        self.assertEqual(prepared["values"]["variabile"]["sconti"], -10)
+        self.assertEqual(prepared["values"]["fissa"]["sconti"], -10)
+        self.assertAlmostEqual(prepared["values"]["fissa"]["vendita_consumo"], 53.3, places=4)
+
 
 class ConfrontoFormTests(SimpleTestCase):
     def test_month_fields_are_normalized_to_full_bill_period(self):
@@ -149,6 +175,7 @@ class ConfrontoViewTests(TestCase):
         response = self.client.get("/")
         self.assertContains(response, 'type="month"')
         self.assertContains(response, "Cambia bolletta")
+        self.assertContains(response, "Fornitore confronto")
 
     def test_calculate_comparison_stores_session_and_renders_period(self):
         self.login()
@@ -161,6 +188,24 @@ class ConfrontoViewTests(TestCase):
         self.assertIn("last_confronto", self.client.session)
         self.assertEqual(self.client.session["last_confronto"]["bill_start"], "2026-01-01")
         self.assertEqual(self.client.session["last_confronto"]["bill_end"], "2026-03-31")
+
+    def test_calculate_can_compare_selected_eon_offer(self):
+        self.login()
+        response = self.client.post(
+            "/",
+            valid_payload(
+                provider="EON",
+                offer_var_choice="E.ON Flex Luce Casa",
+                offer_fix_choice="E.ON Luce 50 TuaPer12",
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("Fornitore confronto:</strong> E.ON", html)
+        self.assertIn("E.ON Flex Luce Casa", html)
+        self.assertIn("E.ON Luce 50 TuaPer12", html)
+        self.assertIn("E.ON Variabile", html)
+        self.assertEqual(self.client.session["last_confronto"]["provider"], "EON")
 
     def test_change_bill_resets_bill_values_and_download_session(self):
         self.login()

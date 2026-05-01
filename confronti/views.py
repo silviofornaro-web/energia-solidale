@@ -3,7 +3,7 @@ from django.http import HttpResponse
 from django.shortcuts import render
 
 from .forms import ConfrontoForm, session_to_service_data
-from .services import build_excel_bytes, prepare_comparison, safe_download_filename
+from .services import build_excel_bytes, offer_options_payload, prepare_comparison, provider_label, safe_download_filename
 
 
 @login_required
@@ -18,6 +18,9 @@ def confronto(request):
                     "nome_cliente": request.POST.get("nome_cliente") or "Cliente",
                     "segmento": request.POST.get("segmento") or "RESIDENZIALE",
                     "commodity": request.POST.get("commodity") or "GAS",
+                    "provider": request.POST.get("provider") or "ILLUMIA",
+                    "offer_var_choice": request.POST.get("offer_var_choice") or "",
+                    "offer_fix_choice": request.POST.get("offer_fix_choice") or "",
                 }
             )
         else:
@@ -37,6 +40,7 @@ def confronto(request):
             "form": form,
             "prepared": prepared,
             "rows": rows,
+            "offer_options": offer_options_payload(),
         },
     )
 
@@ -49,8 +53,9 @@ def scarica_excel(request):
     data = session_to_service_data(raw)
     prepared = prepare_comparison(data)
     content = build_excel_bytes(data, prepared)
+    provider_name = provider_label(data.get("provider", "ILLUMIA")).lower().replace(".", "")
     nome = safe_download_filename(
-        f"confronto_illumia_{data.get('nome_cliente', 'Cliente')}_{data.get('commodity', 'ENERGIA')}.xlsx"
+        f"confronto_{provider_name}_{data.get('nome_cliente', 'Cliente')}_{data.get('commodity', 'ENERGIA')}.xlsx"
     )
     response = HttpResponse(
         content,
