@@ -183,6 +183,7 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
         self.assertIn("Gennaio 2026 - Marzo 2026", html)
+        self.assertIn("Cliente:</strong> Mario Rossi", html)
         self.assertIn("TRIMESTRALE", html)
         self.assertIn("Scarica Excel", html)
         self.assertIn("last_confronto", self.client.session)

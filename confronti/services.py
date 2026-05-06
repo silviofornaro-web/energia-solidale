@@ -562,6 +562,7 @@ def prepare_comparison(data):
         offer_valid_from, offer_valid_to = selected_valid_from, selected_valid_to
 
     calc = {
+        "nome_cliente": clean_text(data.get("nome_cliente")) or "Cliente",
         "provider": provider,
         "provider_label": provider_label(provider),
         "billing_months": billing_months,
