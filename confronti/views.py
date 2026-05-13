@@ -1,6 +1,7 @@
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.shortcuts import render
+from django.utils import timezone
 
 from .forms import ConfrontoForm, session_to_service_data
 from .services import build_excel_bytes, offer_options_payload, prepare_comparison, provider_label, safe_download_filename
@@ -18,6 +19,7 @@ def confronto(request):
                     "nome_cliente": request.POST.get("nome_cliente") or "Cliente",
                     "segmento": request.POST.get("segmento") or "RESIDENZIALE",
                     "commodity": request.POST.get("commodity") or "GAS",
+                    "bill_tariff_type": request.POST.get("bill_tariff_type") or "VARIABILE",
                     "provider": request.POST.get("provider") or "ILLUMIA",
                     "offer_var_choice": request.POST.get("offer_var_choice") or "",
                     "offer_fix_choice": request.POST.get("offer_fix_choice") or "",
@@ -27,9 +29,12 @@ def confronto(request):
             form = ConfrontoForm(request.POST)
             if form.is_valid():
                 data = form.service_data()
+                data["comparison_datetime"] = timezone.localtime().isoformat(timespec="seconds")
                 prepared = prepare_comparison(data)
                 rows = prepared["rows"]
-                request.session["last_confronto"] = form.session_data()
+                session_data = form.session_data()
+                session_data["comparison_datetime"] = data["comparison_datetime"]
+                request.session["last_confronto"] = session_data
     else:
         form = ConfrontoForm()
 

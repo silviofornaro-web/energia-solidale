@@ -63,7 +63,7 @@ h2 span {
 }
 
 .form-grid.top {
-    grid-template-columns: 2fr 1fr 1fr 1fr;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
 }
 
 .form-grid.one {

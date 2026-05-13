@@ -11,6 +11,7 @@
         <label>{{ form.nome_cliente.label }}{{ form.nome_cliente }}</label>
         <label>{{ form.segmento.label }}{{ form.segmento }}</label>
         <label>{{ form.commodity.label }}{{ form.commodity }}</label>
+        <label>{{ form.bill_tariff_type.label }}{{ form.bill_tariff_type }}</label>
         <label>{{ form.provider.label }}{{ form.provider }}</label>
     </div>
 
@@ -51,6 +52,8 @@
 <section class="panel result">
     <div class="meta">
         <div><strong>Cliente:</strong> {{ prepared.calc.nome_cliente }}</div>
+        <div><strong>Confronto eseguito:</strong> {{ prepared.calc.comparison_datetime_label }}</div>
+        <div><strong>Tipo tariffa bolletta:</strong> {{ prepared.calc.bill_tariff_type_label }}</div>
         <div><strong>Periodicità:</strong> {{ prepared.calc.billing_label }}</div>
         <div><strong>Periodo:</strong> {{ prepared.calc.period_label }}</div>
         <div><strong>Mesi fatturati:</strong> {{ prepared.calc.billing_months }}</div>

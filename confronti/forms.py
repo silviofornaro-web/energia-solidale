@@ -10,11 +10,13 @@ class ConfrontoForm(forms.Form):
     SEGMENTI = [("RESIDENZIALE", "Residenziale"), ("MICROBUSINESS", "Microbusiness"), ("BUSINESS", "Business")]
     COMMODITIES = [("GAS", "Gas"), ("EE", "Luce")]
     PROVIDERS = [("ILLUMIA", "Illumia"), ("EON", "E.ON")]
+    BILL_TARIFF_TYPES = [("VARIABILE", "Variabile"), ("FISSA", "Fissa")]
     MONTH_INPUT_FORMATS = ["%Y-%m", "%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"]
 
     nome_cliente = forms.CharField(label="Nome e Cognome", max_length=120, initial="Cliente")
     segmento = forms.ChoiceField(label="Segmento", choices=SEGMENTI, initial="RESIDENZIALE")
     commodity = forms.ChoiceField(label="Fornitura", choices=COMMODITIES, initial="GAS")
+    bill_tariff_type = forms.ChoiceField(label="Tipo tariffa bolletta", choices=BILL_TARIFF_TYPES, initial="VARIABILE")
     provider = forms.ChoiceField(label="Fornitore confronto", choices=PROVIDERS, initial="ILLUMIA")
     offer_var_choice = forms.ChoiceField(label="Offerta variabile", required=False)
     offer_fix_choice = forms.ChoiceField(label="Offerta fissa", required=False)
@@ -110,6 +112,8 @@ def session_to_service_data(raw):
     for key in ["consumo"] + [f"b_{k}" for k in services.KEYS] + ["ill_sconto_var", "ill_sconto_fix"]:
         data[key] = services.parse_number(data.get(key))
     data["provider"] = services.normalize_provider(data.get("provider", "ILLUMIA"))
+    data["bill_tariff_type"] = services.normalize_bill_tariff_type(data.get("bill_tariff_type"))
+    data["comparison_datetime"] = data.get("comparison_datetime")
     data["offer_var_choice"] = data.get("offer_var_choice", "")
     data["offer_fix_choice"] = data.get("offer_fix_choice", "")
     return data

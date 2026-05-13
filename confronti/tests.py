@@ -15,6 +15,7 @@ def valid_payload(**overrides):
         "nome_cliente": "Mario Rossi",
         "segmento": "RESIDENZIALE",
         "commodity": "EE",
+        "bill_tariff_type": "VARIABILE",
         "provider": "ILLUMIA",
         "offer_var_choice": "",
         "offer_fix_choice": "",
@@ -186,6 +187,8 @@ class ConfrontoViewTests(TestCase):
         html = response.content.decode()
         self.assertIn("Gennaio 2026 - Marzo 2026", html)
         self.assertIn("Cliente:</strong> Mario Rossi", html)
+        self.assertIn("Confronto eseguito:</strong>", html)
+        self.assertIn("Tipo tariffa bolletta:</strong> Variabile", html)
         self.assertIn("TRIMESTRALE", html)
         self.assertIn("Scarica Excel", html)
         self.assertIn("last_confronto", self.client.session)
@@ -242,6 +245,8 @@ class ConfrontoViewTests(TestCase):
         wb = load_workbook(BytesIO(response.content), data_only=False)
         ws = wb["Confronto"]
         self.assertEqual(ws["A1"].value, "Mario Rossi")
+        self.assertEqual(ws["F6"].value, "Tipo tariffa bolletta: Variabile")
+        self.assertTrue(str(ws["F7"].value).startswith("Confronto eseguito: "))
         self.assertEqual(ws["A12"].value, "Bonus Sociale")
         self.assertEqual(ws["B12"].value, -21.6)
         self.assertEqual(ws["C12"].value, -21.6)

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import openpyxl
 from django.conf import settings
+from django.utils import timezone
 
 
 BASE_DIR = Path(settings.BASE_DIR)
@@ -17,6 +18,10 @@ PROVIDERS = {
     "EON": "E.ON",
 }
 SEGMENTS = ("RESIDENZIALE", "MICROBUSINESS", "BUSINESS")
+BILL_TARIFF_TYPE_LABELS = {
+    "VARIABILE": "Variabile",
+    "FISSA": "Fissa",
+}
 
 KEYS = [
     "vendita_consumo",
@@ -60,6 +65,34 @@ def normalize_provider(value) -> str:
 
 def provider_label(value) -> str:
     return PROVIDERS.get(normalize_provider(value), "Illumia")
+
+
+def normalize_bill_tariff_type(value) -> str:
+    cleaned = clean_text(value).upper()
+    return cleaned if cleaned in BILL_TARIFF_TYPE_LABELS else "VARIABILE"
+
+
+def bill_tariff_type_label(value) -> str:
+    return BILL_TARIFF_TYPE_LABELS.get(normalize_bill_tariff_type(value), "Variabile")
+
+
+def comparison_datetime_from_data(value=None):
+    if isinstance(value, datetime):
+        dt = value
+    elif value:
+        try:
+            dt = datetime.fromisoformat(str(value))
+        except ValueError:
+            dt = timezone.localtime()
+    else:
+        dt = timezone.localtime()
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, timezone.get_current_timezone())
+    return timezone.localtime(dt)
+
+
+def comparison_datetime_label(value=None) -> str:
+    return comparison_datetime_from_data(value).strftime("%d/%m/%Y %H:%M:%S")
 
 
 def safe_download_filename(name: str) -> str:
@@ -577,6 +610,10 @@ def prepare_comparison(data):
 
     calc = {
         "nome_cliente": clean_text(data.get("nome_cliente")) or "Cliente",
+        "bill_tariff_type": normalize_bill_tariff_type(data.get("bill_tariff_type")),
+        "bill_tariff_type_label": bill_tariff_type_label(data.get("bill_tariff_type")),
+        "comparison_datetime": comparison_datetime_from_data(data.get("comparison_datetime")),
+        "comparison_datetime_label": comparison_datetime_label(data.get("comparison_datetime")),
         "provider": provider,
         "provider_label": provider_label(provider),
         "billing_months": billing_months,
@@ -693,6 +730,8 @@ def write_export_metadata(ws, prepared):
     ws["F4"] = f"File tariffe: {calc['offer_file']}"
     indice = calc["indice"] or {}
     ws["F5"] = f"Indice PUN/PSV: {indice.get('mese', 'N.D.')} ({INDICI_XLSX.name})"
+    ws["F6"] = f"Tipo tariffa bolletta: {calc.get('bill_tariff_type_label', 'Variabile')}"
+    ws["F7"] = f"Confronto eseguito: {calc.get('comparison_datetime_label', '')}"
 
 
 def apply_accise_formula_conforme(ws, rm, col_letter):
