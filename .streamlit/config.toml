@@ -1,9 +1,0 @@
-[server]
-headless = true
-enableStaticServing = true
-
-[browser]
-gatherUsageStats = false
-
-[theme]
-base = "light"
