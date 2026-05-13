@@ -10,12 +10,13 @@ from django.conf import settings
 BASE_DIR = Path(settings.BASE_DIR)
 TEMPLATE_XLSX = BASE_DIR / "esempio_confronto_corretto.xlsx"
 TARIFFE_BASE = BASE_DIR / "tariffe"
-EON_TARIFFE_XLSX = BASE_DIR / "estrazioni_tariffe" / "eon_tariffe_2026-04.xlsx"
+EON_TARIFFE_DIR = BASE_DIR / "estrazioni_tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
 PROVIDERS = {
     "ILLUMIA": "Illumia",
     "EON": "E.ON",
 }
+SEGMENTS = ("RESIDENZIALE", "MICROBUSINESS", "BUSINESS")
 
 KEYS = [
     "vendita_consumo",
@@ -209,18 +210,31 @@ def tariff_month_key(path: Path) -> str:
 
 
 def tariff_matches_segment(path: Path, segmento: str) -> bool:
+    segment_norm = clean_text(segmento).upper()
     name = path.name.lower()
     parts = {p.lower() for p in path.parts}
     if path.suffix.lower() != ".xlsx" or name.startswith("~$"):
         return False
-    if segmento == "BUSINESS":
+    if segment_norm == "BUSINESS":
         return "business" in parts or "business" in name
+    if segment_norm == "MICROBUSINESS":
+        return "microbusiness" in parts or "microbusiness" in name or "micro business" in str(path).lower()
     return ("residenziale" in parts or "template" in name) and "business" not in name
+
+
+def load_latest_eon_tariffe_file():
+    if not EON_TARIFFE_DIR.exists():
+        return None
+    candidates = [p for p in EON_TARIFFE_DIR.glob("eon_tariffe_*.xlsx") if p.is_file() and not p.name.startswith("~$")]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda p: (p.name, p.stat().st_mtime))
+    return candidates[-1]
 
 
 def load_tariffe_file_for_segment(segmento: str, provider: str = "ILLUMIA"):
     if normalize_provider(provider) == "EON":
-        return EON_TARIFFE_XLSX if EON_TARIFFE_XLSX.exists() else None
+        return load_latest_eon_tariffe_file()
     if not TARIFFE_BASE.exists():
         return None
     candidates = [p for p in TARIFFE_BASE.rglob("*.xlsx") if tariff_matches_segment(p, segmento)]
@@ -347,7 +361,7 @@ def select_offer_name(rows, commodity, offer_type, segmento, preferred=""):
 def offer_options_payload():
     payload = {}
     for provider in PROVIDERS:
-        for segmento in ("RESIDENZIALE", "BUSINESS"):
+        for segmento in SEGMENTS:
             offer_file = load_tariffe_file_for_segment(segmento, provider)
             rows = filter_rows_by_context(load_tariffe_from_path(offer_file), provider, segmento) if offer_file else []
             for commodity in ("GAS", "EE"):

@@ -7,7 +7,7 @@ from . import services
 
 
 class ConfrontoForm(forms.Form):
-    SEGMENTI = [("RESIDENZIALE", "Residenziale"), ("BUSINESS", "Business")]
+    SEGMENTI = [("RESIDENZIALE", "Residenziale"), ("MICROBUSINESS", "Microbusiness"), ("BUSINESS", "Business")]
     COMMODITIES = [("GAS", "Gas"), ("EE", "Luce")]
     PROVIDERS = [("ILLUMIA", "Illumia"), ("EON", "E.ON")]
     MONTH_INPUT_FORMATS = ["%Y-%m", "%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"]

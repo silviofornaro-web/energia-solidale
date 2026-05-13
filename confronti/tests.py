@@ -118,8 +118,10 @@ class ServiceUtilityTests(SimpleTestCase):
         options = services.offer_options_payload()
         self.assertIn("E.ON Flex Gas", options["EON|RESIDENZIALE|GAS"]["VARIABILE"])
         self.assertIn("E.ON Gas Tua", options["EON|RESIDENZIALE|GAS"]["FISSA"])
-        self.assertIn("E.ON Gas Impresa CLSC", options["EON|BUSINESS|GAS"]["VARIABILE"])
-        self.assertIn("E.ON LuceDinamica ECO CLSE", options["EON|BUSINESS|EE"]["VARIABILE"])
+        self.assertIn("E.ON Gas Impresa CLSC", options["EON|MICROBUSINESS|GAS"]["VARIABILE"])
+        self.assertIn("E.ON LuceDinamica ECO CLSE", options["EON|MICROBUSINESS|EE"]["VARIABILE"])
+        self.assertIn("E.ON Profilo Dinamico Gas P", options["EON|BUSINESS|GAS"]["VARIABILE"])
+        self.assertIn("E.ON Profilo Sicuro T", options["EON|BUSINESS|EE"]["FISSA"])
 
     def test_prepare_comparison_uses_selected_eon_fixed_gas_offer(self):
         data = service_data(
@@ -132,10 +134,10 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertEqual(prepared["calc"]["provider_label"], "E.ON")
         self.assertEqual(prepared["calc"]["offer_var"], "E.ON Flex Gas")
         self.assertEqual(prepared["calc"]["offer_fix"], "E.ON Gas Tua")
-        self.assertEqual(prepared["calc"]["offer_valid_to"], date(2026, 4, 9))
+        self.assertEqual(prepared["calc"]["offer_valid_to"], date(2026, 5, 21))
         self.assertEqual(prepared["values"]["variabile"]["sconti"], -10)
         self.assertEqual(prepared["values"]["fissa"]["sconti"], -10)
-        self.assertAlmostEqual(prepared["values"]["fissa"]["vendita_consumo"], 53.3, places=4)
+        self.assertAlmostEqual(prepared["values"]["fissa"]["vendita_consumo"], 54.8, places=4)
 
 
 class ConfrontoFormTests(SimpleTestCase):
@@ -197,14 +199,14 @@ class ConfrontoViewTests(TestCase):
             valid_payload(
                 provider="EON",
                 offer_var_choice="E.ON Flex Luce Casa",
-                offer_fix_choice="E.ON Luce 50 TuaPer12",
+                offer_fix_choice="E.ON Luce Tua",
             ),
         )
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
         self.assertIn("Fornitore confronto:</strong> E.ON", html)
         self.assertIn("E.ON Flex Luce Casa", html)
-        self.assertIn("E.ON Luce 50 TuaPer12", html)
+        self.assertIn("E.ON Luce Tua", html)
         self.assertIn("E.ON Variabile", html)
         self.assertEqual(self.client.session["last_confronto"]["provider"], "EON")
 

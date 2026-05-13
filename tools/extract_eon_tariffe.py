@@ -15,9 +15,9 @@ from pypdf import PdfReader
 ROOT = Path(__file__).resolve().parents[1]
 EON_ROOT = Path(
     "/Users/silviofornaro/Library/CloudStorage/"
-    "GoogleDrive-bolletteillumia.banco@gmail.com/Il mio Drive/E.ON"
+    "GoogleDrive-bolletteillumia.banco@gmail.com/Il mio Drive/E.ON/Maggio 2026"
 )
-OUTPUT = ROOT / "estrazioni_tariffe" / "eon_tariffe_2026-04.xlsx"
+OUTPUT = ROOT / "estrazioni_tariffe" / "eon_tariffe_2026-05.xlsx"
 
 
 @dataclass(frozen=True)
@@ -27,35 +27,43 @@ class PdfSource:
     commodity: str
     offer_name: str
     offer_type: str
-    variant: str = ""
+    fallback_valid_from: str
+    fallback_valid_to: str
 
 
 SOURCES = [
-    PdfSource(EON_ROOT / "CTE GAS/E.ONFlexGas_6P_D_FLX_CLSB.pdf", "RESIDENZIALE", "GAS", "E.ON Flex Gas", "VARIABILE"),
-    PdfSource(EON_ROOT / "CTE GAS/E.ONFlexGasProtetta_6P_D_P12_CLSE.pdf", "RESIDENZIALE", "GAS", "E.ON Flex Gas Protetta", "VARIABILE"),
-    PdfSource(EON_ROOT / "CTE GAS/E.ONGas50FlexPer12_6P_D_FLX_50_CLSB.pdf", "RESIDENZIALE", "GAS", "E.ON Gas 50 Flex Per12", "VARIABILE"),
-    PdfSource(EON_ROOT / "CTE GAS/E.ONGas50TuaPer12_6P_D_50_V1_CLSA (2).pdf", "RESIDENZIALE", "GAS", "E.ON Gas 50 TuaPer12", "FISSA"),
-    PdfSource(EON_ROOT / "CTE GAS/E.ONGasTua_6P_D_V1_CLSA (2).pdf", "RESIDENZIALE", "GAS", "E.ON Gas Tua", "FISSA"),
-    PdfSource(EON_ROOT / "CTE GAS/E.ONGasVerdeProtetta_6P_D_P12_V1_CLSE.pdf", "RESIDENZIALE", "GAS", "E.ON GasVerde Protetta", "FISSA"),
-    PdfSource(EON_ROOT / "CTE LUCE/E.ONFlexLuce_6P_D_FLX_CLSC.pdf", "RESIDENZIALE", "EE", "E.ON Flex Luce", "VARIABILE"),
-    PdfSource(EON_ROOT / "CTE LUCE/E.ONFlexLuceCasa_6P_D_ACR_V1_CLSE.pdf", "RESIDENZIALE", "EE", "E.ON Flex Luce Casa", "VARIABILE"),
-    PdfSource(EON_ROOT / "CTE LUCE/E.ONFlexLucePer24_6P_D_RI_CLSD.pdf", "RESIDENZIALE", "EE", "E.ON Flex Luce Per24", "VARIABILE"),
-    PdfSource(EON_ROOT / "CTE LUCE/E.ONLuce50FlexPer12_6P_D_FLX_50_CLSC.pdf", "RESIDENZIALE", "EE", "E.ON Luce 50 Flex Per12", "VARIABILE"),
-    PdfSource(EON_ROOT / "CTE LUCE/E.ONLuce50FlexPer24_6P_D_RI_50_CLSD.pdf", "RESIDENZIALE", "EE", "E.ON Luce 50 Flex Per24", "VARIABILE"),
-    PdfSource(EON_ROOT / "CTE LUCE/E.ONLuce50TuaPer12_6P_D_50_V1_CLSA (1).pdf", "RESIDENZIALE", "EE", "E.ON Luce 50 TuaPer12", "FISSA"),
-    PdfSource(EON_ROOT / "CTE LUCE/E.ONLuce50TuaPer24_6P_D_50_V1_CLSC (2).pdf", "RESIDENZIALE", "EE", "E.ON Luce 50 TuaPer24", "FISSA"),
-    PdfSource(EON_ROOT / "CTE LUCE/E.ONLuceTuaPer24_6P_D_V1_CLSC (3).pdf", "RESIDENZIALE", "EE", "E.ON Luce Tua Per 24", "FISSA"),
-    PdfSource(EON_ROOT / "CTE LUCE/E.ONLuceVerdeCasa_6P_D_ACR_V1_CLSE.pdf", "RESIDENZIALE", "EE", "E.ON LuceVerde Casa", "FISSA"),
-    PdfSource(EON_ROOT / "CTE Microbusiness/E.ON Gas Impresa_6P_M_CLSC.pdf", "BUSINESS", "GAS", "E.ON Gas Impresa CLSC", "VARIABILE", "CLSC"),
-    PdfSource(EON_ROOT / "CTE Microbusiness/E.ON Gas Impresa_6P_M_CLSE.pdf", "BUSINESS", "GAS", "E.ON Gas Impresa CLSE", "VARIABILE", "CLSE"),
-    PdfSource(EON_ROOT / "CTE Microbusiness/E.ON LuceDinamica ECO_6P_M_CLSC.pdf", "BUSINESS", "EE", "E.ON LuceDinamica ECO CLSC", "VARIABILE", "CLSC"),
-    PdfSource(EON_ROOT / "CTE Microbusiness/E.ON LuceDinamica ECO_6P_M_CLSE.pdf", "BUSINESS", "EE", "E.ON LuceDinamica ECO CLSE", "VARIABILE", "CLSE"),
+    PdfSource(EON_ROOT / "residenziali/E.ON Flex Gas Compensato_6R_D_FLX_CLSB.pdf", "RESIDENZIALE", "GAS", "E.ON Flex Gas", "VARIABILE", "2026-05-08", "2026-05-21"),
+    PdfSource(EON_ROOT / "residenziali/E.ON Flex Gas Compensato_6R_D_P12_CLSE.pdf", "RESIDENZIALE", "GAS", "E.ON Flex Gas Protetta", "VARIABILE", "2026-05-08", "2026-05-21"),
+    PdfSource(EON_ROOT / "residenziali/E.ON Gas Verde Compensato_6R_D_CLSA.pdf", "RESIDENZIALE", "GAS", "E.ON Gas Tua", "FISSA", "2026-05-08", "2026-05-21"),
+    PdfSource(EON_ROOT / "residenziali/E.ON ValoreMercato Luce_6R_D_FLX_CLSC.pdf", "RESIDENZIALE", "EE", "E.ON Flex Luce", "VARIABILE", "2026-05-08", "2026-05-21"),
+    PdfSource(EON_ROOT / "residenziali/E.ON ValoreMercato Luce_6R_D_ACR_CLSE.pdf", "RESIDENZIALE", "EE", "E.ON Flex Luce Casa", "VARIABILE", "2026-05-08", "2026-05-21"),
+    PdfSource(EON_ROOT / "residenziali/E.ON Luce Comfort_6R_D_RI_CLSD.pdf", "RESIDENZIALE", "EE", "E.ON Flex Luce Per24", "VARIABILE", "2026-05-08", "2026-05-21"),
+    PdfSource(EON_ROOT / "residenziali/E.ON LuceVerde_6R_D_CLSA.pdf", "RESIDENZIALE", "EE", "E.ON Luce Tua", "FISSA", "2026-05-08", "2026-05-21"),
+    PdfSource(EON_ROOT / "residenziali/E.ON Luce Relax_6R_D_CLSB.pdf", "RESIDENZIALE", "EE", "E.ON Luce Tua Per 24", "FISSA", "2026-05-08", "2026-05-21"),
+    PdfSource(EON_ROOT / "residenziali/E.ON LuceVerde_6R_D_ACR_CLSE.pdf", "RESIDENZIALE", "EE", "E.ON LuceVerde Casa", "FISSA", "2026-05-08", "2026-05-21"),
+    PdfSource(EON_ROOT / "Micro Business/E.ON Gas Impresa_6Q_M_CLSC.pdf", "MICROBUSINESS", "GAS", "E.ON Gas Impresa CLSC", "VARIABILE", "2026-04-23", "2026-05-20"),
+    PdfSource(EON_ROOT / "Micro Business/E.ON Gas Impresa_6Q_M_CLSE.pdf", "MICROBUSINESS", "GAS", "E.ON Gas Impresa CLSE", "VARIABILE", "2026-04-23", "2026-05-20"),
+    PdfSource(EON_ROOT / "Micro Business/E.ON ChiaraGas Rinnovo_6Q_M_CLSC.pdf", "MICROBUSINESS", "GAS", "E.ON ChiaraGas Rinnovo CLSC", "FISSA", "2026-04-23", "2026-05-20"),
+    PdfSource(EON_ROOT / "Micro Business/E.ON ChiaraGas Rinnovo_6Q_M_CLSE.pdf", "MICROBUSINESS", "GAS", "E.ON ChiaraGas Rinnovo CLSE", "FISSA", "2026-04-23", "2026-05-20"),
+    PdfSource(EON_ROOT / "Micro Business/E.ON LuceDinamica ECO_6Q_M_CLSC.pdf", "MICROBUSINESS", "EE", "E.ON LuceDinamica ECO CLSC", "VARIABILE", "2026-04-23", "2026-05-20"),
+    PdfSource(EON_ROOT / "Micro Business/E.ON LuceDinamica ECO_6Q_M_CLSE.pdf", "MICROBUSINESS", "EE", "E.ON LuceDinamica ECO CLSE", "VARIABILE", "2026-04-23", "2026-05-20"),
+    PdfSource(EON_ROOT / "Micro Business/E.ON EnergiaChiara - ECO_6Q_M_CLSC.pdf", "MICROBUSINESS", "EE", "E.ON EnergiaChiara ECO CLSC", "FISSA", "2026-04-23", "2026-05-20"),
+    PdfSource(EON_ROOT / "Micro Business/E.ON EnergiaChiara - ECO_6Q.2_M_CLSE.pdf", "MICROBUSINESS", "EE", "E.ON EnergiaChiara ECO CLSE", "FISSA", "2026-04-23", "2026-05-20"),
+    PdfSource(EON_ROOT / "Business/E.ON Profilo Dinamico Gas_6Q_P.pdf", "BUSINESS", "GAS", "E.ON Profilo Dinamico Gas P", "VARIABILE", "2026-05-05", "2026-05-12"),
+    PdfSource(EON_ROOT / "Business/E.ON Profilo Dinamico Gas_6Q_R.pdf", "BUSINESS", "GAS", "E.ON Profilo Dinamico Gas R", "VARIABILE", "2026-05-05", "2026-05-12"),
+    PdfSource(EON_ROOT / "Business/E.ON_ProfiloSicuro_6Q_B.pdf", "BUSINESS", "EE", "E.ON Profilo Sicuro B", "FISSA", "2026-05-05", "2026-05-12"),
+    PdfSource(EON_ROOT / "Business/E.ON_ProfiloSicuro_6Q_S.pdf", "BUSINESS", "EE", "E.ON Profilo Sicuro S", "FISSA", "2026-05-05", "2026-05-12"),
+    PdfSource(EON_ROOT / "Business/E.ON_ProfiloSicuro_6Q_T.pdf", "BUSINESS", "EE", "E.ON Profilo Sicuro T", "FISSA", "2026-05-05", "2026-05-12"),
 ]
 
 
 def read_pdf_text(path: Path) -> str:
     reader = PdfReader(str(path))
     return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+
+def compact(text: str) -> str:
+    return re.sub(r"\s+", " ", text)
 
 
 def number(value: str | None) -> float | None:
@@ -78,39 +86,66 @@ def first(patterns: list[str], text: str, flags: int = re.IGNORECASE | re.DOTALL
     return None
 
 
-def extract_common(text: str) -> dict[str, Any]:
+def first_pair(patterns: list[str], text: str, flags: int = re.IGNORECASE | re.DOTALL) -> tuple[float | None, float | None]:
+    for pattern in patterns:
+        match = re.search(pattern, text, flags)
+        if match:
+            return number(match.group(1)), number(match.group(2))
+    return None, None
+
+
+def extract_common(src: PdfSource, raw_text: str, text: str) -> dict[str, Any]:
+    codes = re.findall(r"000362[A-Z0-9]+", raw_text)
+    valid_to = date_it(first([r"Scadenza:?\s*(\d{2}/\d{2}/\d{4})"], text)) or src.fallback_valid_to
+    valid_dates = [date_it(v) for v in re.findall(r"alla data(?: del)?\s+(\d{2}/\d{2}/\d{4})", text, re.IGNORECASE)]
+    valid_from = next((d for d in valid_dates if d and d != valid_to), src.fallback_valid_from)
+    bonus = None
+    if not re.search(r"non (?:sono previsti|prevede) sconti", text, re.IGNORECASE):
+        bonus = number(first([r"Bonus(?:\s+di)?\s+([0-9]+,[0-9]+)\s*€"], text))
     return {
-        "codice_offerta": first([r"Codice Offerta\s+([0-9A-Z]+)"], text) or "",
-        "valid_to": date_it(first([r"Scadenza\s+(\d{2}/\d{2}/\d{4})"], text)),
-        "valid_from": date_it(
-            first(
-                [
-                    r"alla data del\s+(\d{2}/\d{2}/\d{4})",
-                    r"alla data\s+(\d{2}/\d{2}/\d{4})",
-                ],
-                text,
-            )
-        ),
-        "bonus": number(
-            first(
-                [
-                    r"Bonus(?:\s+in\s+bolletta)?\s+di\s+([0-9]+,[0-9]+)\s*€",
-                    r"Bonus\s+([0-9]+,[0-9]+)\s*€",
-                ],
-                text,
-            )
-        ),
+        "codice_offerta": codes[0] if codes else "",
+        "valid_from": valid_from,
+        "valid_to": valid_to,
+        "bonus": bonus,
     }
+
+
+def fixed_fee_total(values: dict[str, Any]) -> float | None:
+    parts = [values.get("ccv_quota_fissa"), values.get("gestione_energetica_fissa")]
+    total = sum(v for v in parts if v is not None)
+    return total or None
 
 
 def extract_energy_values(src: PdfSource, text: str) -> dict[str, Any]:
     values: dict[str, Any] = {}
+    values["ccv_quota_fissa"] = number(
+        first(
+            [
+                r"Corrispettivo Annuo\s+([0-9]+,[0-9]+)\s*€/P[ODRdrpP]+/anno",
+                r"Corrispettivo commercializzazione al dettaglio quota fissa\s+([0-9]+,[0-9]+)\s*€/P[ODRdrpP]+/anno",
+                r"Corrispettivo di commercializzazione al dettaglio\s+([0-9]+,[0-9]+)\s*€/P[ODRdrpP]+/anno",
+                r"Corrispettivo commercializzazione e vendita\s+([0-9]+,[0-9]+)\s*€/P[ODRdrpP]+/anno",
+                r"Commercializzazione e vendita solo BT\s+([0-9]+,[0-9]+)\s*€/POD/anno",
+                r"commercializzazione e vendita,\s+pari a\s+([0-9]+,[0-9]+)\s*€/P[ODRdrpP]+/anno",
+                r"Commercializzazione vendita in €/POD/anno\s+([0-9]+,[0-9]+)",
+            ],
+            text,
+        )
+    )
+    values["ccv_quota_variabile"] = number(
+        first([r"quota variabile\s+([0-9]+,[0-9]+)\s*€/Smc"], text)
+    )
+    values["gestione_energetica_fissa"] = number(
+        first([r"gestione energetica\s+([0-9]+(?:,[0-9]+)?)\s*€/P[ODRdrpP]+/anno"], text)
+    )
+
     if src.commodity == "GAS":
         values["omega"] = number(
             first(
                 [
-                    r"(?:Componente Omega|Ω|OMEGA).{0,220}?pari a\s+([0-9]+,[0-9]+)\s*€/Smc",
-                    r"corrispettivo variabile.{0,220}?pari a\s+([0-9]+,[0-9]+)\s*€/Smc",
+                    r"Corrispettivo per il consumo\s+PSV DA\s*\+\s*Ω:\s*([0-9]+,[0-9]+)\s*€/Smc",
+                    r"Corrispettivo per il consumo\s+PSV DA\s*\+\s*([0-9]+,[0-9]+)\s*€/Smc",
+                    r"corrispettivo variabile\s*(?:Ω|OMEGA).*?pari a\s+([0-9]+,[0-9]+)\s*€/Smc",
                 ],
                 text,
             )
@@ -118,31 +153,19 @@ def extract_energy_values(src: PdfSource, text: str) -> dict[str, Any]:
         values["prezzo_fisso"] = number(
             first(
                 [
-                    r"somministrazione\s+è\s+pari\s+a\s+([0-9]+,[0-9]+)\s*€/Smc",
-                    r"Materia Prima Gas\*.*?pari\s+a\s+([0-9]+,[0-9]+)\s*€/Smc",
+                    r"Corrispettivo per il consumo\s+([0-9]+,[0-9]+)\s*€/Smc",
+                    r"Materia Prima Gas.*?pari\s+a\s+([0-9]+,[0-9]+)\s*€/Smc",
                 ],
                 text,
             )
-        )
-        values["ccv_quota_fissa"] = number(
-            first([r"quota fissa\s+è\s+pari\s+a\s+([0-9]+,[0-9]+)\s*€/P[Dd]R/anno"], text)
-        )
-        values["ccv_quota_variabile"] = number(
-            first([r"quota variabile\s+è\s+pari\s+a\s+([0-9]+,[0-9]+)\s*€/Smc"], text)
-        )
-        values["gestione_energetica_fissa"] = number(
-            first([r"gestione energetica\s+è\s+pari\s+a\s+([0-9]+(?:,[0-9]+)?)\s*€/P[Dd]R/anno"], text)
-        )
-        values["oneri_integrativi"] = number(
-            first([r"oneri integrativi di vendita\s+è\s+pari\s+a\s+([0-9]+,[0-9]+)\s*€/Smc"], text)
         )
         return values
 
     values["omega"] = number(
         first(
             [
-                r"Componente Omega\).*?pari a\s+([0-9]+,[0-9]+)\s*€/kWh",
-                r"parametro .omega.*?pari a\s+([0-9]+,[0-9]+)\s*€/kWh",
+                r"Corrispettivo per il consumo\s+PUN Index GMEFascia\s*\+\s*Ω:?\s*([0-9]+,[0-9]+)\s*€/kWh",
+                r"PUN GME\s*\+\s*([0-9]+,[0-9]+)\s*€/kWh",
                 r"corrispettivo variabile.*?pari a\s+([0-9]+,[0-9]+)\s*€/kWh",
             ],
             text,
@@ -151,21 +174,17 @@ def extract_energy_values(src: PdfSource, text: str) -> dict[str, Any]:
     values["prezzo_mono"] = number(
         first(
             [
-                r"prezzo monorario.*?pari a\s+([0-9]+,[0-9]+)\s*€/kWh",
-                r"Opzione Monoraria:\s*([0-9]+,[0-9]+)\s*€/kWh",
+                r"Corrispettivo per il consumo\s+Monoraria:\s*([0-9]+,[0-9]+)\s*€/kWh",
+                r"Monoraria:\s*([0-9]+,[0-9]+)\s*€/kWh",
+                r"Prezzo Fascia F0\s+pari\s+a\s+([0-9]+,[0-9]+)\s*€/kWh",
             ],
             text,
         )
     )
-    values["prezzo_f1"] = number(first([r"Prezzo Fascia F1:\s*([0-9]+,[0-9]+)\s*€/kWh"], text))
-    values["prezzo_f23"] = number(first([r"Prezzo Fascia F2 e F3:\s*([0-9]+,[0-9]+)\s*€/kWh"], text))
-    values["ccv_quota_fissa"] = number(
-        first([r"commercializzazione e vendita\s+è\s+pari\s+a\s+([0-9]+,[0-9]+)\s*€/POD/anno"], text)
+    values["prezzo_f1"], values["prezzo_f23"] = first_pair(
+        [r"Opzione 3 Fasce.*?F12\s+([0-9]+,[0-9]+)\s*€/kWh\s*-\s*F3\s+([0-9]+,[0-9]+)\s*€/kWh"],
+        text,
     )
-    values["gestione_energetica_fissa"] = number(
-        first([r"gestione energetica\s+è\s+pari\s+a\s+([0-9]+(?:,[0-9]+)?)\s*€/POD/anno"], text)
-    )
-    values["dispbt"] = number(first([r"DispBT.*?pari\s+a\s+([0-9]+,[0-9]+)\s*€/POD/anno"], text))
     return values
 
 
@@ -195,36 +214,33 @@ def build_tariff_rows() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     for src in SOURCES:
         if not src.path.exists():
             raise FileNotFoundError(src.path)
-        text = read_pdf_text(src.path)
-        common = extract_common(text)
+        raw_text = read_pdf_text(src.path)
+        text = compact(raw_text)
+        common = extract_common(src, raw_text, text)
         values = extract_energy_values(src, text)
-        fixed_total = (values.get("ccv_quota_fissa") or 0.0) + (values.get("gestione_energetica_fissa") or 0.0)
+        fixed_total = fixed_fee_total(values)
 
         if src.commodity == "GAS" and src.offer_type == "VARIABILE":
             tariff_rows.append(row(src, common, "fee_energia", "€/Smc", values.get("omega"), "Omega su PSV DA."))
-            tariff_rows.append(row(src, common, "ccv_quota_fissa", "€/anno", fixed_total or None, "Quota fissa annua; per business include anche gestione energetica fissa."))
-            tariff_rows.append(row(src, common, "ccv_quota_variabile", "€/Smc", values.get("ccv_quota_variabile"), "Commercializzazione al dettaglio quota variabile."))
-            if values.get("oneri_integrativi") is not None:
-                tariff_rows.append(row(src, common, "bilanciamento", "€/Smc", values.get("oneri_integrativi"), "Oneri integrativi di vendita E.ON."))
+            tariff_rows.append(row(src, common, "ccv_quota_fissa", "€/anno", fixed_total, "Quota fissa annua; per microbusiness include anche gestione energetica fissa."))
+            if values.get("ccv_quota_variabile") is not None:
+                tariff_rows.append(row(src, common, "ccv_quota_variabile", "€/Smc", values.get("ccv_quota_variabile"), "Commercializzazione al dettaglio quota variabile."))
         elif src.commodity == "GAS":
             tariff_rows.append(row(src, common, "prezzo_fisso", "€/Smc", values.get("prezzo_fisso"), "Materia Prima Gas fissa."))
-            tariff_rows.append(row(src, common, "ccv_quota_fissa", "€/anno", fixed_total or None, "Quota fissa annua."))
-            tariff_rows.append(row(src, common, "ccv_quota_variabile", "€/Smc", values.get("ccv_quota_variabile"), "Commercializzazione al dettaglio quota variabile."))
+            tariff_rows.append(row(src, common, "ccv_quota_fissa", "€/anno", fixed_total, "Quota fissa annua; per microbusiness include anche gestione energetica fissa."))
+            if values.get("ccv_quota_variabile") is not None:
+                tariff_rows.append(row(src, common, "ccv_quota_variabile", "€/Smc", values.get("ccv_quota_variabile"), "Commercializzazione al dettaglio quota variabile."))
         elif src.commodity == "EE" and src.offer_type == "VARIABILE":
             tariff_rows.append(row(src, common, "fee_energia", "€/kWh", values.get("omega"), "Omega su PUN. PUN da considerare con perdite di rete 10%."))
             tariff_rows.append(row(src, common, "perdite_rete", "%", 0.10, "Perdite rete bassa tensione: fattore 1,100."))
-            tariff_rows.append(row(src, common, "ccv_quota_fissa", "€/anno", fixed_total or None, "Quota fissa annua; per business include anche gestione energetica fissa."))
-            if values.get("dispbt") is not None:
-                tariff_rows.append(row(src, common, "dispbt", "€/anno", values.get("dispbt"), "Componente DispBT."))
+            tariff_rows.append(row(src, common, "ccv_quota_fissa", "€/anno", fixed_total, "Quota fissa annua; per microbusiness include anche gestione energetica fissa."))
         else:
             tariff_rows.append(row(src, common, "prezzo_mono", "€/kWh", values.get("prezzo_mono"), "Prezzo monorario."))
             if values.get("prezzo_f1") is not None:
-                tariff_rows.append(row(src, common, "prezzo_f1", "€/kWh", values.get("prezzo_f1"), "Prezzo fascia F1."))
+                tariff_rows.append(row(src, common, "prezzo_f1", "€/kWh", values.get("prezzo_f1"), "Prezzo fascia F1/F2."))
             if values.get("prezzo_f23") is not None:
-                tariff_rows.append(row(src, common, "prezzo_f23", "€/kWh", values.get("prezzo_f23"), "Prezzo fasce F2/F3."))
-            tariff_rows.append(row(src, common, "ccv_quota_fissa", "€/anno", fixed_total or None, "Quota fissa annua."))
-            if values.get("dispbt") is not None:
-                tariff_rows.append(row(src, common, "dispbt", "€/anno", values.get("dispbt"), "Componente DispBT."))
+                tariff_rows.append(row(src, common, "prezzo_f23", "€/kWh", values.get("prezzo_f23"), "Prezzo fascia F3."))
+            tariff_rows.append(row(src, common, "ccv_quota_fissa", "€/anno", fixed_total, "Quota fissa annua; per microbusiness include anche gestione energetica fissa."))
 
         if common.get("bonus") is not None:
             tariff_rows.append(row(src, common, "sconto_bonus", "€ una tantum", -abs(common["bonus"]), "Bonus commerciale E.ON, distinto dal Bonus Sociale statale."))
@@ -239,15 +255,14 @@ def build_tariff_rows() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
                 "valid_from": common["valid_from"],
                 "valid_to": common["valid_to"],
                 "codice_offerta": common["codice_offerta"],
-                "omega": values.get("omega"),
-                "prezzo_fisso": values.get("prezzo_fisso"),
+                "omega": values.get("omega") if src.offer_type == "VARIABILE" else None,
+                "prezzo_fisso": values.get("prezzo_fisso") if src.commodity == "GAS" and src.offer_type == "FISSA" else None,
                 "prezzo_mono": values.get("prezzo_mono"),
                 "prezzo_f1": values.get("prezzo_f1"),
                 "prezzo_f23": values.get("prezzo_f23"),
-                "ccv_quota_fissa_totale_annua": fixed_total or None,
+                "ccv_quota_fissa_totale_annua": fixed_total,
                 "ccv_quota_variabile": values.get("ccv_quota_variabile"),
-                "dispbt": values.get("dispbt"),
-                "oneri_integrativi": values.get("oneri_integrativi"),
+                "gestione_energetica_fissa": values.get("gestione_energetica_fissa"),
                 "bonus_commerciale": -abs(common["bonus"]) if common.get("bonus") is not None else None,
                 "source_pdf": src.path.name,
             }
@@ -313,8 +328,7 @@ def main() -> None:
         "prezzo_f23",
         "ccv_quota_fissa_totale_annua",
         "ccv_quota_variabile",
-        "dispbt",
-        "oneri_integrativi",
+        "gestione_energetica_fissa",
         "bonus_commerciale",
         "source_pdf",
     ]
