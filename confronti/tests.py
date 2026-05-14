@@ -142,6 +142,31 @@ class ServiceUtilityTests(SimpleTestCase):
 
 
 class ConfrontoFormTests(SimpleTestCase):
+    def test_dashboard_context_fields_are_required_and_not_prefilled(self):
+        form = ConfrontoForm()
+        self.assertIsNone(form.fields["nome_cliente"].initial)
+        self.assertEqual(form.fields["segmento"].choices[0], ("", "Seleziona segmento"))
+        self.assertEqual(form.fields["commodity"].choices[0], ("", "Seleziona fornitura"))
+        self.assertEqual(form.fields["bill_tariff_type"].choices[0], ("", "Seleziona tariffa"))
+        self.assertEqual(form.fields["provider"].choices[0], ("", "Seleziona fornitore"))
+        self.assertIsNone(form.fields["bill_start"].initial)
+        self.assertIsNone(form.fields["bill_end"].initial)
+
+        invalid = ConfrontoForm(
+            valid_payload(
+                nome_cliente="",
+                segmento="",
+                commodity="",
+                bill_tariff_type="",
+                provider="",
+                bill_start="",
+                bill_end="",
+            )
+        )
+        self.assertFalse(invalid.is_valid())
+        for field in ["nome_cliente", "segmento", "commodity", "bill_tariff_type", "provider", "bill_start", "bill_end"]:
+            self.assertIn(field, invalid.errors)
+
     def test_month_fields_are_normalized_to_full_bill_period(self):
         form = ConfrontoForm(valid_payload())
         self.assertTrue(form.is_valid(), form.errors.as_data())

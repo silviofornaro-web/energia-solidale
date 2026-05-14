@@ -16,11 +16,11 @@ def confronto(request):
             request.session.pop("last_confronto", None)
             form = ConfrontoForm(
                 initial={
-                    "nome_cliente": request.POST.get("nome_cliente") or "Cliente",
-                    "segmento": request.POST.get("segmento") or "RESIDENZIALE",
-                    "commodity": request.POST.get("commodity") or "GAS",
-                    "bill_tariff_type": request.POST.get("bill_tariff_type") or "VARIABILE",
-                    "provider": request.POST.get("provider") or "ILLUMIA",
+                    "nome_cliente": request.POST.get("nome_cliente") or "",
+                    "segmento": request.POST.get("segmento") or "",
+                    "commodity": request.POST.get("commodity") or "",
+                    "bill_tariff_type": request.POST.get("bill_tariff_type") or "",
+                    "provider": request.POST.get("provider") or "",
                     "offer_var_choice": request.POST.get("offer_var_choice") or "",
                     "offer_fix_choice": request.POST.get("offer_fix_choice") or "",
                 }

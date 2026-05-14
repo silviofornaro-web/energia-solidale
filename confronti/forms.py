@@ -11,24 +11,26 @@ class ConfrontoForm(forms.Form):
     COMMODITIES = [("GAS", "Gas"), ("EE", "Luce")]
     PROVIDERS = [("ILLUMIA", "Illumia"), ("EON", "E.ON")]
     BILL_TARIFF_TYPES = [("VARIABILE", "Variabile"), ("FISSA", "Fissa")]
+    SEGMENT_CHOICES = [("", "Seleziona segmento")] + SEGMENTI
+    COMMODITY_CHOICES = [("", "Seleziona fornitura")] + COMMODITIES
+    PROVIDER_CHOICES = [("", "Seleziona fornitore")] + PROVIDERS
+    BILL_TARIFF_TYPE_CHOICES = [("", "Seleziona tariffa")] + BILL_TARIFF_TYPES
     MONTH_INPUT_FORMATS = ["%Y-%m", "%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"]
 
-    nome_cliente = forms.CharField(label="Nome e Cognome", max_length=120, initial="Cliente")
-    segmento = forms.ChoiceField(label="Segmento", choices=SEGMENTI, initial="RESIDENZIALE")
-    commodity = forms.ChoiceField(label="Fornitura", choices=COMMODITIES, initial="GAS")
-    bill_tariff_type = forms.ChoiceField(label="Tipo tariffa bolletta", choices=BILL_TARIFF_TYPES, initial="VARIABILE")
-    provider = forms.ChoiceField(label="Fornitore confronto", choices=PROVIDERS, initial="ILLUMIA")
+    nome_cliente = forms.CharField(label="Nome e Cognome", max_length=120)
+    segmento = forms.ChoiceField(label="Segmento", choices=SEGMENT_CHOICES)
+    commodity = forms.ChoiceField(label="Fornitura", choices=COMMODITY_CHOICES)
+    bill_tariff_type = forms.ChoiceField(label="Tipo tariffa bolletta", choices=BILL_TARIFF_TYPE_CHOICES)
+    provider = forms.ChoiceField(label="Fornitore confronto", choices=PROVIDER_CHOICES)
     offer_var_choice = forms.ChoiceField(label="Offerta variabile", required=False)
     offer_fix_choice = forms.ChoiceField(label="Offerta fissa", required=False)
     bill_start = forms.DateField(
         label="Dal mese",
-        initial=date.today,
         input_formats=MONTH_INPUT_FORMATS,
         widget=forms.DateInput(format="%Y-%m", attrs={"type": "month"}),
     )
     bill_end = forms.DateField(
         label="Al mese",
-        initial=date.today,
         input_formats=MONTH_INPUT_FORMATS,
         widget=forms.DateInput(format="%Y-%m", attrs={"type": "month"}),
     )
@@ -54,18 +56,20 @@ class ConfrontoForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        provider = self._current_value("provider", "ILLUMIA")
-        segmento = self._current_value("segmento", "RESIDENZIALE")
-        commodity = self._current_value("commodity", "GAS")
+        provider = self._current_value("provider")
+        segmento = self._current_value("segmento")
+        commodity = self._current_value("commodity")
         self.fields["offer_var_choice"].choices = self._offer_choices(provider, segmento, commodity, "VARIABILE")
         self.fields["offer_fix_choice"].choices = self._offer_choices(provider, segmento, commodity, "FISSA")
 
-    def _current_value(self, field_name, default):
+    def _current_value(self, field_name):
         if self.data and field_name in self.data:
-            return self.data.get(field_name) or default
-        return self.initial.get(field_name, self.fields[field_name].initial or default)
+            return self.data.get(field_name) or ""
+        return self.initial.get(field_name, self.fields[field_name].initial or "")
 
     def _offer_choices(self, provider, segmento, commodity, offer_type):
+        if not provider or not segmento or not commodity:
+            return [("", "N.D.")]
         payload = services.offer_options_payload()
         key = f"{services.normalize_provider(provider)}|{str(segmento).upper()}|{str(commodity).upper()}"
         names = payload.get(key, {}).get(offer_type, [])
