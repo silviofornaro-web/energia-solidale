@@ -30,9 +30,16 @@ STATIC_DIR = BASE_DIR / "static"
 STATIC_DOWNLOADS_DIR = STATIC_DIR / "downloads"
 APP_STATE_VERSION = "2026-05-16-dashboard-shot-1"
 APP_TZ = ZoneInfo("Europe/Rome")
-DEFAULT_RENDER_AUTH_EMAIL = "silviofornaro@gmail.com"
-DEFAULT_RENDER_AUTH_NAME = "silvio fornaro"
-DEFAULT_RENDER_AUTH_PASSWORD_HASH = "pbkdf2_sha256$260000$8a342e806939ef1a09526fcb7a8a9416$c5k7937d8pu6YpXraHF++WSrrUucKBBaz32g/P3ICaE="
+DEFAULT_RENDER_AUTH_USERS = {
+    "silviofornaro@gmail.com": {
+        "name": "silvio fornaro",
+        "password_hash": "pbkdf2_sha256$260000$8a342e806939ef1a09526fcb7a8a9416$c5k7937d8pu6YpXraHF++WSrrUucKBBaz32g/P3ICaE=",
+    },
+    "ioilre58@gmail.com": {
+        "name": "roberto marcon",
+        "password_hash": "pbkdf2_sha256$260000$badb8d5e6e1b280be351452d51a3fdf9$CfhFQhA1NXPOJXm+KVB6dGpEEHc6b/2Y7yf0ZZj85Y0=",
+    },
+}
 EE_EXCISE_RATE = 0.0227
 EE_RESIDENTIAL_EXEMPT_KWH_PER_MONTH = 150.0
 ACCESSORY_SERVICES_VAT_RATES = {
@@ -415,19 +422,27 @@ def get_auth_config():
     if env_auth_enabled is not True and not render_hostname:
         return {}
 
-    email = os.environ.get("AUTH_USER_EMAIL", DEFAULT_RENDER_AUTH_EMAIL if render_hostname else "").strip().lower()
-    password_hash = os.environ.get(
-        "AUTH_USER_PASSWORD_HASH",
-        DEFAULT_RENDER_AUTH_PASSWORD_HASH if render_hostname else "",
-    ).strip()
-    name = os.environ.get("AUTH_USER_NAME", DEFAULT_RENDER_AUTH_NAME if render_hostname else email).strip()
-    if not email or not password_hash:
+    users = {}
+    names = {}
+    if render_hostname:
+        for email, data in DEFAULT_RENDER_AUTH_USERS.items():
+            users[email] = data["password_hash"]
+            names[email] = data["name"]
+
+    email = os.environ.get("AUTH_USER_EMAIL", "").strip().lower()
+    password_hash = os.environ.get("AUTH_USER_PASSWORD_HASH", "").strip()
+    name = os.environ.get("AUTH_USER_NAME", email).strip()
+    if email and password_hash:
+        users[email] = password_hash
+        names[email] = name or email
+
+    if not users:
         return {"enabled": True, "users": {}, "names": {}}
 
     return {
         "enabled": True,
-        "users": {email: password_hash},
-        "names": {email: name},
+        "users": users,
+        "names": names,
     }
 
 def auth_enabled():
