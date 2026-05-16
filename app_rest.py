@@ -1636,7 +1636,7 @@ if logo_path.exists():
 
 left, center, right = st.columns([0.15, 4.7, 0.15])
 with center:
-    st.title(f"Confronto bollette vs {selected_supplier_label()}")
+    st.title("Confronto Bollette")
 
     top_name, top_segment, top_supply, top_supplier = st.columns([2, 1, 1, 1])
     with top_name:
