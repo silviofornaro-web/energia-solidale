@@ -14,6 +14,14 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.13
+      - key: AUTH_ENABLED
+        value: "true"
+      - key: AUTH_USER_EMAIL
+        value: silviofornaro@gmail.com
+      - key: AUTH_USER_NAME
+        value: silvio fornaro
+      - key: AUTH_USER_PASSWORD_HASH
+        value: pbkdf2_sha256$260000$8a342e806939ef1a09526fcb7a8a9416$c5k7937d8pu6YpXraHF++WSrrUucKBBaz32g/P3ICaE=
       - key: DJANGO_DEBUG
         value: "0"
       - key: DJANGO_SECRET_KEY

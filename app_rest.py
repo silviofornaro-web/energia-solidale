@@ -1,4 +1,5 @@
 import io
+import os
 import re
 import base64
 import calendar
@@ -400,9 +401,26 @@ def comparison_summary_fields():
 
 def get_auth_config():
     try:
-        return st.secrets.get("auth", {})
+        auth = st.secrets.get("auth", {})
+        if auth:
+            return auth
     except Exception:
+        pass
+
+    if truthy(os.environ.get("AUTH_ENABLED")) is not True:
         return {}
+
+    email = os.environ.get("AUTH_USER_EMAIL", "").strip().lower()
+    password_hash = os.environ.get("AUTH_USER_PASSWORD_HASH", "").strip()
+    name = os.environ.get("AUTH_USER_NAME", email).strip()
+    if not email or not password_hash:
+        return {"enabled": True, "users": {}, "names": {}}
+
+    return {
+        "enabled": True,
+        "users": {email: password_hash},
+        "names": {email: name},
+    }
 
 def auth_enabled():
     return truthy(get_auth_config().get("enabled", False)) is True
@@ -1437,56 +1455,28 @@ def build_markdown_table(rows):
 def html_escape(value):
     return html.escape(str(value), quote=True)
 
+def markdown_escape(value):
+    text = str(value)
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    for char in ("\\", "*", "_", "`", "[", "]", "(", ")", "#", "+", "-", ".", "!"):
+        text = text.replace(char, f"\\{char}")
+    return text
+
 def render_comparison_summary():
     left_fields, right_fields = comparison_summary_fields()
 
     def render_lines(fields):
         lines = []
         for label, value in fields:
-            expiry_class = " es-summary-expiry" if label == "Scadenza offerta" else ""
-            lines.append(
-                f'<div class="es-summary-line{expiry_class}">'
-                f"<strong>{html_escape(label)}:</strong> {html_escape(value)}"
-                "</div>"
-            )
-        return "\n".join(lines)
+            line = f"**{label}:** {markdown_escape(value)}"
+            if label == "Scadenza offerta":
+                line = f":red[{line}]"
+            lines.append(line)
+        return "  \n".join(lines)
 
-    st.markdown(
-        f"""
-        <style>
-        .es-summary {{
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: 0.15rem 3rem;
-            margin: 0.25rem 0 1rem;
-            font-size: 1.08rem;
-            line-height: 1.42;
-        }}
-        .es-summary-line {{
-            margin: 0.16rem 0;
-            color: #1f2937;
-        }}
-        .es-summary-line strong {{
-            font-weight: 800;
-        }}
-        .es-summary-expiry,
-        .es-summary-expiry strong {{
-            color: #b3261e;
-        }}
-        @media (max-width: 800px) {{
-            .es-summary {{
-                grid-template-columns: 1fr;
-                gap: 0.1rem;
-            }}
-        }}
-        </style>
-        <div class="es-summary">
-            <div>{render_lines(left_fields)}</div>
-            <div>{render_lines(right_fields)}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    left_col, right_col = st.columns(2, gap="large")
+    left_col.markdown(render_lines(left_fields))
+    right_col.markdown(render_lines(right_fields))
 
 def render_comparison_rows(rows):
     var_label, fix_label = supplier_column_labels()
