@@ -28,7 +28,7 @@ EON_TARIFFE_BASE = BASE_DIR / "estrazioni_tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
 STATIC_DIR = BASE_DIR / "static"
 STATIC_DOWNLOADS_DIR = STATIC_DIR / "downloads"
-APP_STATE_VERSION = "2026-05-16-render-password-1"
+APP_STATE_VERSION = "2026-05-16-render-websocket-1"
 APP_TZ = ZoneInfo("Europe/Rome")
 DEFAULT_RENDER_AUTH_USERS = {
     "silviofornaro@gmail.com": {
