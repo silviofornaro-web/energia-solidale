@@ -33,7 +33,7 @@ APP_TZ = ZoneInfo("Europe/Rome")
 DEFAULT_RENDER_AUTH_USERS = {
     "silviofornaro@gmail.com": {
         "name": "silvio fornaro",
-        "password_hash": "pbkdf2_sha256$260000$8a342e806939ef1a09526fcb7a8a9416$c5k7937d8pu6YpXraHF++WSrrUucKBBaz32g/P3ICaE=",
+        "password_hash": "pbkdf2_sha256$260000$7c986bc474e411dd6b0f2381629044ac$H7u9e7yi8DsLqYA6GvJVHJtaKd0a291Fq2zjGRivfMM=",
     },
     "ioilre58@gmail.com": {
         "name": "roberto marcon",
