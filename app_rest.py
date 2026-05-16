@@ -39,6 +39,10 @@ DEFAULT_RENDER_AUTH_USERS = {
         "name": "roberto marcon",
         "password_hash": "pbkdf2_sha256$260000$badb8d5e6e1b280be351452d51a3fdf9$CfhFQhA1NXPOJXm+KVB6dGpEEHc6b/2Y7yf0ZZj85Y0=",
     },
+    "m.doria4@gmail.com": {
+        "name": "massimo doria",
+        "password_hash": "pbkdf2_sha256$260000$241ce67c1c2d9f7a8aff23e08a3c3c72$gEBD1fnauypN2fegyHV3IyxgxCeRUWEADB4rcINbZAk=",
+    },
 }
 EE_EXCISE_RATE = 0.0227
 EE_RESIDENTIAL_EXEMPT_KWH_PER_MONTH = 150.0
