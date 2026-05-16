@@ -10,7 +10,7 @@ services:
     plan: free
     region: frankfurt
     buildCommand: ./build.sh
-    startCommand: python3 -m streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --server.enableCORS false --server.enableXsrfProtection false --browser.gatherUsageStats false
+    startCommand: python3 -m streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --server.enableCORS false --server.enableXsrfProtection false --server.enableWebsocketCompression false --browser.gatherUsageStats false
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.13
