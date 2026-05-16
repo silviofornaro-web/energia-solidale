@@ -424,7 +424,7 @@ def get_auth_config():
 
     users = {}
     names = {}
-    if render_hostname:
+    if render_hostname or env_auth_enabled is True:
         for email, data in DEFAULT_RENDER_AUTH_USERS.items():
             users[email] = data["password_hash"]
             names[email] = data["name"]
