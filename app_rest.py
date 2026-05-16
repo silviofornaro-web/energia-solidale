@@ -432,7 +432,7 @@ def get_auth_config():
     email = os.environ.get("AUTH_USER_EMAIL", "").strip().lower()
     password_hash = os.environ.get("AUTH_USER_PASSWORD_HASH", "").strip()
     name = os.environ.get("AUTH_USER_NAME", email).strip()
-    if email and password_hash:
+    if email and password_hash and email not in users:
         users[email] = password_hash
         names[email] = name or email
 
