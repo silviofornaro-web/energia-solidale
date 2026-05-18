@@ -28,6 +28,14 @@
         <label>{{ form.consumo.label }}{{ form.consumo }}</label>
     </div>
 
+    <h2>Dati fiscali Accise/IVA</h2>
+    <div class="form-grid">
+        <label>{{ form.tax_primary_home.label }}{{ form.tax_primary_home }}</label>
+        <label>{{ form.tax_power_kw.label }}{{ form.tax_power_kw }}</label>
+        <label>{{ form.tax_annual_consumption.label }}{{ form.tax_annual_consumption }}</label>
+        <label>{{ form.tax_region.label }}{{ form.tax_region }}</label>
+    </div>
+
     <h2>Bolletta <span>(scontrino dell'energia)</span></h2>
     <div class="form-grid">
         <label>{{ form.b_vendita_consumo.label }}{{ form.b_vendita_consumo }}</label>
@@ -60,6 +68,7 @@
         <div><strong>Cliente:</strong> {{ prepared.calc.nome_cliente }}</div>
         <div><strong>Confronto eseguito:</strong> {{ prepared.calc.comparison_datetime_label }}</div>
         <div><strong>Tipo tariffa bolletta:</strong> {{ prepared.calc.bill_tariff_type_label }}</div>
+        <div><strong>Consumo annuo stimato:</strong> {{ prepared.calc.tax_annual_consumption_label }}</div>
         <div><strong>Periodicità:</strong> {{ prepared.calc.billing_label }}</div>
         <div><strong>Periodo:</strong> {{ prepared.calc.period_label }}</div>
         <div><strong>Mesi fatturati:</strong> {{ prepared.calc.billing_months }}</div>

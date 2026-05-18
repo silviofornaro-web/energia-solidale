@@ -11,10 +11,12 @@ class ConfrontoForm(forms.Form):
     COMMODITIES = [("GAS", "Gas"), ("EE", "Luce")]
     PROVIDERS = [("ILLUMIA", "Illumia"), ("EON", "E.ON")]
     BILL_TARIFF_TYPES = [("VARIABILE", "Variabile"), ("FISSA", "Fissa")]
+    PRIMARY_HOME_CHOICES = [("SI", "Sì"), ("NO", "No")]
     SEGMENT_CHOICES = [("", "Seleziona segmento")] + SEGMENTI
     COMMODITY_CHOICES = [("", "Seleziona fornitura")] + COMMODITIES
     PROVIDER_CHOICES = [("", "Seleziona fornitore")] + PROVIDERS
     BILL_TARIFF_TYPE_CHOICES = [("", "Seleziona tariffa")] + BILL_TARIFF_TYPES
+    REGION_CHOICES = [(region, region) for region in services.GAS_REGIONAL_ADDITIONAL_MIN_RATES]
     MONTH_INPUT_FORMATS = ["%Y-%m", "%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"]
 
     nome_cliente = forms.CharField(label="Nome e Cognome", max_length=120)
@@ -22,6 +24,26 @@ class ConfrontoForm(forms.Form):
     commodity = forms.ChoiceField(label="Fornitura", choices=COMMODITY_CHOICES)
     bill_tariff_type = forms.ChoiceField(label="Tipo tariffa bolletta", choices=BILL_TARIFF_TYPE_CHOICES)
     provider = forms.ChoiceField(label="Fornitore confronto", choices=PROVIDER_CHOICES)
+    tax_primary_home = forms.ChoiceField(
+        label="Prima casa / residente",
+        choices=PRIMARY_HOME_CHOICES,
+        initial="SI",
+    )
+    tax_power_kw = forms.DecimalField(
+        label="Potenza impegnata (kW, solo luce)",
+        min_value=0,
+        decimal_places=2,
+        max_digits=8,
+        initial=0,
+        required=False,
+    )
+    tax_annual_consumption = forms.DecimalField(
+        label="Consumo annuo stimato (Smc/kWh anno)",
+        min_value=0.0001,
+        decimal_places=4,
+        max_digits=12,
+    )
+    tax_region = forms.ChoiceField(label="Regione (solo gas)", choices=REGION_CHOICES, initial="Veneto")
     servizi_accessori_iva = forms.ChoiceField(
         label="IVA servizi accessori",
         choices=[(label, label) for label in services.ACCESSORY_SERVICES_VAT_OPTIONS],
@@ -101,6 +123,13 @@ class ConfrontoForm(forms.Form):
             bill_end = cleaned["bill_end"]
         if cleaned.get("bill_start") and cleaned.get("bill_end") and cleaned["bill_end"] < cleaned["bill_start"]:
             raise forms.ValidationError("Il mese finale non può essere precedente al mese iniziale.")
+        commodity = cleaned.get("commodity")
+        if cleaned.get("tax_annual_consumption") is None:
+            self.add_error("tax_annual_consumption", "Indica il consumo annuo stimato.")
+        if commodity == "EE" and not cleaned.get("tax_power_kw"):
+            self.add_error("tax_power_kw", "Indica la potenza impegnata per il calcolo accise/IVA luce.")
+        cleaned["tax_primary_home"] = services.normalize_primary_home(cleaned.get("tax_primary_home"))
+        cleaned["tax_region"] = services.normalize_region(cleaned.get("tax_region"))
         bonus = cleaned.get("b_bonus_sociale")
         cleaned["b_bonus_sociale"] = -abs(bonus) if bonus else 0
         cleaned["b_servizi_accessori"] = cleaned.get("b_servizi_accessori") or 0
@@ -130,10 +159,16 @@ def session_to_service_data(raw):
     data = dict(raw)
     data["bill_start"] = services.parse_date_any(data.get("bill_start"))
     data["bill_end"] = services.parse_date_any(data.get("bill_end"))
-    for key in ["consumo"] + [f"b_{k}" for k in services.KEYS] + ["ill_sconto_var", "ill_sconto_fix"]:
+    for key in [
+        "consumo",
+        "tax_power_kw",
+        "tax_annual_consumption",
+    ] + [f"b_{k}" for k in services.KEYS] + ["ill_sconto_var", "ill_sconto_fix"]:
         data[key] = services.parse_number(data.get(key))
     data["provider"] = services.normalize_provider(data.get("provider", "ILLUMIA"))
     data["bill_tariff_type"] = services.normalize_bill_tariff_type(data.get("bill_tariff_type"))
+    data["tax_primary_home"] = services.normalize_primary_home(data.get("tax_primary_home"))
+    data["tax_region"] = services.normalize_region(data.get("tax_region"))
     data["servizi_accessori_iva"] = services.normalize_accessory_services_vat_label(data.get("servizi_accessori_iva"))
     data["comparison_datetime"] = data.get("comparison_datetime")
     data["offer_var_choice"] = data.get("offer_var_choice", "")

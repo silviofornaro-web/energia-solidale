@@ -20,6 +20,37 @@ PROVIDERS = {
     "EON": "E.ON",
 }
 SEGMENTS = ("RESIDENZIALE", "MICROBUSINESS", "BUSINESS")
+EE_EXCISE_RATE = 0.0227
+EE_RESIDENTIAL_EXEMPT_KWH_PER_MONTH = 150.0
+GAS_VAT_REDUCED_ANNUAL_THRESHOLD = 480.0
+GAS_EXCISE_BRACKETS = (
+    (120.0, 0.044),
+    (480.0, 0.175),
+    (1560.0, 0.170),
+    (None, 0.186),
+)
+GAS_REGIONAL_ADDITIONAL_MIN_RATES = {
+    "Abruzzo": 0.02,
+    "Basilicata": 0.02,
+    "Calabria": 0.02,
+    "Campania": 0.02,
+    "Emilia-Romagna": 0.02,
+    "Friuli-Venezia Giulia": 0.0,
+    "Lazio": 0.02,
+    "Liguria": 0.02,
+    "Lombardia": 0.0,
+    "Marche": 0.02,
+    "Molise": 0.02,
+    "Piemonte": 0.022,
+    "Puglia": 0.02,
+    "Sardegna": 0.0,
+    "Sicilia": 0.0,
+    "Toscana": 0.02,
+    "Trentino-Alto Adige": 0.0,
+    "Umbria": 0.02,
+    "Valle d'Aosta": 0.0,
+    "Veneto": 0.007747,
+}
 BILL_TARIFF_TYPE_LABELS = {
     "VARIABILE": "Variabile",
     "FISSA": "Fissa",
@@ -90,8 +121,47 @@ def normalize_accessory_services_vat_label(value) -> str:
     return label if label in ACCESSORY_SERVICES_VAT_RATES else "22%"
 
 
+def normalize_primary_home(value) -> str:
+    cleaned = clean_text(value).upper()
+    return "NO" if cleaned in {"NO", "N", "0", "FALSE"} else "SI"
+
+
+def primary_home_label(value) -> str:
+    return "Sì" if normalize_primary_home(value) == "SI" else "No"
+
+
+def normalize_region(value) -> str:
+    cleaned = clean_text(value)
+    return cleaned if cleaned in GAS_REGIONAL_ADDITIONAL_MIN_RATES else "Veneto"
+
+
 def accessory_services_vat_rate(value) -> float:
     return float(ACCESSORY_SERVICES_VAT_RATES[normalize_accessory_services_vat_label(value)])
+
+
+def progressive_tax_amount(consumption, brackets):
+    consumption = max(0.0, float(consumption))
+    total = 0.0
+    lower = 0.0
+    for upper, rate in brackets:
+        if upper is None:
+            taxable = max(0.0, consumption - lower)
+        else:
+            taxable = max(0.0, min(consumption, upper) - lower)
+        total += taxable * float(rate)
+        if upper is None or consumption <= upper:
+            break
+        lower = float(upper)
+    return total
+
+
+def annual_progressive_tax_for_period(period_consumption, annual_consumption, brackets):
+    period_consumption = max(0.0, float(period_consumption))
+    annual_consumption = max(0.0, float(annual_consumption))
+    if period_consumption <= 0 or annual_consumption <= 0:
+        return 0.0
+    annual_tax = progressive_tax_amount(annual_consumption, brackets)
+    return annual_tax * (period_consumption / annual_consumption)
 
 
 def comparison_datetime_from_data(value=None):
@@ -552,6 +622,70 @@ def build_comparison_table_rows(values):
     return out
 
 
+def fiscal_unit(commodity: str) -> str:
+    return "Smc" if commodity == "GAS" else "kWh"
+
+
+def format_fiscal_parameters(data, calc=None) -> str:
+    comm = data.get("commodity", "EE")
+    return (
+        f"Prima casa/residente: {primary_home_label(data.get('tax_primary_home'))} | "
+        f"Potenza: {float(data.get('tax_power_kw', 0.0)):g} kW | "
+        f"Consumo annuo: {float(data.get('tax_annual_consumption', 0.0)):g} {fiscal_unit(comm)}/anno | "
+        f"Regione: {normalize_region(data.get('tax_region'))} | "
+        f"IVA servizi accessori: {normalize_accessory_services_vat_label(data.get('servizi_accessori_iva'))}"
+    )
+
+
+def calculate_accise_iva(data, calc, vals, commodity):
+    period_consumption = max(0.0, float(data.get("consumo", 0.0)))
+    accessory_vat_rate_value = accessory_services_vat_rate(data.get("servizi_accessori_iva"))
+    accessory_services = float(vals.get("servizi_accessori", 0.0))
+    social_bonus = float(vals.get("bonus_sociale", 0.0))
+    taxable_supply_subtotal = comparison_subtotal(vals, commodity) - accessory_services - social_bonus
+    accessory_services_vat = accessory_services * accessory_vat_rate_value
+
+    if commodity == "EE":
+        power_kw = max(0.0, float(data.get("tax_power_kw", 0.0)))
+        residential = data.get("segmento") == "RESIDENZIALE"
+        primary_home = normalize_primary_home(data.get("tax_primary_home")) == "SI"
+        exempt_kwh = EE_RESIDENTIAL_EXEMPT_KWH_PER_MONTH * float(calc.get("billing_months", 1))
+        if residential and primary_home and power_kw <= 3.0:
+            taxable_kwh = max(0.0, period_consumption - exempt_kwh)
+        else:
+            taxable_kwh = period_consumption
+        excise = taxable_kwh * EE_EXCISE_RATE
+        vat_rate = 0.10 if residential and primary_home else 0.22
+        vat = ((taxable_supply_subtotal + excise) * vat_rate) + accessory_services_vat
+        return excise + vat
+
+    annual_consumption = max(0.0, float(data.get("tax_annual_consumption", 0.0)))
+    excise = annual_progressive_tax_for_period(period_consumption, annual_consumption, GAS_EXCISE_BRACKETS)
+    regional = period_consumption * float(GAS_REGIONAL_ADDITIONAL_MIN_RATES[normalize_region(data.get("tax_region"))])
+    variable_base = (
+        float(vals["vendita_consumo"])
+        + float(vals["rete_consumi"])
+        + float(vals["sconti"])
+        + excise
+        + regional
+    )
+    fixed_base = (
+        float(vals["vendita_fissa"])
+        + float(vals["rete_fissa"])
+        + float(vals["ricalcoli"])
+        + float(vals["arrotondamenti"])
+    )
+    reduced_ratio = min(annual_consumption, GAS_VAT_REDUCED_ANNUAL_THRESHOLD) / annual_consumption if annual_consumption else 0.0
+    reduced_ratio = min(max(reduced_ratio, 0.0), 1.0)
+    vat = (
+        (variable_base * reduced_ratio * 0.10)
+        + (variable_base * (1.0 - reduced_ratio) * 0.22)
+        + (fixed_base * 0.22)
+        + accessory_services_vat
+    )
+    return excise + regional + vat
+
+
 def build_comparison_values(data, calc):
     comm = data["commodity"]
     months = calc["billing_months"]
@@ -575,20 +709,8 @@ def build_comparison_values(data, calc):
     d_vals["ricalcoli"] = 0.0
     d_vals["arrotondamenti"] = 0.0
 
-    base_subtotal = comparison_subtotal(b_vals, comm)
-    accessory_services = float(b_vals.get("servizi_accessori", 0.0))
-    accessory_vat = accessory_services * accessory_vat_rate
-    taxable_base = base_subtotal - accessory_services
-    energy_tax = float(b_vals["accise_iva"]) - accessory_vat
-    tax_rate = energy_tax / taxable_base if taxable_base else 0.0
-
-    def comparable_accise_iva(vals):
-        comparable_accessory = float(vals.get("servizi_accessori", 0.0))
-        comparable_base = comparison_subtotal(vals, comm) - comparable_accessory
-        return (tax_rate * comparable_base) + (comparable_accessory * accessory_vat_rate)
-
-    c_vals["accise_iva"] = comparable_accise_iva(c_vals)
-    d_vals["accise_iva"] = comparable_accise_iva(d_vals)
+    c_vals["accise_iva"] = calculate_accise_iva(data, calc, c_vals, comm)
+    d_vals["accise_iva"] = calculate_accise_iva(data, calc, d_vals, comm)
     return {
         "commodity": comm,
         "bolletta": b_vals,
@@ -651,6 +773,15 @@ def prepare_comparison(data):
         "nome_cliente": clean_text(data.get("nome_cliente")) or "Cliente",
         "bill_tariff_type": normalize_bill_tariff_type(data.get("bill_tariff_type")),
         "bill_tariff_type_label": bill_tariff_type_label(data.get("bill_tariff_type")),
+        "tax_primary_home": normalize_primary_home(data.get("tax_primary_home")),
+        "tax_primary_home_label": primary_home_label(data.get("tax_primary_home")),
+        "tax_power_kw": float(data.get("tax_power_kw", 0.0)),
+        "tax_annual_consumption": float(data.get("tax_annual_consumption", 0.0)),
+        "tax_annual_consumption_label": (
+            f"{float(data.get('tax_annual_consumption', 0.0)):g} {fiscal_unit(commodity)}/anno"
+        ),
+        "tax_region": normalize_region(data.get("tax_region")),
+        "fiscal_parameters_label": format_fiscal_parameters(data),
         "comparison_datetime": comparison_datetime_from_data(data.get("comparison_datetime")),
         "comparison_datetime_label": comparison_datetime_label(data.get("comparison_datetime")),
         "provider": provider,
@@ -806,6 +937,8 @@ def write_export_metadata(ws, prepared):
     ws["F6"] = f"Tipo tariffa bolletta: {calc.get('bill_tariff_type_label', 'Variabile')}"
     ws["F7"] = f"Confronto eseguito: {calc.get('comparison_datetime_label', '')}"
     ws["F8"] = f"IVA servizi accessori: {calc.get('servizi_accessori_iva_label', '22%')}"
+    ws["F9"] = f"Consumo annuo stimato: {calc.get('tax_annual_consumption_label', 'N.D.')}"
+    ws["F10"] = f"Parametri Accise/IVA: {calc.get('fiscal_parameters_label', '')}"
 
 
 def _excel_decimal(value: float) -> str:
@@ -894,13 +1027,13 @@ def build_excel_bytes(data, prepared=None):
     apply_total_formula(ws, rm, "B")
     if values["has_offer_var"]:
         write_column(ws, rm, "C", c_vals, comm)
-        apply_accise_formula_conforme(ws, rm, "C", servizi_accessori_iva_rate)
+        ws[f"C{rm['accise_iva']}"] = c_vals["accise_iva"]
         apply_total_formula(ws, rm, "C")
     else:
         fill_column_text(ws, rm, "C", "N.D.")
     if values["has_offer_fix"]:
         write_column(ws, rm, "D", d_vals, comm)
-        apply_accise_formula_conforme(ws, rm, "D", servizi_accessori_iva_rate)
+        ws[f"D{rm['accise_iva']}"] = d_vals["accise_iva"]
         apply_total_formula(ws, rm, "D")
     else:
         fill_column_text(ws, rm, "D", "N.D.")
