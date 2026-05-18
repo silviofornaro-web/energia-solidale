@@ -15,13 +15,25 @@
         <label>{{ form.segmento.label }}{{ form.segmento }}{{ form.segmento.errors }}</label>
         <label>{{ form.commodity.label }}{{ form.commodity }}{{ form.commodity.errors }}</label>
         <label>{{ form.bill_tariff_type.label }}{{ form.bill_tariff_type }}{{ form.bill_tariff_type.errors }}</label>
-        <label>{{ form.provider.label }}{{ form.provider }}{{ form.provider.errors }}</label>
+        <fieldset class="provider-picker">
+            <legend>{{ form.providers.label }}</legend>
+            {{ form.providers }}
+            {{ form.providers.errors }}
+        </fieldset>
     </div>
 
     <h2>Offerte confronto</h2>
     <div class="form-grid">
-        <label>{{ form.offer_var_choice.label }}{{ form.offer_var_choice }}{{ form.offer_var_choice.errors }}</label>
-        <label>{{ form.offer_fix_choice.label }}{{ form.offer_fix_choice }}{{ form.offer_fix_choice.errors }}</label>
+        <div class="offer-provider" data-provider-panel="ILLUMIA">
+            <h3>Illumia</h3>
+            <label>{{ form.offer_var_choice_illumia.label }}{{ form.offer_var_choice_illumia }}{{ form.offer_var_choice_illumia.errors }}</label>
+            <label>{{ form.offer_fix_choice_illumia.label }}{{ form.offer_fix_choice_illumia }}{{ form.offer_fix_choice_illumia.errors }}</label>
+        </div>
+        <div class="offer-provider" data-provider-panel="EON">
+            <h3>E.ON</h3>
+            <label>{{ form.offer_var_choice_eon.label }}{{ form.offer_var_choice_eon }}{{ form.offer_var_choice_eon.errors }}</label>
+            <label>{{ form.offer_fix_choice_eon.label }}{{ form.offer_fix_choice_eon }}{{ form.offer_fix_choice_eon.errors }}</label>
+        </div>
     </div>
 
     <h2>Periodicità</h2>
@@ -79,27 +91,29 @@
         <div><strong>Periodo:</strong> {{ prepared.calc.period_label }}</div>
         <div><strong>Mesi fatturati:</strong> {{ prepared.calc.billing_months }}</div>
         <div><strong>Indice usato:</strong> {{ prepared.calc.indice.mese|default:"N.D." }}</div>
-        <div><strong>Fornitore confronto:</strong> {{ prepared.calc.provider_label }}</div>
-        <div><strong>Offerta variabile:</strong> {{ prepared.calc.offer_var|default:"N.D." }}</div>
-        <div><strong>Offerta fissa:</strong> {{ prepared.calc.offer_fix|default:"N.D." }}</div>
+        <div><strong>Fornitori confronto:</strong> {{ prepared.calc.providers_label }}</div>
+        {% for provider in prepared.calc.provider_results %}
+            <div><strong>{{ provider.provider_label }} variabile:</strong> {{ provider.offer_var|default:"N.D." }}</div>
+            <div><strong>{{ provider.provider_label }} fissa:</strong> {{ provider.offer_fix|default:"N.D." }}</div>
+        {% endfor %}
     </div>
 
     <table>
         <thead>
             <tr>
                 <th>VOCE</th>
-                <th>Bolletta</th>
-                <th>{{ prepared.calc.provider_label }} Variabile</th>
-                <th>{{ prepared.calc.provider_label }} Fissa</th>
+                {% for column in prepared.columns %}
+                    <th>{{ column.label }}</th>
+                {% endfor %}
             </tr>
         </thead>
         <tbody>
             {% for row in rows %}
                 <tr>
                     <td>{{ row.voce }}</td>
-                    <td>{{ row.bolletta }}</td>
-                    <td>{{ row.variabile }}</td>
-                    <td>{{ row.fissa }}</td>
+                    {% for cell in row.cells %}
+                        <td>{{ cell }}</td>
+                    {% endfor %}
                 </tr>
             {% endfor %}
         </tbody>
@@ -111,19 +125,29 @@
 {{ offer_options|json_script:"offer-options-data" }}
 <script>
 (() => {
-    const provider = document.getElementById("id_provider");
+    const providerChecks = Array.from(document.querySelectorAll("input[name='providers']"));
     const segmento = document.getElementById("id_segmento");
     const commodity = document.getElementById("id_commodity");
-    const variable = document.getElementById("id_offer_var_choice");
-    const fixed = document.getElementById("id_offer_fix_choice");
+    const offerControls = {
+        ILLUMIA: {
+            variable: document.getElementById("id_offer_var_choice_illumia"),
+            fixed: document.getElementById("id_offer_fix_choice_illumia"),
+        },
+        EON: {
+            variable: document.getElementById("id_offer_var_choice_eon"),
+            fixed: document.getElementById("id_offer_fix_choice_eon"),
+        },
+    };
     const taxPowerKw = document.getElementById("id_tax_power_kw");
     const quotaPotenza = document.getElementById("id_b_quota_potenza");
     const dataElement = document.getElementById("offer-options-data");
     const offerOptions = dataElement ? JSON.parse(dataElement.textContent) : {};
 
-    const populate = (select, type) => {
+    const selectedProviders = () => providerChecks.filter((box) => box.checked).map((box) => box.value);
+
+    const populate = (provider, select, type) => {
         const selected = select.value;
-        const key = `${provider.value}|${segmento.value}|${commodity.value}`;
+        const key = `${provider}|${segmento.value}|${commodity.value}`;
         const names = (offerOptions[key] && offerOptions[key][type]) || [];
         select.innerHTML = "";
         const automatic = document.createElement("option");
@@ -142,9 +166,19 @@
     };
 
     const refreshOffers = () => {
-        if (!provider || !segmento || !commodity || !variable || !fixed) return;
-        populate(variable, "VARIABILE");
-        populate(fixed, "FISSA");
+        if (!segmento || !commodity) return;
+        const activeProviders = selectedProviders();
+        Object.entries(offerControls).forEach(([provider, controls]) => {
+            const active = activeProviders.includes(provider);
+            const panel = document.querySelector(`[data-provider-panel="${provider}"]`);
+            if (panel) panel.classList.toggle("is-disabled", !active);
+            [controls.variable, controls.fixed].forEach((select) => {
+                if (!select) return;
+                select.disabled = !active;
+            });
+            if (controls.variable) populate(provider, controls.variable, "VARIABILE");
+            if (controls.fixed) populate(provider, controls.fixed, "FISSA");
+        });
     };
 
     const toggleGasOnlyFields = () => {
@@ -163,7 +197,7 @@
         refreshOffers();
     };
 
-    if (provider) provider.addEventListener("change", refreshOffers);
+    providerChecks.forEach((box) => box.addEventListener("change", refreshOffers));
     if (segmento) segmento.addEventListener("change", refreshOffers);
     if (commodity) {
         commodity.addEventListener("change", refreshUiState);

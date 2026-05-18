@@ -7,6 +7,7 @@ from pathlib import Path
 import openpyxl
 from django.conf import settings
 from django.utils import timezone
+from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font
 
 
@@ -101,6 +102,30 @@ def normalize_provider(value) -> str:
     if cleaned == "EON":
         return "EON"
     return "ILLUMIA"
+
+
+def normalize_providers(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        parts = re.split(r"[,;|]+", value.replace("[", "").replace("]", "").replace("'", "").replace('"', ""))
+    elif isinstance(value, (list, tuple, set)):
+        parts = value
+    else:
+        parts = [value]
+    out = []
+    for part in parts:
+        if not clean_text(part):
+            continue
+        provider = normalize_provider(part)
+        if provider not in out:
+            out.append(provider)
+    return out
+
+
+def provider_list_label(providers) -> str:
+    normalized = normalize_providers(providers)
+    return " + ".join(provider_label(provider) for provider in normalized) if normalized else "N.D."
 
 
 def provider_label(value) -> str:
@@ -617,16 +642,19 @@ def build_comparison_table_rows(values):
     ]
     out = []
     for key, label in rows_config:
-        var_value = comparison_value(values["variabile"], key, comm) if values["has_offer_var"] else "N.D."
-        fix_value = comparison_value(values["fissa"], key, comm) if values["has_offer_fix"] else "N.D."
-        out.append(
-            {
-                "voce": label,
-                "bolletta": format_eur(comparison_value(values["bolletta"], key, comm)),
-                "variabile": format_eur(var_value),
-                "fissa": format_eur(fix_value),
-            }
-        )
+        cells = [format_eur(comparison_value(values["bolletta"], key, comm))]
+        for column in values["offer_columns"]:
+            value = comparison_value(column["vals"], key, comm) if column["has_offer"] else "N.D."
+            cells.append(format_eur(value))
+        row = {
+            "voce": label,
+            "cells": cells,
+            "bolletta": cells[0],
+        }
+        if len(cells) >= 3:
+            row["variabile"] = cells[1]
+            row["fissa"] = cells[2]
+        out.append(row)
     return out
 
 
@@ -694,73 +722,54 @@ def calculate_accise_iva(data, calc, vals, commodity):
     return excise + regional + vat
 
 
-def build_comparison_values(data, calc):
-    comm = data["commodity"]
-    months = calc["billing_months"]
-    accessory_vat_label = normalize_accessory_services_vat_label(data.get("servizi_accessori_iva"))
-    accessory_vat_rate = accessory_services_vat_rate(accessory_vat_label)
-    b_vals = {k: float(data.get(f"b_{k}", 0.0)) for k in KEYS}
-    b_vals["bonus_sociale"] = -abs(float(b_vals.get("bonus_sociale", 0.0)))
-    b_vals["vendita_fissa"] *= months
-    b_vals["rete_fissa"] *= months
-
-    c_vals = b_vals.copy()
-    d_vals = b_vals.copy()
-    c_vals["vendita_consumo"] = calc["v_cons"]
-    c_vals["vendita_fissa"] = calc["v_fix"]
-    c_vals["sconti"] = float(calc.get("sconto_var", data.get("ill_sconto_var", -3.0)))
-    c_vals["ricalcoli"] = 0.0
-    c_vals["arrotondamenti"] = 0.0
-    d_vals["vendita_consumo"] = calc["f_cons"]
-    d_vals["vendita_fissa"] = calc["f_fix"]
-    d_vals["sconti"] = float(calc.get("sconto_fix", data.get("ill_sconto_fix", -3.0)))
-    d_vals["ricalcoli"] = 0.0
-    d_vals["arrotondamenti"] = 0.0
-
-    c_vals["accise_iva"] = calculate_accise_iva(data, calc, c_vals, comm)
-    d_vals["accise_iva"] = calculate_accise_iva(data, calc, d_vals, comm)
-    return {
-        "commodity": comm,
-        "bolletta": b_vals,
-        "variabile": c_vals,
-        "fissa": d_vals,
-        "servizi_accessori_iva_label": accessory_vat_label,
-        "servizi_accessori_iva_rate": accessory_vat_rate,
-        "has_offer_var": bool(calc["offer_var"]),
-        "has_offer_fix": bool(calc["offer_fix"]),
-    }
+def offer_choice_from_data(data, provider, offer_type):
+    provider_norm = normalize_provider(provider)
+    suffix = provider_norm.lower()
+    choice_type = "var" if offer_type.upper() == "VARIABILE" else "fix"
+    choice = clean_text(data.get(f"offer_{choice_type}_choice_{suffix}", ""))
+    if not choice and normalize_provider(data.get("provider", provider_norm)) == provider_norm:
+        choice = clean_text(data.get(f"offer_{choice_type}_choice", ""))
+    return choice
 
 
-def prepare_comparison(data):
+def calculate_provider_result(data, base_calc, provider):
     bill_start = data["bill_start"]
     bill_end = data["bill_end"]
     segmento = data["segmento"]
     commodity = data["commodity"]
-    provider = normalize_provider(data.get("provider", "ILLUMIA"))
+    provider_norm = normalize_provider(provider)
     consumo = float(data["consumo"])
-    billing_months = billing_months_from_dates(bill_start, bill_end)
-    billing_divisor = billing_divisor_from_months(billing_months)
+    billing_divisor = base_calc["billing_divisor"]
+    pun = base_calc["pun"]
+    psv = base_calc["psv"]
 
-    offer_file = load_tariffe_file_for_segment(segmento, provider)
-    tariffe_rows = filter_rows_by_context(load_tariffe_from_path(offer_file), provider, segmento) if offer_file else []
+    offer_file = load_tariffe_file_for_segment(segmento, provider_norm)
+    tariffe_rows = filter_rows_by_context(load_tariffe_from_path(offer_file), provider_norm, segmento) if offer_file else []
     offer_valid_from, offer_valid_to = get_file_valid_range(offer_file) if offer_file else (None, None)
-    offer_var = select_offer_name(tariffe_rows, commodity, "VARIABILE", segmento, data.get("offer_var_choice", ""))
-    offer_fix = select_offer_name(tariffe_rows, commodity, "FISSA", segmento, data.get("offer_fix_choice", ""))
+    offer_var = select_offer_name(
+        tariffe_rows,
+        commodity,
+        "VARIABILE",
+        segmento,
+        offer_choice_from_data(data, provider_norm, "VARIABILE"),
+    )
+    offer_fix = select_offer_name(
+        tariffe_rows,
+        commodity,
+        "FISSA",
+        segmento,
+        offer_choice_from_data(data, provider_norm, "FISSA"),
+    )
 
-    indici_rows = load_indici_rows(INDICI_XLSX)
-    indice, indice_reason = select_indice_for_bill_period(indici_rows, bill_start, bill_end)
-    pun = float(indice["pun"]) if indice else 0.0
-    psv = float(indice["psv"]) if indice else 0.0
-
-    sconto_var = float(data.get("ill_sconto_var", -3.0)) if provider == "ILLUMIA" else 0.0
-    sconto_fix = float(data.get("ill_sconto_fix", -3.0)) if provider == "ILLUMIA" else 0.0
+    sconto_var = float(data.get("ill_sconto_var", -3.0)) if provider_norm == "ILLUMIA" else 0.0
+    sconto_fix = float(data.get("ill_sconto_fix", -3.0)) if provider_norm == "ILLUMIA" else 0.0
     rows_var = []
     rows_fix = []
 
     if offer_var:
         rows_var = filter_rows_by_offer(tariffe_rows, commodity, "VARIABILE", offer_var)
         v_cons, v_fix = calc_illumia_vendite(rows_var, commodity, "VARIABILE", consumo, pun, psv, billing_divisor)
-        if provider != "ILLUMIA":
+        if provider_norm != "ILLUMIA":
             sconto_var = comp_sum(rows_var, commodity, "VARIABILE", "sconto_bonus")
     else:
         v_cons, v_fix = 0.0, 0.0
@@ -768,7 +777,7 @@ def prepare_comparison(data):
     if offer_fix:
         rows_fix = filter_rows_by_offer(tariffe_rows, commodity, "FISSA", offer_fix)
         f_cons, f_fix = calc_illumia_vendite(rows_fix, commodity, "FISSA", consumo, pun, psv, billing_divisor)
-        if provider != "ILLUMIA":
+        if provider_norm != "ILLUMIA":
             sconto_fix = comp_sum(rows_fix, commodity, "FISSA", "sconto_bonus")
     else:
         f_cons, f_fix = 0.0, 0.0
@@ -779,6 +788,116 @@ def prepare_comparison(data):
     offer_period_warning = ""
     if bill_period_outside_offer_validity(bill_start, bill_end, offer_valid_from, offer_valid_to):
         offer_period_warning = "Il periodo bolletta NON rientra nella validità dell'offerta selezionata."
+
+    return {
+        "provider": provider_norm,
+        "provider_label": provider_label(provider_norm),
+        "offer_file": str(offer_file) if offer_file else "",
+        "offer_valid_from": offer_valid_from,
+        "offer_valid_to": offer_valid_to,
+        "offer_expiry_label": date_label_it(offer_valid_to),
+        "offer_period_warning": offer_period_warning,
+        "offer_var": offer_var,
+        "offer_fix": offer_fix,
+        "v_cons": v_cons,
+        "v_fix": v_fix,
+        "f_cons": f_cons,
+        "f_fix": f_fix,
+        "sconto_var": sconto_var,
+        "sconto_fix": sconto_fix,
+    }
+
+
+def build_offer_column_values(data, calc, base_values, provider_result, offer_type):
+    comm = data["commodity"]
+    vals = base_values.copy()
+    if offer_type == "VARIABILE":
+        vals["vendita_consumo"] = provider_result["v_cons"]
+        vals["vendita_fissa"] = provider_result["v_fix"]
+        vals["sconti"] = float(provider_result.get("sconto_var", data.get("ill_sconto_var", -3.0)))
+        offer_name = provider_result["offer_var"]
+    else:
+        vals["vendita_consumo"] = provider_result["f_cons"]
+        vals["vendita_fissa"] = provider_result["f_fix"]
+        vals["sconti"] = float(provider_result.get("sconto_fix", data.get("ill_sconto_fix", -3.0)))
+        offer_name = provider_result["offer_fix"]
+    vals["ricalcoli"] = 0.0
+    vals["arrotondamenti"] = 0.0
+    vals["accise_iva"] = calculate_accise_iva(data, calc, vals, comm)
+    type_label = "Variabile" if offer_type == "VARIABILE" else "Fissa"
+    return {
+        "provider": provider_result["provider"],
+        "provider_label": provider_result["provider_label"],
+        "offer_type": offer_type,
+        "offer_type_label": type_label,
+        "offer_name": offer_name,
+        "label": f"{provider_result['provider_label']} {type_label}",
+        "vals": vals,
+        "has_offer": bool(offer_name),
+    }
+
+
+def build_comparison_values(data, calc):
+    comm = data["commodity"]
+    months = calc["billing_months"]
+    accessory_vat_label = normalize_accessory_services_vat_label(data.get("servizi_accessori_iva"))
+    accessory_vat_rate = accessory_services_vat_rate(accessory_vat_label)
+    b_vals = {k: float(data.get(f"b_{k}", 0.0)) for k in KEYS}
+    b_vals["bonus_sociale"] = -abs(float(b_vals.get("bonus_sociale", 0.0)))
+    b_vals["vendita_fissa"] *= months
+    b_vals["rete_fissa"] *= months
+    if comm == "GAS":
+        b_vals["quota_potenza"] = 0.0
+
+    provider_results = calc.get("provider_results") or [
+        {
+            "provider": normalize_provider(calc.get("provider", data.get("provider", "ILLUMIA"))),
+            "provider_label": provider_label(calc.get("provider", data.get("provider", "ILLUMIA"))),
+            "offer_var": calc.get("offer_var", ""),
+            "offer_fix": calc.get("offer_fix", ""),
+            "v_cons": calc.get("v_cons", 0.0),
+            "v_fix": calc.get("v_fix", 0.0),
+            "f_cons": calc.get("f_cons", 0.0),
+            "f_fix": calc.get("f_fix", 0.0),
+            "sconto_var": calc.get("sconto_var", data.get("ill_sconto_var", -3.0)),
+            "sconto_fix": calc.get("sconto_fix", data.get("ill_sconto_fix", -3.0)),
+        }
+    ]
+    offer_columns = []
+    for provider_result in provider_results:
+        offer_columns.append(build_offer_column_values(data, calc, b_vals, provider_result, "VARIABILE"))
+        offer_columns.append(build_offer_column_values(data, calc, b_vals, provider_result, "FISSA"))
+
+    first_var = next((column for column in offer_columns if column["offer_type"] == "VARIABILE"), None)
+    first_fix = next((column for column in offer_columns if column["offer_type"] == "FISSA"), None)
+    return {
+        "commodity": comm,
+        "bolletta": b_vals,
+        "offer_columns": offer_columns,
+        "variabile": first_var["vals"] if first_var else b_vals.copy(),
+        "fissa": first_fix["vals"] if first_fix else b_vals.copy(),
+        "servizi_accessori_iva_label": accessory_vat_label,
+        "servizi_accessori_iva_rate": accessory_vat_rate,
+        "has_offer_var": bool(first_var and first_var["has_offer"]),
+        "has_offer_fix": bool(first_fix and first_fix["has_offer"]),
+    }
+
+
+def prepare_comparison(data):
+    bill_start = data["bill_start"]
+    bill_end = data["bill_end"]
+    segmento = data["segmento"]
+    commodity = data["commodity"]
+    providers = normalize_providers(data.get("providers") or data.get("provider", "ILLUMIA"))
+    if not providers:
+        providers = [normalize_provider(data.get("provider", "ILLUMIA"))]
+    billing_months = billing_months_from_dates(bill_start, bill_end)
+    billing_divisor = billing_divisor_from_months(billing_months)
+
+    indici_rows = load_indici_rows(INDICI_XLSX)
+    indice, indice_reason = select_indice_for_bill_period(indici_rows, bill_start, bill_end)
+    pun = float(indice["pun"]) if indice else 0.0
+    psv = float(indice["psv"]) if indice else 0.0
 
     calc = {
         "nome_cliente": clean_text(data.get("nome_cliente")) or "Cliente",
@@ -795,31 +914,49 @@ def prepare_comparison(data):
         "fiscal_parameters_label": format_fiscal_parameters(data),
         "comparison_datetime": comparison_datetime_from_data(data.get("comparison_datetime")),
         "comparison_datetime_label": comparison_datetime_label(data.get("comparison_datetime")),
-        "provider": provider,
-        "provider_label": provider_label(provider),
+        "providers": providers,
+        "providers_label": provider_list_label(providers),
+        "provider": providers[0],
+        "provider_label": provider_label(providers[0]),
         "billing_months": billing_months,
         "billing_divisor": billing_divisor,
         "billing_label": billing_label_from_months(billing_months),
         "period_label": bill_period_label(bill_start, bill_end),
-        "offer_file": str(offer_file) if offer_file else "",
-        "offer_valid_from": offer_valid_from,
-        "offer_valid_to": offer_valid_to,
-        "offer_expiry_label": date_label_it(offer_valid_to),
-        "offer_period_warning": offer_period_warning,
-        "offer_var": offer_var,
-        "offer_fix": offer_fix,
         "indice": indice,
         "indice_reason": indice_reason,
-        "v_cons": v_cons,
-        "v_fix": v_fix,
-        "f_cons": f_cons,
-        "f_fix": f_fix,
-        "sconto_var": sconto_var,
-        "sconto_fix": sconto_fix,
+        "pun": pun,
+        "psv": psv,
         "servizi_accessori_iva_label": normalize_accessory_services_vat_label(data.get("servizi_accessori_iva")),
     }
+    provider_results = [calculate_provider_result(data, calc, provider) for provider in providers]
+    calc["provider_results"] = provider_results
+    primary = provider_results[0] if provider_results else {}
+    calc.update(
+        {
+            "offer_file": primary.get("offer_file", ""),
+            "offer_valid_from": primary.get("offer_valid_from"),
+            "offer_valid_to": primary.get("offer_valid_to"),
+            "offer_expiry_label": " | ".join(
+                f"{result['provider_label']}: {result['offer_expiry_label']}" for result in provider_results
+            ),
+            "offer_period_warning": " ".join(
+                f"{result['provider_label']}: {result['offer_period_warning']}"
+                for result in provider_results
+                if result.get("offer_period_warning")
+            ),
+            "offer_var": primary.get("offer_var", ""),
+            "offer_fix": primary.get("offer_fix", ""),
+            "v_cons": primary.get("v_cons", 0.0),
+            "v_fix": primary.get("v_fix", 0.0),
+            "f_cons": primary.get("f_cons", 0.0),
+            "f_fix": primary.get("f_fix", 0.0),
+            "sconto_var": primary.get("sconto_var", 0.0),
+            "sconto_fix": primary.get("sconto_fix", 0.0),
+        }
+    )
     values = build_comparison_values(data, calc)
-    return {"calc": calc, "values": values, "rows": build_comparison_table_rows(values)}
+    columns = [{"label": "Bolletta"}] + [{"label": column["label"]} for column in values["offer_columns"]]
+    return {"calc": calc, "values": values, "rows": build_comparison_table_rows(values), "columns": columns}
 
 
 def find_row_map(ws):
@@ -936,24 +1073,31 @@ def apply_export_labels(ws, nome_cliente: str, servizi_accessori_iva_label: str 
         ws[f"A{row}"] = value
 
 
-def write_export_metadata(ws, prepared):
+def write_export_metadata(ws, prepared, start_col="F"):
     calc = prepared["calc"]
-    label = calc.get("provider_label", "Illumia")
-    ws["F1"] = f"Offerta {label} VARIABILE: {calc['offer_var'] or 'N.D.'}"
-    ws["F2"] = f"Offerta {label} FISSA: {calc['offer_fix'] or 'N.D.'}"
-    ws["F3"] = f"Scadenza offerta: {calc.get('offer_expiry_label', 'N.D.')}"
-    ws["F3"].font = Font(bold=True, color="B3261E")
-    ws["F4"] = f"File tariffe: {calc['offer_file']}"
+    provider_lines = []
+    file_lines = []
+    for result in calc.get("provider_results", []):
+        provider_lines.append(
+            f"{result['provider_label']}: variabile {result['offer_var'] or 'N.D.'}; "
+            f"fissa {result['offer_fix'] or 'N.D.'}; scadenza {result.get('offer_expiry_label', 'N.D.')}"
+        )
+        file_lines.append(f"{result['provider_label']}: {result.get('offer_file') or 'N.D.'}")
+    ws[f"{start_col}1"] = f"Fornitori confronto: {calc.get('providers_label', calc.get('provider_label', 'Illumia'))}"
+    ws[f"{start_col}2"] = " | ".join(provider_lines) if provider_lines else "Offerte: N.D."
+    ws[f"{start_col}3"] = f"Scadenza offerta: {calc.get('offer_expiry_label', 'N.D.')}"
+    ws[f"{start_col}3"].font = Font(bold=True, color="B3261E")
+    ws[f"{start_col}4"] = f"File tariffe: {' | '.join(file_lines) if file_lines else 'N.D.'}"
     indice = calc["indice"] or {}
-    ws["F5"] = f"Indice PUN/PSV: {indice.get('mese', 'N.D.')} ({INDICI_XLSX.name})"
-    ws["F6"] = f"Tipo tariffa bolletta: {calc.get('bill_tariff_type_label', 'Variabile')}"
-    ws["F7"] = f"Confronto eseguito: {calc.get('comparison_datetime_label', '')}"
-    ws["F8"] = f"IVA servizi accessori: {calc.get('servizi_accessori_iva_label', '22%')}"
-    ws["F9"] = f"Consumo annuo stimato: {calc.get('tax_annual_consumption_label', 'N.D.')}"
-    ws["F10"] = f"Parametri Accise/IVA: {calc.get('fiscal_parameters_label', '')}"
+    ws[f"{start_col}5"] = f"Indice PUN/PSV: {indice.get('mese', 'N.D.')} ({INDICI_XLSX.name})"
+    ws[f"{start_col}6"] = f"Tipo tariffa bolletta: {calc.get('bill_tariff_type_label', 'Variabile')}"
+    ws[f"{start_col}7"] = f"Confronto eseguito: {calc.get('comparison_datetime_label', '')}"
+    ws[f"{start_col}8"] = f"IVA servizi accessori: {calc.get('servizi_accessori_iva_label', '22%')}"
+    ws[f"{start_col}9"] = f"Consumo annuo stimato: {calc.get('tax_annual_consumption_label', 'N.D.')}"
+    ws[f"{start_col}10"] = f"Parametri Accise/IVA: {calc.get('fiscal_parameters_label', '')}"
     if calc.get("offer_period_warning"):
-        ws["F11"] = calc["offer_period_warning"]
-        ws["F11"].font = Font(bold=True, color="B3261E")
+        ws[f"{start_col}11"] = calc["offer_period_warning"]
+        ws[f"{start_col}11"].font = Font(bold=True, color="B3261E")
 
 
 def _excel_decimal(value: float) -> str:
@@ -1025,33 +1169,28 @@ def build_excel_bytes(data, prepared=None):
     validate_row_map(rm)
     ws["B1"] = None
     ws["C1"] = float(data["consumo"])
-    provider_name = prepared["calc"].get("provider_label", "Illumia")
     ws["B3"] = "Bolletta"
-    ws["C3"] = f"{provider_name} Variabile"
-    ws["D3"] = f"{provider_name} Fissa"
-    write_export_metadata(ws, prepared)
 
     values = prepared["values"]
     comm = values["commodity"]
     b_vals = values["bolletta"]
-    c_vals = values["variabile"]
-    d_vals = values["fissa"]
 
     write_column(ws, rm, "B", b_vals, comm)
     ws[f"B{rm['accise_iva']}"] = b_vals["accise_iva"]
     apply_total_formula(ws, rm, "B")
-    if values["has_offer_var"]:
-        write_column(ws, rm, "C", c_vals, comm)
-        ws[f"C{rm['accise_iva']}"] = c_vals["accise_iva"]
-        apply_total_formula(ws, rm, "C")
-    else:
-        fill_column_text(ws, rm, "C", "N.D.")
-    if values["has_offer_fix"]:
-        write_column(ws, rm, "D", d_vals, comm)
-        ws[f"D{rm['accise_iva']}"] = d_vals["accise_iva"]
-        apply_total_formula(ws, rm, "D")
-    else:
-        fill_column_text(ws, rm, "D", "N.D.")
+
+    for offset, column in enumerate(values["offer_columns"], start=3):
+        col_letter = get_column_letter(offset)
+        ws[f"{col_letter}3"] = column["label"]
+        if column["has_offer"]:
+            write_column(ws, rm, col_letter, column["vals"], comm)
+            ws[f"{col_letter}{rm['accise_iva']}"] = column["vals"]["accise_iva"]
+            apply_total_formula(ws, rm, col_letter)
+        else:
+            fill_column_text(ws, rm, col_letter, "N.D.")
+
+    metadata_column = get_column_letter(3 + len(values["offer_columns"]) + 1)
+    write_export_metadata(ws, prepared, metadata_column)
 
     out = io.BytesIO()
     wb.save(out)

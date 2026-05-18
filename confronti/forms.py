@@ -27,7 +27,7 @@ class ConfrontoForm(forms.Form):
     PRIMARY_HOME_CHOICES = [("SI", "Sì"), ("NO", "No")]
     SEGMENT_CHOICES = [("", "Seleziona segmento")] + SEGMENTI
     COMMODITY_CHOICES = [("", "Seleziona fornitura")] + COMMODITIES
-    PROVIDER_CHOICES = [("", "Seleziona fornitore")] + PROVIDERS
+    PROVIDER_CHOICES = PROVIDERS
     BILL_TARIFF_TYPE_CHOICES = [("", "Seleziona tariffa")] + BILL_TARIFF_TYPES
     REGION_CHOICES = [(region, region) for region in services.GAS_REGIONAL_ADDITIONAL_MIN_RATES]
     MONTH_INPUT_FORMATS = ["%Y-%m", "%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"]
@@ -36,7 +36,11 @@ class ConfrontoForm(forms.Form):
     segmento = forms.ChoiceField(label="Segmento", choices=SEGMENT_CHOICES)
     commodity = forms.ChoiceField(label="Fornitura", choices=COMMODITY_CHOICES)
     bill_tariff_type = forms.ChoiceField(label="Tipo tariffa bolletta", choices=BILL_TARIFF_TYPE_CHOICES)
-    provider = forms.ChoiceField(label="Fornitore confronto", choices=PROVIDER_CHOICES)
+    providers = forms.MultipleChoiceField(
+        label="Fornitori confronto",
+        choices=PROVIDER_CHOICES,
+        widget=forms.CheckboxSelectMultiple,
+    )
     tax_primary_home = forms.ChoiceField(
         label="Prima casa / residente",
         choices=PRIMARY_HOME_CHOICES,
@@ -62,8 +66,10 @@ class ConfrontoForm(forms.Form):
         choices=[(label, label) for label in services.ACCESSORY_SERVICES_VAT_OPTIONS],
         initial="22%",
     )
-    offer_var_choice = forms.ChoiceField(label="Offerta variabile", required=False)
-    offer_fix_choice = forms.ChoiceField(label="Offerta fissa", required=False)
+    offer_var_choice_illumia = forms.ChoiceField(label="Illumia - Offerta variabile", required=False)
+    offer_fix_choice_illumia = forms.ChoiceField(label="Illumia - Offerta fissa", required=False)
+    offer_var_choice_eon = forms.ChoiceField(label="E.ON - Offerta variabile", required=False)
+    offer_fix_choice_eon = forms.ChoiceField(label="E.ON - Offerta fissa", required=False)
     bill_start = forms.DateField(
         label="Dal mese",
         input_formats=MONTH_INPUT_FORMATS,
@@ -110,11 +116,12 @@ class ConfrontoForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        provider = self._current_value("provider")
         segmento = self._current_value("segmento")
         commodity = self._current_value("commodity")
-        self.fields["offer_var_choice"].choices = self._offer_choices(provider, segmento, commodity, "VARIABILE")
-        self.fields["offer_fix_choice"].choices = self._offer_choices(provider, segmento, commodity, "FISSA")
+        self.fields["offer_var_choice_illumia"].choices = self._offer_choices("ILLUMIA", segmento, commodity, "VARIABILE")
+        self.fields["offer_fix_choice_illumia"].choices = self._offer_choices("ILLUMIA", segmento, commodity, "FISSA")
+        self.fields["offer_var_choice_eon"].choices = self._offer_choices("EON", segmento, commodity, "VARIABILE")
+        self.fields["offer_fix_choice_eon"].choices = self._offer_choices("EON", segmento, commodity, "FISSA")
         self._apply_commodity_rules(commodity)
 
     def _current_value(self, field_name):
@@ -152,6 +159,9 @@ class ConfrontoForm(forms.Form):
         if cleaned.get("bill_start") and cleaned.get("bill_end") and cleaned["bill_end"] < cleaned["bill_start"]:
             raise forms.ValidationError("Il mese finale non può essere precedente al mese iniziale.")
         commodity = cleaned.get("commodity")
+        providers = [services.normalize_provider(provider) for provider in cleaned.get("providers", [])]
+        cleaned["providers"] = providers
+        cleaned["provider"] = providers[0] if providers else ""
         if cleaned.get("tax_annual_consumption") is None:
             self.add_error("tax_annual_consumption", "Indica il consumo annuo stimato.")
         if commodity == "GAS":
@@ -181,6 +191,8 @@ class ConfrontoForm(forms.Form):
         for key, value in data.items():
             if isinstance(value, date):
                 out[key] = value.isoformat()
+            elif isinstance(value, (list, tuple)):
+                out[key] = ",".join(str(item) for item in value)
             else:
                 out[key] = str(value)
         return out
@@ -196,12 +208,15 @@ def session_to_service_data(raw):
         "tax_annual_consumption",
     ] + [f"b_{k}" for k in services.KEYS] + ["ill_sconto_var", "ill_sconto_fix"]:
         data[key] = services.parse_number(data.get(key))
-    data["provider"] = services.normalize_provider(data.get("provider", "ILLUMIA"))
+    data["providers"] = services.normalize_providers(data.get("providers") or data.get("provider", "ILLUMIA"))
+    data["provider"] = data["providers"][0] if data["providers"] else "ILLUMIA"
     data["bill_tariff_type"] = services.normalize_bill_tariff_type(data.get("bill_tariff_type"))
     data["tax_primary_home"] = services.normalize_primary_home(data.get("tax_primary_home"))
     data["tax_region"] = services.normalize_region(data.get("tax_region"))
     data["servizi_accessori_iva"] = services.normalize_accessory_services_vat_label(data.get("servizi_accessori_iva"))
     data["comparison_datetime"] = data.get("comparison_datetime")
-    data["offer_var_choice"] = data.get("offer_var_choice", "")
-    data["offer_fix_choice"] = data.get("offer_fix_choice", "")
+    data["offer_var_choice_illumia"] = data.get("offer_var_choice_illumia", data.get("offer_var_choice", ""))
+    data["offer_fix_choice_illumia"] = data.get("offer_fix_choice_illumia", data.get("offer_fix_choice", ""))
+    data["offer_var_choice_eon"] = data.get("offer_var_choice_eon", "")
+    data["offer_fix_choice_eon"] = data.get("offer_fix_choice_eon", "")
     return data

@@ -63,7 +63,7 @@ h2 span {
 }
 
 .form-grid.top {
-    grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+    grid-template-columns: 2fr 1fr 1fr 1fr 1.35fr;
 }
 
 .form-grid.one {
@@ -75,6 +75,65 @@ label {
     gap: 6px;
     font-weight: 700;
     font-size: 14px;
+}
+
+.provider-picker {
+    border: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.provider-picker legend {
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 6px;
+}
+
+.provider-picker > div {
+    display: flex;
+    gap: 8px;
+}
+
+.provider-picker label {
+    align-items: center;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    font-weight: 700;
+    gap: 7px;
+    min-height: 42px;
+    padding: 8px 10px;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.provider-picker input {
+    height: 1px;
+    min-height: 0;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    width: 1px;
+}
+
+.provider-picker label:has(input:checked) {
+    background: #1597d3;
+    border-color: #1597d3;
+    color: white;
+}
+
+.offer-provider {
+    display: grid;
+    gap: 12px;
+}
+
+.offer-provider h3 {
+    font-size: 15px;
+    margin: 0;
+}
+
+.offer-provider.is-disabled {
+    opacity: 0.58;
 }
 
 input,
@@ -156,6 +215,10 @@ table {
     width: 100%;
     border-collapse: collapse;
     background: white;
+}
+
+.result {
+    overflow-x: auto;
 }
 
 th,

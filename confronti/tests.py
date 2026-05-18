@@ -17,6 +17,7 @@ def valid_payload(**overrides):
         "commodity": "EE",
         "bill_tariff_type": "VARIABILE",
         "provider": "ILLUMIA",
+        "providers": ["ILLUMIA"],
         "tax_primary_home": "SI",
         "tax_power_kw": "3",
         "tax_annual_consumption": "1200",
@@ -24,6 +25,10 @@ def valid_payload(**overrides):
         "servizi_accessori_iva": "22%",
         "offer_var_choice": "",
         "offer_fix_choice": "",
+        "offer_var_choice_illumia": "",
+        "offer_fix_choice_illumia": "",
+        "offer_var_choice_eon": "",
+        "offer_fix_choice_eon": "",
         "bill_start": "2026-01",
         "bill_end": "2026-03",
         "consumo": "100",
@@ -41,6 +46,13 @@ def valid_payload(**overrides):
         "action": "calculate",
     }
     data.update(overrides)
+    if "provider" in overrides and "providers" not in overrides:
+        data["providers"] = [data["provider"]]
+    selected_provider = services.normalize_provider(data["providers"][0]) if data.get("providers") else "ILLUMIA"
+    if "offer_var_choice" in overrides:
+        data[f"offer_var_choice_{selected_provider.lower()}"] = data["offer_var_choice"]
+    if "offer_fix_choice" in overrides:
+        data[f"offer_fix_choice_{selected_provider.lower()}"] = data["offer_fix_choice"]
     return data
 
 
@@ -257,7 +269,7 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertEqual(form.fields["segmento"].choices[0], ("", "Seleziona segmento"))
         self.assertEqual(form.fields["commodity"].choices[0], ("", "Seleziona fornitura"))
         self.assertEqual(form.fields["bill_tariff_type"].choices[0], ("", "Seleziona tariffa"))
-        self.assertEqual(form.fields["provider"].choices[0], ("", "Seleziona fornitore"))
+        self.assertEqual(form.fields["providers"].choices[0], ("ILLUMIA", "Illumia"))
         self.assertIsNone(form.fields["bill_start"].initial)
         self.assertIsNone(form.fields["bill_end"].initial)
         self.assertIsNone(form.fields["tax_annual_consumption"].initial)
@@ -268,7 +280,7 @@ class ConfrontoFormTests(SimpleTestCase):
                 segmento="",
                 commodity="",
                 bill_tariff_type="",
-                provider="",
+                providers=[],
                 tax_annual_consumption="",
                 bill_start="",
                 bill_end="",
@@ -280,7 +292,7 @@ class ConfrontoFormTests(SimpleTestCase):
             "segmento",
             "commodity",
             "bill_tariff_type",
-            "provider",
+            "providers",
             "bill_start",
             "bill_end",
             "tax_annual_consumption",
@@ -351,7 +363,7 @@ class ConfrontoViewTests(TestCase):
         response = self.client.get("/")
         self.assertContains(response, 'type="month"')
         self.assertContains(response, "Cambia bolletta")
-        self.assertContains(response, "Fornitore confronto")
+        self.assertContains(response, "Fornitori confronto")
 
     def test_invalid_form_renders_field_errors(self):
         self.login()
@@ -392,11 +404,32 @@ class ConfrontoViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
-        self.assertIn("Fornitore confronto:</strong> E.ON", html)
+        self.assertIn("Fornitori confronto:</strong> E.ON", html)
         self.assertIn("E.ON Flex Luce Casa", html)
         self.assertIn("E.ON Luce Tua", html)
         self.assertIn("E.ON Variabile", html)
         self.assertEqual(self.client.session["last_confronto"]["provider"], "EON")
+
+    def test_calculate_can_compare_illumia_and_eon_together(self):
+        self.login()
+        response = self.client.post(
+            "/",
+            valid_payload(
+                providers=["ILLUMIA", "EON"],
+                offer_var_choice_eon="E.ON Flex Luce Casa",
+                offer_fix_choice_eon="E.ON Luce Tua",
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("Fornitori confronto:</strong> Illumia + E.ON", html)
+        self.assertIn("Illumia Variabile", html)
+        self.assertIn("Illumia Fissa", html)
+        self.assertIn("E.ON Variabile", html)
+        self.assertIn("E.ON Fissa", html)
+        self.assertEqual(response.context["prepared"]["columns"][0]["label"], "Bolletta")
+        self.assertEqual(len(response.context["prepared"]["columns"]), 5)
+        self.assertEqual(self.client.session["last_confronto"]["providers"], "ILLUMIA,EON")
 
     def test_change_bill_resets_bill_values_and_download_session(self):
         self.login()
@@ -454,6 +487,32 @@ class ConfrontoViewTests(TestCase):
         self.assertIsInstance(ws["C15"].value, (int, float))
         self.assertIsInstance(ws["D15"].value, (int, float))
         self.assertEqual(ws["B16"].value, "=SUM(B4:B14)+B15")
+
+    def test_excel_download_contains_both_provider_columns(self):
+        self.login()
+        self.client.post(
+            "/",
+            valid_payload(
+                providers=["ILLUMIA", "EON"],
+                offer_var_choice_eon="E.ON Flex Luce Casa",
+                offer_fix_choice_eon="E.ON Luce Tua",
+            ),
+        )
+        response = self.client.get("/scarica-excel/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("confronto_illumia_eon_Mario_Rossi_EE.xlsx", response["Content-Disposition"])
+
+        wb = load_workbook(BytesIO(response.content), data_only=False)
+        ws = wb["Confronto"]
+        self.assertEqual(ws["B3"].value, "Bolletta")
+        self.assertEqual(ws["C3"].value, "Illumia Variabile")
+        self.assertEqual(ws["D3"].value, "Illumia Fissa")
+        self.assertEqual(ws["E3"].value, "E.ON Variabile")
+        self.assertEqual(ws["F3"].value, "E.ON Fissa")
+        self.assertEqual(ws["H1"].value, "Fornitori confronto: Illumia + E.ON")
+        self.assertIn("Illumia:", ws["H2"].value)
+        self.assertIn("E.ON:", ws["H2"].value)
+        self.assertEqual(ws["F16"].value, "=SUM(F4:F14)+F15")
 
     @patch("confronti.services.load_tariffe_file_for_segment", return_value=None)
     def test_missing_illumia_offer_keeps_bill_and_marks_offers_nd(self, _mock_load_file):
