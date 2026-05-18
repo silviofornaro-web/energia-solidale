@@ -215,6 +215,7 @@ class ConfrontoViewTests(TestCase):
         self.assertIn("Confronto eseguito:</strong>", html)
         self.assertIn("Tipo tariffa bolletta:</strong> Variabile", html)
         self.assertIn("TRIMESTRALE", html)
+        self.assertIn('data-download-excel', html)
         self.assertIn("Scarica Excel", html)
         self.assertIn("last_confronto", self.client.session)
         self.assertEqual(self.client.session["last_confronto"]["bill_start"], "2026-01-01")

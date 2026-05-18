@@ -84,7 +84,7 @@
         </tbody>
     </table>
 
-    <a class="download" href="{% url 'scarica_excel' %}">Scarica Excel</a>
+    <a class="download" href="{% url 'scarica_excel' %}" download data-download-excel>Scarica Excel</a>
 </section>
 {% endif %}
 {{ offer_options|json_script:"offer-options-data" }}
@@ -129,6 +129,18 @@
     segmento.addEventListener("change", refreshOffers);
     commodity.addEventListener("change", refreshOffers);
     refreshOffers();
+
+    const excelDownload = document.querySelector("[data-download-excel]");
+    if (excelDownload) {
+        excelDownload.addEventListener("click", (event) => {
+            event.preventDefault();
+            const frame = document.createElement("iframe");
+            frame.hidden = true;
+            frame.src = excelDownload.href;
+            document.body.appendChild(frame);
+            window.setTimeout(() => frame.remove(), 60000);
+        });
+    }
 })();
 </script>
 {% endblock %}
