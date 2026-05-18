@@ -1,62 +1,59 @@
 # Energia Solidale
 
-Web app Streamlit per confrontare una bolletta luce/gas con le tariffe Illumia o E-ON e generare un file Excel di confronto.
+Web app Django per confrontare una bolletta luce/gas con le tariffe Illumia o E.ON e generare un file Excel di confronto.
 
 ## Avvio locale
 
 ```bash
-python -m streamlit run app_rest.py
+source .venv-django/bin/activate
+python manage.py runserver 127.0.0.1:8000
 ```
 
-Su Mac puoi anche usare:
+Poi apri:
 
-```bash
-./avvia_energia_solidale.command
+```text
+http://127.0.0.1:8000/
 ```
 
-## Pubblicazione come web app
+## Pubblicazione web
 
-Per Streamlit Community Cloud:
+La pubblicazione e configurata per Render tramite `render.yaml`.
 
-1. Crea un repository GitHub.
-2. Carica questi file/cartelle:
-   - `streamlit_app.py`
-   - `app_rest.py`
-   - `requirements.txt`
-   - `esempio_confronto_corretto.xlsx`
-   - `indici_pun_psv_2025_2026.xlsx`
-   - `tariffe/`
-   - `estrazioni_tariffe/`
-   - `.streamlit/config.toml`
-3. Su Streamlit Cloud seleziona il repository.
-4. Come main file usa `streamlit_app.py`.
+Render usa:
 
-## File dati
+- `build.sh` per installare le dipendenze e raccogliere gli statici;
+- `requirements-django.txt` per le dipendenze Python;
+- `gunicorn energia_solidale_django.wsgi:application` per avviare Django;
+- PostgreSQL configurato da `DATABASE_URL`.
 
-- `esempio_confronto_corretto.xlsx`: template per l'export del confronto.
-- `indici_pun_psv_2025_2026.xlsx`: indici PUN/PSV.
-- `tariffe/`: tariffe Illumia per segmento e mese.
-- `estrazioni_tariffe/`: tariffe E-ON estratte dai PDF.
+## File dati necessari
 
-## Accesso con utenti autorizzati
+- `manage.py`
+- `energia_solidale_django/`
+- `confronti/`
+- `requirements-django.txt`
+- `requirements.txt`
+- `render.yaml`
+- `build.sh`
+- `esempio_confronto_corretto.xlsx`
+- `indici_pun_psv_2025_2026.xlsx`
+- `tariffe/`
+- `estrazioni_tariffe/`
 
-Il login interno si abilita dai Secrets di Streamlit Cloud. Le password non vanno mai inserite in chiaro: genera prima un hash con:
+## Accesso
 
-```bash
-python generate_password_hash.py
+L'app richiede login Django. Gli utenti si gestiscono dal pannello admin:
+
+```text
+/admin/
 ```
 
-Poi in Streamlit Cloud, nella sezione Secrets, inserisci:
+Su Render il superutente iniziale viene creato con le variabili ambiente:
 
-```toml
-[auth]
-enabled = true
+- `DJANGO_SUPERUSER_USERNAME`
+- `DJANGO_SUPERUSER_EMAIL`
+- `DJANGO_SUPERUSER_PASSWORD`
 
-[auth.users]
-"utente@example.com" = "HASH_GENERATO"
+## Nota sui file legacy
 
-[auth.names]
-"utente@example.com" = "Nome Cognome"
-```
-
-Se `auth.enabled` manca o vale `false`, l'app resta aperta senza login.
+I file Streamlit storici, se presenti, non sono usati dalla web app Django pubblicata su Render.

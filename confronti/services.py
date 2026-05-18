@@ -257,6 +257,14 @@ def bill_period_label(start: date, end: date) -> str:
     return f"{month_year_label(start)} - {month_year_label(end)}"
 
 
+def bill_period_outside_offer_validity(bill_start, bill_end, offer_valid_from, offer_valid_to) -> bool:
+    if not offer_valid_from or not offer_valid_to:
+        return False
+    if bill_end < bill_start:
+        bill_start, bill_end = bill_end, bill_start
+    return bill_start < offer_valid_from or bill_end > offer_valid_to
+
+
 def parse_index_month(x):
     if x is None:
         return ""
@@ -768,6 +776,9 @@ def prepare_comparison(data):
     selected_valid_from, selected_valid_to = valid_range_from_rows(rows_var + rows_fix)
     if selected_valid_from or selected_valid_to:
         offer_valid_from, offer_valid_to = selected_valid_from, selected_valid_to
+    offer_period_warning = ""
+    if bill_period_outside_offer_validity(bill_start, bill_end, offer_valid_from, offer_valid_to):
+        offer_period_warning = "Il periodo bolletta NON rientra nella validità dell'offerta selezionata."
 
     calc = {
         "nome_cliente": clean_text(data.get("nome_cliente")) or "Cliente",
@@ -794,6 +805,7 @@ def prepare_comparison(data):
         "offer_valid_from": offer_valid_from,
         "offer_valid_to": offer_valid_to,
         "offer_expiry_label": date_label_it(offer_valid_to),
+        "offer_period_warning": offer_period_warning,
         "offer_var": offer_var,
         "offer_fix": offer_fix,
         "indice": indice,
@@ -939,6 +951,9 @@ def write_export_metadata(ws, prepared):
     ws["F8"] = f"IVA servizi accessori: {calc.get('servizi_accessori_iva_label', '22%')}"
     ws["F9"] = f"Consumo annuo stimato: {calc.get('tax_annual_consumption_label', 'N.D.')}"
     ws["F10"] = f"Parametri Accise/IVA: {calc.get('fiscal_parameters_label', '')}"
+    if calc.get("offer_period_warning"):
+        ws["F11"] = calc["offer_period_warning"]
+        ws["F11"].font = Font(bold=True, color="B3261E")
 
 
 def _excel_decimal(value: float) -> str:

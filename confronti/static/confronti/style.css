@@ -135,6 +135,16 @@ button.secondary {
     margin-bottom: 14px;
 }
 
+.validity-warning {
+    background: #fff8db;
+    border: 1px solid #f4d36b;
+    border-radius: 6px;
+    color: #8a5a00;
+    font-weight: 700;
+    margin-bottom: 16px;
+    padding: 10px 12px;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;
@@ -167,6 +177,10 @@ footer {
     color: #1597d3;
     line-height: 1.45;
     margin-top: 26px;
+}
+
+footer strong {
+    font-size: 20px;
 }
 
 @media (max-width: 760px) {

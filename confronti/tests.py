@@ -61,6 +61,22 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertEqual(services.billing_label_from_months(1), "MENSILE")
         self.assertEqual(services.billing_label_from_months(3), "TRIMESTRALE")
         self.assertEqual(services.bill_period_label(date(2026, 1, 1), date(2026, 3, 31)), "Gennaio 2026 - Marzo 2026")
+        self.assertTrue(
+            services.bill_period_outside_offer_validity(
+                date(2026, 1, 1),
+                date(2026, 3, 31),
+                date(2026, 4, 1),
+                date(2026, 4, 30),
+            )
+        )
+        self.assertFalse(
+            services.bill_period_outside_offer_validity(
+                date(2026, 4, 1),
+                date(2026, 4, 30),
+                date(2026, 4, 1),
+                date(2026, 4, 30),
+            )
+        )
 
     def test_select_indice_uses_latest_month_inside_bill_period(self):
         rows = [
@@ -320,6 +336,7 @@ class ConfrontoViewTests(TestCase):
         self.assertIn("Tipo tariffa bolletta:</strong> Variabile", html)
         self.assertIn("Consumo annuo stimato:</strong> 1200 kWh/anno", html)
         self.assertIn("Scadenza offerta:</strong>", html)
+        self.assertIn("periodo bolletta NON rientra", html)
         self.assertIn("TRIMESTRALE", html)
         self.assertIn('data-download-excel', html)
         self.assertIn("Scarica Excel", html)
@@ -385,6 +402,8 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(ws["F8"].value, "IVA servizi accessori: 22%")
         self.assertEqual(ws["F9"].value, "Consumo annuo stimato: 1200 kWh/anno")
         self.assertTrue(str(ws["F10"].value).startswith("Parametri Accise/IVA: "))
+        self.assertIn("periodo bolletta NON rientra", ws["F11"].value)
+        self.assertEqual(ws["F11"].font.color.rgb[-6:], "B3261E")
         self.assertEqual(ws["A12"].value, "Bonus Sociale")
         self.assertEqual(ws["A13"].value, "Arrotondamenti")
         self.assertEqual(ws["A14"].value, "Servizi accessori (IVA 22%)")

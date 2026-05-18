@@ -63,6 +63,9 @@
     <div class="offer-expiry">
         <strong>Scadenza offerta:</strong> {{ prepared.calc.offer_expiry_label }}
     </div>
+    {% if prepared.calc.offer_period_warning %}
+        <div class="validity-warning">{{ prepared.calc.offer_period_warning }}</div>
+    {% endif %}
 
     <div class="meta">
         <div><strong>Cliente:</strong> {{ prepared.calc.nome_cliente }}</div>
