@@ -6,50 +6,53 @@
 <form method="post" class="panel">
     {% csrf_token %}
     {{ form.non_field_errors }}
+    {% if form.errors %}
+        <div class="form-error-summary">Il confronto non è partito: controlla i campi evidenziati sotto.</div>
+    {% endif %}
 
     <div class="form-grid top">
-        <label>{{ form.nome_cliente.label }}{{ form.nome_cliente }}</label>
-        <label>{{ form.segmento.label }}{{ form.segmento }}</label>
-        <label>{{ form.commodity.label }}{{ form.commodity }}</label>
-        <label>{{ form.bill_tariff_type.label }}{{ form.bill_tariff_type }}</label>
-        <label>{{ form.provider.label }}{{ form.provider }}</label>
+        <label>{{ form.nome_cliente.label }}{{ form.nome_cliente }}{{ form.nome_cliente.errors }}</label>
+        <label>{{ form.segmento.label }}{{ form.segmento }}{{ form.segmento.errors }}</label>
+        <label>{{ form.commodity.label }}{{ form.commodity }}{{ form.commodity.errors }}</label>
+        <label>{{ form.bill_tariff_type.label }}{{ form.bill_tariff_type }}{{ form.bill_tariff_type.errors }}</label>
+        <label>{{ form.provider.label }}{{ form.provider }}{{ form.provider.errors }}</label>
     </div>
 
     <h2>Offerte confronto</h2>
     <div class="form-grid">
-        <label>{{ form.offer_var_choice.label }}{{ form.offer_var_choice }}</label>
-        <label>{{ form.offer_fix_choice.label }}{{ form.offer_fix_choice }}</label>
+        <label>{{ form.offer_var_choice.label }}{{ form.offer_var_choice }}{{ form.offer_var_choice.errors }}</label>
+        <label>{{ form.offer_fix_choice.label }}{{ form.offer_fix_choice }}{{ form.offer_fix_choice.errors }}</label>
     </div>
 
     <h2>Periodicità</h2>
     <div class="form-grid">
-        <label>{{ form.bill_start.label }}{{ form.bill_start }}</label>
-        <label>{{ form.bill_end.label }}{{ form.bill_end }}</label>
-        <label>{{ form.consumo.label }}{{ form.consumo }}</label>
+        <label>{{ form.bill_start.label }}{{ form.bill_start }}{{ form.bill_start.errors }}</label>
+        <label>{{ form.bill_end.label }}{{ form.bill_end }}{{ form.bill_end.errors }}</label>
+        <label>{{ form.consumo.label }}{{ form.consumo }}{{ form.consumo.errors }}</label>
     </div>
 
     <h2>Dati fiscali Accise/IVA</h2>
     <div class="form-grid">
-        <label>{{ form.tax_primary_home.label }}{{ form.tax_primary_home }}</label>
-        <label>{{ form.tax_power_kw.label }}{{ form.tax_power_kw }}</label>
-        <label>{{ form.tax_annual_consumption.label }}{{ form.tax_annual_consumption }}</label>
-        <label>{{ form.tax_region.label }}{{ form.tax_region }}</label>
+        <label>{{ form.tax_primary_home.label }}{{ form.tax_primary_home }}{{ form.tax_primary_home.errors }}</label>
+        <label>{{ form.tax_power_kw.label }}{{ form.tax_power_kw }}{{ form.tax_power_kw.errors }}</label>
+        <label>{{ form.tax_annual_consumption.label }}{{ form.tax_annual_consumption }}{{ form.tax_annual_consumption.errors }}</label>
+        <label>{{ form.tax_region.label }}{{ form.tax_region }}{{ form.tax_region.errors }}</label>
     </div>
 
     <h2>Bolletta <span>(scontrino dell'energia)</span></h2>
     <div class="form-grid">
-        <label>{{ form.b_vendita_consumo.label }}{{ form.b_vendita_consumo }}</label>
-        <label>{{ form.b_rete_consumi.label }}{{ form.b_rete_consumi }}</label>
-        <label>{{ form.b_vendita_fissa.label }}{{ form.b_vendita_fissa }}</label>
-        <label>{{ form.b_rete_fissa.label }}{{ form.b_rete_fissa }}</label>
-        <label>{{ form.b_quota_potenza.label }}{{ form.b_quota_potenza }}</label>
-        <label>{{ form.b_sconti.label }}{{ form.b_sconti }}</label>
-        <label>{{ form.b_ricalcoli.label }}{{ form.b_ricalcoli }}</label>
-        <label>{{ form.b_bonus_sociale.label }}{{ form.b_bonus_sociale }}</label>
-        <label>{{ form.b_arrotondamenti.label }}{{ form.b_arrotondamenti }}</label>
-        <label>{{ form.b_servizi_accessori.label }}{{ form.b_servizi_accessori }}</label>
-        <label>{{ form.servizi_accessori_iva.label }}{{ form.servizi_accessori_iva }}</label>
-        <label>{{ form.b_accise_iva.label }}{{ form.b_accise_iva }}</label>
+        <label>{{ form.b_vendita_consumo.label }}{{ form.b_vendita_consumo }}{{ form.b_vendita_consumo.errors }}</label>
+        <label>{{ form.b_rete_consumi.label }}{{ form.b_rete_consumi }}{{ form.b_rete_consumi.errors }}</label>
+        <label>{{ form.b_vendita_fissa.label }}{{ form.b_vendita_fissa }}{{ form.b_vendita_fissa.errors }}</label>
+        <label>{{ form.b_rete_fissa.label }}{{ form.b_rete_fissa }}{{ form.b_rete_fissa.errors }}</label>
+        <label>{{ form.b_quota_potenza.label }}{{ form.b_quota_potenza }}{{ form.b_quota_potenza.errors }}</label>
+        <label>{{ form.b_sconti.label }}{{ form.b_sconti }}{{ form.b_sconti.errors }}</label>
+        <label>{{ form.b_ricalcoli.label }}{{ form.b_ricalcoli }}{{ form.b_ricalcoli.errors }}</label>
+        <label>{{ form.b_bonus_sociale.label }}{{ form.b_bonus_sociale }}{{ form.b_bonus_sociale.errors }}</label>
+        <label>{{ form.b_arrotondamenti.label }}{{ form.b_arrotondamenti }}{{ form.b_arrotondamenti.errors }}</label>
+        <label>{{ form.b_servizi_accessori.label }}{{ form.b_servizi_accessori }}{{ form.b_servizi_accessori.errors }}</label>
+        <label>{{ form.servizi_accessori_iva.label }}{{ form.servizi_accessori_iva }}{{ form.servizi_accessori_iva.errors }}</label>
+        <label>{{ form.b_accise_iva.label }}{{ form.b_accise_iva }}{{ form.b_accise_iva.errors }}</label>
     </div>
 
     <div class="form-actions">

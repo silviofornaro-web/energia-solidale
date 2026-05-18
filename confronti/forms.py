@@ -6,6 +6,19 @@ from django import forms
 from . import services
 
 
+class ItalianDecimalField(forms.DecimalField):
+    def to_python(self, value):
+        if value in self.empty_values:
+            return None
+        if isinstance(value, str):
+            value = value.strip().replace("€", "").replace("\u20ac", "").replace(" ", "")
+            if "," in value and "." in value:
+                value = value.replace(".", "").replace(",", ".")
+            else:
+                value = value.replace(",", ".")
+        return super().to_python(value)
+
+
 class ConfrontoForm(forms.Form):
     SEGMENTI = [("RESIDENZIALE", "Residenziale"), ("MICROBUSINESS", "Microbusiness"), ("BUSINESS", "Business")]
     COMMODITIES = [("GAS", "Gas"), ("EE", "Luce")]
@@ -29,7 +42,7 @@ class ConfrontoForm(forms.Form):
         choices=PRIMARY_HOME_CHOICES,
         initial="SI",
     )
-    tax_power_kw = forms.DecimalField(
+    tax_power_kw = ItalianDecimalField(
         label="Potenza impegnata (kW, solo luce)",
         min_value=0,
         decimal_places=2,
@@ -37,7 +50,7 @@ class ConfrontoForm(forms.Form):
         initial=0,
         required=False,
     )
-    tax_annual_consumption = forms.DecimalField(
+    tax_annual_consumption = ItalianDecimalField(
         label="Consumo annuo stimato (Smc/kWh anno)",
         min_value=0.0001,
         decimal_places=4,
@@ -61,16 +74,16 @@ class ConfrontoForm(forms.Form):
         input_formats=MONTH_INPUT_FORMATS,
         widget=forms.DateInput(format="%Y-%m", attrs={"type": "month"}),
     )
-    consumo = forms.DecimalField(label="Consumo", min_value=0, decimal_places=4, max_digits=12, initial=0)
+    consumo = ItalianDecimalField(label="Consumo", min_value=0, decimal_places=4, max_digits=12, initial=0)
 
-    b_vendita_consumo = forms.DecimalField(label="Vendita consumo", decimal_places=4, max_digits=12, initial=0)
-    b_rete_consumi = forms.DecimalField(label="Rete/oneri consumi", decimal_places=4, max_digits=12, initial=0)
-    b_vendita_fissa = forms.DecimalField(label="Vendita fissa mensile", decimal_places=4, max_digits=12, initial=0)
-    b_rete_fissa = forms.DecimalField(label="Rete/oneri fissa mensile", decimal_places=4, max_digits=12, initial=0)
-    b_quota_potenza = forms.DecimalField(label="Quota potenza", decimal_places=4, max_digits=12, initial=0)
-    b_sconti = forms.DecimalField(label="Sconti", decimal_places=4, max_digits=12, initial=0)
-    b_ricalcoli = forms.DecimalField(label="Ricalcoli/Partite pregresse", decimal_places=4, max_digits=12, initial=0)
-    b_bonus_sociale = forms.DecimalField(
+    b_vendita_consumo = ItalianDecimalField(label="Vendita consumo", decimal_places=4, max_digits=12, initial=0)
+    b_rete_consumi = ItalianDecimalField(label="Rete/oneri consumi", decimal_places=4, max_digits=12, initial=0)
+    b_vendita_fissa = ItalianDecimalField(label="Vendita fissa mensile", decimal_places=4, max_digits=12, initial=0)
+    b_rete_fissa = ItalianDecimalField(label="Rete/oneri fissa mensile", decimal_places=4, max_digits=12, initial=0)
+    b_quota_potenza = ItalianDecimalField(label="Quota potenza", decimal_places=4, max_digits=12, initial=0)
+    b_sconti = ItalianDecimalField(label="Sconti", decimal_places=4, max_digits=12, initial=0)
+    b_ricalcoli = ItalianDecimalField(label="Ricalcoli/Partite pregresse", decimal_places=4, max_digits=12, initial=0)
+    b_bonus_sociale = ItalianDecimalField(
         label="Bonus Sociale",
         decimal_places=4,
         max_digits=12,
@@ -78,8 +91,8 @@ class ConfrontoForm(forms.Form):
         required=False,
         help_text="Inserire l'importo come valore negativo.",
     )
-    b_arrotondamenti = forms.DecimalField(label="Arrotondamenti", decimal_places=4, max_digits=12, initial=0)
-    b_servizi_accessori = forms.DecimalField(
+    b_arrotondamenti = ItalianDecimalField(label="Arrotondamenti", decimal_places=4, max_digits=12, initial=0)
+    b_servizi_accessori = ItalianDecimalField(
         label="Servizi accessori (imponibile)",
         min_value=0,
         decimal_places=4,
@@ -87,7 +100,7 @@ class ConfrontoForm(forms.Form):
         initial=0,
         required=False,
     )
-    b_accise_iva = forms.DecimalField(label="Accise + IVA", decimal_places=4, max_digits=12, initial=0)
+    b_accise_iva = ItalianDecimalField(label="Accise + IVA", decimal_places=4, max_digits=12, initial=0)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

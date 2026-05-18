@@ -299,6 +299,20 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertTrue(form.is_valid(), form.errors.as_data())
         self.assertEqual(form.cleaned_data["b_bonus_sociale"], 0)
 
+    def test_italian_decimal_commas_are_accepted(self):
+        form = ConfrontoForm(
+            valid_payload(
+                b_vendita_consumo="85,520",
+                b_rete_consumi="24,61",
+                b_vendita_fissa="12,105",
+                b_rete_fissa="1,9",
+                b_accise_iva="23,97",
+            )
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+        self.assertEqual(float(form.cleaned_data["b_vendita_consumo"]), 85.52)
+        self.assertEqual(float(form.cleaned_data["b_rete_consumi"]), 24.61)
+
     def test_end_month_before_start_month_is_rejected(self):
         form = ConfrontoForm(valid_payload(bill_start="2026-03", bill_end="2026-01"))
         self.assertFalse(form.is_valid())
@@ -324,6 +338,14 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, 'type="month"')
         self.assertContains(response, "Cambia bolletta")
         self.assertContains(response, "Fornitore confronto")
+
+    def test_invalid_form_renders_field_errors(self):
+        self.login()
+        response = self.client.post("/", valid_payload(tax_power_kw="0"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Il confronto non è partito")
+        self.assertContains(response, "Indica la potenza impegnata")
+        self.assertNotContains(response, "Scarica Excel")
 
     def test_calculate_comparison_stores_session_and_renders_period(self):
         self.login()
