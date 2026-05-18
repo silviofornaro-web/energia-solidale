@@ -1095,9 +1095,6 @@ def write_export_metadata(ws, prepared, start_col="F"):
     ws[f"{start_col}8"] = f"IVA servizi accessori: {calc.get('servizi_accessori_iva_label', '22%')}"
     ws[f"{start_col}9"] = f"Consumo annuo stimato: {calc.get('tax_annual_consumption_label', 'N.D.')}"
     ws[f"{start_col}10"] = f"Parametri Accise/IVA: {calc.get('fiscal_parameters_label', '')}"
-    if calc.get("offer_period_warning"):
-        ws[f"{start_col}11"] = calc["offer_period_warning"]
-        ws[f"{start_col}11"].font = Font(bold=True, color="B3261E")
 
 
 def _excel_decimal(value: float) -> str:
