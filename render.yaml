@@ -10,18 +10,10 @@ services:
     plan: free
     region: frankfurt
     buildCommand: ./build.sh
-    startCommand: python3 -m streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --server.enableCORS false --server.enableXsrfProtection false --server.enableWebsocketCompression false --browser.gatherUsageStats false
+    startCommand: python3 manage.py migrate && python3 manage.py create_initial_superuser && gunicorn energia_solidale_django.wsgi:application --bind 0.0.0.0:$PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.13
-      - key: AUTH_ENABLED
-        value: "true"
-      - key: AUTH_USER_EMAIL
-        value: silviofornaro@gmail.com
-      - key: AUTH_USER_NAME
-        value: silvio fornaro
-      - key: AUTH_USER_PASSWORD_HASH
-        value: pbkdf2_sha256$260000$7c986bc474e411dd6b0f2381629044ac$H7u9e7yi8DsLqYA6GvJVHJtaKd0a291Fq2zjGRivfMM=
       - key: DJANGO_DEBUG
         value: "0"
       - key: DJANGO_SECRET_KEY
