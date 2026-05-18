@@ -88,6 +88,13 @@ select {
     font-weight: 400;
 }
 
+input:disabled,
+select:disabled {
+    background: #eef2f7;
+    color: #64748b;
+    cursor: not-allowed;
+}
+
 button,
 .download {
     display: inline-block;

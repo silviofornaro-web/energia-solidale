@@ -80,7 +80,13 @@ class ConfrontoForm(forms.Form):
     b_rete_consumi = ItalianDecimalField(label="Rete/oneri consumi", decimal_places=4, max_digits=12, initial=0)
     b_vendita_fissa = ItalianDecimalField(label="Vendita fissa mensile", decimal_places=4, max_digits=12, initial=0)
     b_rete_fissa = ItalianDecimalField(label="Rete/oneri fissa mensile", decimal_places=4, max_digits=12, initial=0)
-    b_quota_potenza = ItalianDecimalField(label="Quota potenza", decimal_places=4, max_digits=12, initial=0)
+    b_quota_potenza = ItalianDecimalField(
+        label="Quota potenza",
+        decimal_places=4,
+        max_digits=12,
+        initial=0,
+        required=False,
+    )
     b_sconti = ItalianDecimalField(label="Sconti", decimal_places=4, max_digits=12, initial=0)
     b_ricalcoli = ItalianDecimalField(label="Ricalcoli/Partite pregresse", decimal_places=4, max_digits=12, initial=0)
     b_bonus_sociale = ItalianDecimalField(
@@ -109,6 +115,7 @@ class ConfrontoForm(forms.Form):
         commodity = self._current_value("commodity")
         self.fields["offer_var_choice"].choices = self._offer_choices(provider, segmento, commodity, "VARIABILE")
         self.fields["offer_fix_choice"].choices = self._offer_choices(provider, segmento, commodity, "FISSA")
+        self._apply_commodity_rules(commodity)
 
     def _current_value(self, field_name):
         if self.data and field_name in self.data:
@@ -122,6 +129,14 @@ class ConfrontoForm(forms.Form):
         key = f"{services.normalize_provider(provider)}|{str(segmento).upper()}|{str(commodity).upper()}"
         names = payload.get(key, {}).get(offer_type, [])
         return [("", "Automatica")] + [(name, name) for name in names]
+
+    def _apply_commodity_rules(self, commodity):
+        if str(commodity).upper() != "GAS":
+            return
+        for field_name in ("tax_power_kw", "b_quota_potenza"):
+            self.fields[field_name].disabled = True
+            self.fields[field_name].required = False
+            self.fields[field_name].widget.attrs["disabled"] = "disabled"
 
     def clean(self):
         cleaned = super().clean()
@@ -139,6 +154,9 @@ class ConfrontoForm(forms.Form):
         commodity = cleaned.get("commodity")
         if cleaned.get("tax_annual_consumption") is None:
             self.add_error("tax_annual_consumption", "Indica il consumo annuo stimato.")
+        if commodity == "GAS":
+            cleaned["tax_power_kw"] = 0
+            cleaned["b_quota_potenza"] = 0
         if commodity == "EE" and not cleaned.get("tax_power_kw"):
             self.add_error("tax_power_kw", "Indica la potenza impegnata per il calcolo accise/IVA luce.")
         cleaned["tax_primary_home"] = services.normalize_primary_home(cleaned.get("tax_primary_home"))

@@ -313,6 +313,20 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertEqual(float(form.cleaned_data["b_vendita_consumo"]), 85.52)
         self.assertEqual(float(form.cleaned_data["b_rete_consumi"]), 24.61)
 
+    def test_gas_disables_and_zeros_power_fields(self):
+        form = ConfrontoForm(
+            valid_payload(
+                commodity="GAS",
+                tax_power_kw="9",
+                b_quota_potenza="99",
+            )
+        )
+        self.assertTrue(form.fields["tax_power_kw"].disabled)
+        self.assertTrue(form.fields["b_quota_potenza"].disabled)
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+        self.assertEqual(form.cleaned_data["tax_power_kw"], 0)
+        self.assertEqual(form.cleaned_data["b_quota_potenza"], 0)
+
     def test_end_month_before_start_month_is_rejected(self):
         form = ConfrontoForm(valid_payload(bill_start="2026-03", bill_end="2026-01"))
         self.assertFalse(form.is_valid())

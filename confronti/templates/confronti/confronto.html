@@ -111,15 +111,15 @@
 {{ offer_options|json_script:"offer-options-data" }}
 <script>
 (() => {
-    const dataElement = document.getElementById("offer-options-data");
-    if (!dataElement) return;
-    const offerOptions = JSON.parse(dataElement.textContent);
     const provider = document.getElementById("id_provider");
     const segmento = document.getElementById("id_segmento");
     const commodity = document.getElementById("id_commodity");
     const variable = document.getElementById("id_offer_var_choice");
     const fixed = document.getElementById("id_offer_fix_choice");
-    if (!provider || !segmento || !commodity || !variable || !fixed) return;
+    const taxPowerKw = document.getElementById("id_tax_power_kw");
+    const quotaPotenza = document.getElementById("id_b_quota_potenza");
+    const dataElement = document.getElementById("offer-options-data");
+    const offerOptions = dataElement ? JSON.parse(dataElement.textContent) : {};
 
     const populate = (select, type) => {
         const selected = select.value;
@@ -142,14 +142,35 @@
     };
 
     const refreshOffers = () => {
+        if (!provider || !segmento || !commodity || !variable || !fixed) return;
         populate(variable, "VARIABILE");
         populate(fixed, "FISSA");
     };
 
-    provider.addEventListener("change", refreshOffers);
-    segmento.addEventListener("change", refreshOffers);
-    commodity.addEventListener("change", refreshOffers);
-    refreshOffers();
+    const toggleGasOnlyFields = () => {
+        const isGas = commodity.value === "GAS";
+        [taxPowerKw, quotaPotenza].forEach((field) => {
+            if (!field) return;
+            field.disabled = isGas;
+            if (isGas) {
+                field.value = "0";
+            }
+        });
+    };
+
+    const refreshUiState = () => {
+        toggleGasOnlyFields();
+        refreshOffers();
+    };
+
+    if (provider) provider.addEventListener("change", refreshOffers);
+    if (segmento) segmento.addEventListener("change", refreshOffers);
+    if (commodity) {
+        commodity.addEventListener("change", refreshUiState);
+        commodity.addEventListener("input", refreshUiState);
+    }
+    refreshUiState();
+    window.setTimeout(toggleGasOnlyFields, 0);
 
     const excelDownload = document.querySelector("[data-download-excel]");
     if (excelDownload) {
