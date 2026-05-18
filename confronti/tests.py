@@ -254,6 +254,7 @@ class ConfrontoViewTests(TestCase):
         self.assertIn("Cliente:</strong> Mario Rossi", html)
         self.assertIn("Confronto eseguito:</strong>", html)
         self.assertIn("Tipo tariffa bolletta:</strong> Variabile", html)
+        self.assertIn("Scadenza offerta:</strong>", html)
         self.assertIn("TRIMESTRALE", html)
         self.assertIn('data-download-excel', html)
         self.assertIn("Scarica Excel", html)
@@ -311,6 +312,9 @@ class ConfrontoViewTests(TestCase):
         wb = load_workbook(BytesIO(response.content), data_only=False)
         ws = wb["Confronto"]
         self.assertEqual(ws["A1"].value, "Mario Rossi")
+        self.assertTrue(str(ws["F3"].value).startswith("Scadenza offerta: "))
+        self.assertTrue(ws["F3"].font.bold)
+        self.assertEqual(ws["F3"].font.color.rgb[-6:], "B3261E")
         self.assertEqual(ws["F6"].value, "Tipo tariffa bolletta: Variabile")
         self.assertTrue(str(ws["F7"].value).startswith("Confronto eseguito: "))
         self.assertEqual(ws["F8"].value, "IVA servizi accessori: 22%")

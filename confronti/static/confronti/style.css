@@ -129,6 +129,12 @@ button.secondary {
     margin-bottom: 18px;
 }
 
+.offer-expiry {
+    color: #b3261e;
+    font-weight: 700;
+    margin-bottom: 14px;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;

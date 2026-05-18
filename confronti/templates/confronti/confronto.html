@@ -52,6 +52,10 @@
 
 {% if prepared %}
 <section class="panel result">
+    <div class="offer-expiry">
+        <strong>Scadenza offerta:</strong> {{ prepared.calc.offer_expiry_label }}
+    </div>
+
     <div class="meta">
         <div><strong>Cliente:</strong> {{ prepared.calc.nome_cliente }}</div>
         <div><strong>Confronto eseguito:</strong> {{ prepared.calc.comparison_datetime_label }}</div>

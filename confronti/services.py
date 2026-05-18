@@ -7,6 +7,7 @@ from pathlib import Path
 import openpyxl
 from django.conf import settings
 from django.utils import timezone
+from openpyxl.styles import Font
 
 
 BASE_DIR = Path(settings.BASE_DIR)
@@ -110,6 +111,10 @@ def comparison_datetime_from_data(value=None):
 
 def comparison_datetime_label(value=None) -> str:
     return comparison_datetime_from_data(value).strftime("%d/%m/%Y %H:%M:%S")
+
+
+def date_label_it(value) -> str:
+    return value.strftime("%d/%m/%Y") if isinstance(value, date) else "N.D."
 
 
 def safe_download_filename(name: str) -> str:
@@ -657,6 +662,7 @@ def prepare_comparison(data):
         "offer_file": str(offer_file) if offer_file else "",
         "offer_valid_from": offer_valid_from,
         "offer_valid_to": offer_valid_to,
+        "offer_expiry_label": date_label_it(offer_valid_to),
         "offer_var": offer_var,
         "offer_fix": offer_fix,
         "indice": indice,
@@ -792,14 +798,8 @@ def write_export_metadata(ws, prepared):
     label = calc.get("provider_label", "Illumia")
     ws["F1"] = f"Offerta {label} VARIABILE: {calc['offer_var'] or 'N.D.'}"
     ws["F2"] = f"Offerta {label} FISSA: {calc['offer_fix'] or 'N.D.'}"
-    if calc["offer_valid_from"] and calc["offer_valid_to"]:
-        ws["F3"] = f"Validità offerta: {calc['offer_valid_from']} → {calc['offer_valid_to']}"
-    elif calc["offer_valid_to"]:
-        ws["F3"] = f"Validità offerta: fino a {calc['offer_valid_to']}"
-    elif calc["offer_valid_from"]:
-        ws["F3"] = f"Validità offerta: dal {calc['offer_valid_from']}"
-    else:
-        ws["F3"] = "Validità offerta: N.D."
+    ws["F3"] = f"Scadenza offerta: {calc.get('offer_expiry_label', 'N.D.')}"
+    ws["F3"].font = Font(bold=True, color="B3261E")
     ws["F4"] = f"File tariffe: {calc['offer_file']}"
     indice = calc["indice"] or {}
     ws["F5"] = f"Indice PUN/PSV: {indice.get('mese', 'N.D.')} ({INDICI_XLSX.name})"
