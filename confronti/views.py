@@ -21,6 +21,7 @@ def confronto(request):
                     "commodity": request.POST.get("commodity") or "",
                     "bill_tariff_type": request.POST.get("bill_tariff_type") or "",
                     "provider": request.POST.get("provider") or "",
+                    "servizi_accessori_iva": "22%",
                     "offer_var_choice": request.POST.get("offer_var_choice") or "",
                     "offer_fix_choice": request.POST.get("offer_fix_choice") or "",
                 }

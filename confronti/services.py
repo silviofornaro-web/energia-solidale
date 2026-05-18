@@ -1,5 +1,6 @@
 import io
 import re
+from copy import copy
 from datetime import date, datetime
 from pathlib import Path
 
@@ -22,6 +23,12 @@ BILL_TARIFF_TYPE_LABELS = {
     "VARIABILE": "Variabile",
     "FISSA": "Fissa",
 }
+ACCESSORY_SERVICES_VAT_RATES = {
+    "22%": 0.22,
+    "10%": 0.10,
+    "Esente": 0.0,
+}
+ACCESSORY_SERVICES_VAT_OPTIONS = tuple(ACCESSORY_SERVICES_VAT_RATES)
 
 KEYS = [
     "vendita_consumo",
@@ -33,6 +40,7 @@ KEYS = [
     "ricalcoli",
     "bonus_sociale",
     "arrotondamenti",
+    "servizi_accessori",
     "accise_iva",
 ]
 
@@ -74,6 +82,15 @@ def normalize_bill_tariff_type(value) -> str:
 
 def bill_tariff_type_label(value) -> str:
     return BILL_TARIFF_TYPE_LABELS.get(normalize_bill_tariff_type(value), "Variabile")
+
+
+def normalize_accessory_services_vat_label(value) -> str:
+    label = clean_text(value) or "22%"
+    return label if label in ACCESSORY_SERVICES_VAT_RATES else "22%"
+
+
+def accessory_services_vat_rate(value) -> float:
+    return float(ACCESSORY_SERVICES_VAT_RATES[normalize_accessory_services_vat_label(value)])
 
 
 def comparison_datetime_from_data(value=None):
@@ -474,6 +491,7 @@ def comparison_subtotal(vals, commodity):
         + float(vals["ricalcoli"])
         + float(vals.get("bonus_sociale", 0.0))
         + float(vals["arrotondamenti"])
+        + float(vals.get("servizi_accessori", 0.0))
     )
     if commodity == "EE":
         subtotal += float(vals["quota_potenza"])
@@ -498,6 +516,7 @@ def comparison_value(vals, key, commodity):
 
 def build_comparison_table_rows(values):
     comm = values["commodity"]
+    servizi_accessori_label = f"Servizi accessori (IVA {values['servizi_accessori_iva_label']})"
     rows_config = [
         ("vendita_consumo", "Vendita Consumo"),
         ("rete_consumi", "Rete e oneri di sistema Consumi"),
@@ -509,6 +528,7 @@ def build_comparison_table_rows(values):
         ("ricalcoli", "Ricalcoli/Partite pregresse"),
         ("bonus_sociale", "Bonus Sociale"),
         ("arrotondamenti", "Arrotondamenti"),
+        ("servizi_accessori", servizi_accessori_label),
         ("accise_iva", "Accise e Iva"),
         ("totale", "Totale"),
     ]
@@ -530,6 +550,8 @@ def build_comparison_table_rows(values):
 def build_comparison_values(data, calc):
     comm = data["commodity"]
     months = calc["billing_months"]
+    accessory_vat_label = normalize_accessory_services_vat_label(data.get("servizi_accessori_iva"))
+    accessory_vat_rate = accessory_services_vat_rate(accessory_vat_label)
     b_vals = {k: float(data.get(f"b_{k}", 0.0)) for k in KEYS}
     b_vals["bonus_sociale"] = -abs(float(b_vals.get("bonus_sociale", 0.0)))
     b_vals["vendita_fissa"] *= months
@@ -549,14 +571,26 @@ def build_comparison_values(data, calc):
     d_vals["arrotondamenti"] = 0.0
 
     base_subtotal = comparison_subtotal(b_vals, comm)
-    tax_rate = float(b_vals["accise_iva"]) / base_subtotal if base_subtotal else 0.0
-    c_vals["accise_iva"] = tax_rate * comparison_subtotal(c_vals, comm)
-    d_vals["accise_iva"] = tax_rate * comparison_subtotal(d_vals, comm)
+    accessory_services = float(b_vals.get("servizi_accessori", 0.0))
+    accessory_vat = accessory_services * accessory_vat_rate
+    taxable_base = base_subtotal - accessory_services
+    energy_tax = float(b_vals["accise_iva"]) - accessory_vat
+    tax_rate = energy_tax / taxable_base if taxable_base else 0.0
+
+    def comparable_accise_iva(vals):
+        comparable_accessory = float(vals.get("servizi_accessori", 0.0))
+        comparable_base = comparison_subtotal(vals, comm) - comparable_accessory
+        return (tax_rate * comparable_base) + (comparable_accessory * accessory_vat_rate)
+
+    c_vals["accise_iva"] = comparable_accise_iva(c_vals)
+    d_vals["accise_iva"] = comparable_accise_iva(d_vals)
     return {
         "commodity": comm,
         "bolletta": b_vals,
         "variabile": c_vals,
         "fissa": d_vals,
+        "servizi_accessori_iva_label": accessory_vat_label,
+        "servizi_accessori_iva_rate": accessory_vat_rate,
         "has_offer_var": bool(calc["offer_var"]),
         "has_offer_fix": bool(calc["offer_fix"]),
     }
@@ -633,6 +667,7 @@ def prepare_comparison(data):
         "f_fix": f_fix,
         "sconto_var": sconto_var,
         "sconto_fix": sconto_fix,
+        "servizi_accessori_iva_label": normalize_accessory_services_vat_label(data.get("servizi_accessori_iva")),
     }
     values = build_comparison_values(data, calc)
     return {"calc": calc, "values": values, "rows": build_comparison_table_rows(values)}
@@ -664,6 +699,8 @@ def find_row_map(ws):
             rm["bonus_sociale"] = r
         elif "arrotondamenti" in t:
             rm["arrotondamenti"] = r
+        elif "servizi" in t and "access" in t:
+            rm["servizi_accessori"] = r
         elif "accise" in t or "iva" in t:
             rm["accise_iva"] = r
         elif t == "totale":
@@ -673,6 +710,38 @@ def find_row_map(ws):
         if candidate > 0:
             rm["arrotondamenti"] = candidate
     return rm
+
+
+def copy_row_format(ws, source_row: int, target_row: int):
+    ws.row_dimensions[target_row].height = ws.row_dimensions[source_row].height
+    for col in range(1, ws.max_column + 1):
+        source = ws.cell(row=source_row, column=col)
+        target = ws.cell(row=target_row, column=col)
+        if source.has_style:
+            target._style = copy(source._style)
+        target.number_format = source.number_format
+        target.font = copy(source.font)
+        target.fill = copy(source.fill)
+        target.border = copy(source.border)
+        target.alignment = copy(source.alignment)
+        target.protection = copy(source.protection)
+
+
+def ensure_export_rows(ws):
+    rm = find_row_map(ws)
+    missing_count = 0
+    if "arrotondamenti" not in rm:
+        missing_count += 1
+    if "servizi_accessori" not in rm:
+        missing_count += 1
+    if missing_count == 0:
+        return
+
+    insert_at = rm.get("accise_iva", rm.get("totale", ws.max_row))
+    ws.insert_rows(insert_at, amount=missing_count)
+    source_row = insert_at + missing_count
+    for row in range(insert_at, insert_at + missing_count):
+        copy_row_format(ws, source_row, row)
 
 
 def validate_row_map(rm):
@@ -686,6 +755,8 @@ def validate_row_map(rm):
         "sconti",
         "ricalcoli",
         "bonus_sociale",
+        "arrotondamenti",
+        "servizi_accessori",
         "accise_iva",
         "totale",
     ]
@@ -694,7 +765,7 @@ def validate_row_map(rm):
         raise ValueError("Template Excel incompleto: mancano le righe " + ", ".join(missing))
 
 
-def apply_export_labels(ws, nome_cliente: str):
+def apply_export_labels(ws, nome_cliente: str, servizi_accessori_iva_label: str = "22%"):
     labels = {
         1: nome_cliente or "Cliente",
         3: "VOCE",
@@ -707,8 +778,10 @@ def apply_export_labels(ws, nome_cliente: str):
         10: "Sconti",
         11: "Ricalcoli/Partite pregresse",
         12: "Bonus Sociale",
-        13: "Accise e Iva",
-        14: "Totale",
+        13: "Arrotondamenti",
+        14: f"Servizi accessori (IVA {servizi_accessori_iva_label})",
+        15: "Accise e Iva",
+        16: "Totale",
     }
     for row, value in labels.items():
         ws[f"A{row}"] = value
@@ -732,13 +805,28 @@ def write_export_metadata(ws, prepared):
     ws["F5"] = f"Indice PUN/PSV: {indice.get('mese', 'N.D.')} ({INDICI_XLSX.name})"
     ws["F6"] = f"Tipo tariffa bolletta: {calc.get('bill_tariff_type_label', 'Variabile')}"
     ws["F7"] = f"Confronto eseguito: {calc.get('comparison_datetime_label', '')}"
+    ws["F8"] = f"IVA servizi accessori: {calc.get('servizi_accessori_iva_label', '22%')}"
 
 
-def apply_accise_formula_conforme(ws, rm, col_letter):
+def _excel_decimal(value: float) -> str:
+    text = f"{float(value):.6f}".rstrip("0").rstrip(".")
+    return text or "0"
+
+
+def apply_accise_formula_conforme(ws, rm, col_letter, servizi_accessori_iva_rate=0.0):
     acc = rm["accise_iva"]
     start = rm["vendita_consumo"]
     end = acc - 1
-    ws[f"{col_letter}{acc}"] = f"=SUM({col_letter}{start}:{col_letter}{end})*B{acc}/SUM(B{start}:B{end})"
+    if "servizi_accessori" in rm:
+        svc = rm["servizi_accessori"]
+        rate = _excel_decimal(servizi_accessori_iva_rate)
+        ws[f"{col_letter}{acc}"] = (
+            f"=IFERROR((SUM({col_letter}{start}:{col_letter}{end})-{col_letter}{svc})"
+            f"*(B{acc}-B{svc}*{rate})/(SUM(B{start}:B{end})-B{svc})"
+            f"+{col_letter}{svc}*{rate},0)"
+        )
+    else:
+        ws[f"{col_letter}{acc}"] = f"=SUM({col_letter}{start}:{col_letter}{end})*B{acc}/SUM(B{start}:B{end})"
 
 
 def apply_total_formula(ws, rm, col_letter):
@@ -766,6 +854,8 @@ def write_column(ws, rm, col, vals, commodity):
         ws[f"{col}{rm['bonus_sociale']}"] = float(vals.get("bonus_sociale", 0.0))
     if "arrotondamenti" in rm:
         ws[f"{col}{rm['arrotondamenti']}"] = float(vals["arrotondamenti"])
+    if "servizi_accessori" in rm:
+        ws[f"{col}{rm['servizi_accessori']}"] = float(vals.get("servizi_accessori", 0.0))
 
 
 def fill_column_text(ws, rm, col, text):
@@ -779,7 +869,10 @@ def build_excel_bytes(data, prepared=None):
     prepared = prepared or prepare_comparison(data)
     wb = openpyxl.load_workbook(TEMPLATE_XLSX)
     ws = wb["Confronto"]
-    apply_export_labels(ws, data.get("nome_cliente", "Cliente"))
+    ensure_export_rows(ws)
+    servizi_accessori_iva_label = normalize_accessory_services_vat_label(data.get("servizi_accessori_iva"))
+    servizi_accessori_iva_rate = accessory_services_vat_rate(servizi_accessori_iva_label)
+    apply_export_labels(ws, data.get("nome_cliente", "Cliente"), servizi_accessori_iva_label)
     rm = find_row_map(ws)
     validate_row_map(rm)
     ws["B1"] = None
@@ -801,13 +894,13 @@ def build_excel_bytes(data, prepared=None):
     apply_total_formula(ws, rm, "B")
     if values["has_offer_var"]:
         write_column(ws, rm, "C", c_vals, comm)
-        apply_accise_formula_conforme(ws, rm, "C")
+        apply_accise_formula_conforme(ws, rm, "C", servizi_accessori_iva_rate)
         apply_total_formula(ws, rm, "C")
     else:
         fill_column_text(ws, rm, "C", "N.D.")
     if values["has_offer_fix"]:
         write_column(ws, rm, "D", d_vals, comm)
-        apply_accise_formula_conforme(ws, rm, "D")
+        apply_accise_formula_conforme(ws, rm, "D", servizi_accessori_iva_rate)
         apply_total_formula(ws, rm, "D")
     else:
         fill_column_text(ws, rm, "D", "N.D.")

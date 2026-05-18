@@ -22,6 +22,11 @@ class ConfrontoForm(forms.Form):
     commodity = forms.ChoiceField(label="Fornitura", choices=COMMODITY_CHOICES)
     bill_tariff_type = forms.ChoiceField(label="Tipo tariffa bolletta", choices=BILL_TARIFF_TYPE_CHOICES)
     provider = forms.ChoiceField(label="Fornitore confronto", choices=PROVIDER_CHOICES)
+    servizi_accessori_iva = forms.ChoiceField(
+        label="IVA servizi accessori",
+        choices=[(label, label) for label in services.ACCESSORY_SERVICES_VAT_OPTIONS],
+        initial="22%",
+    )
     offer_var_choice = forms.ChoiceField(label="Offerta variabile", required=False)
     offer_fix_choice = forms.ChoiceField(label="Offerta fissa", required=False)
     bill_start = forms.DateField(
@@ -52,6 +57,14 @@ class ConfrontoForm(forms.Form):
         help_text="Inserire l'importo come valore negativo.",
     )
     b_arrotondamenti = forms.DecimalField(label="Arrotondamenti", decimal_places=4, max_digits=12, initial=0)
+    b_servizi_accessori = forms.DecimalField(
+        label="Servizi accessori (imponibile)",
+        min_value=0,
+        decimal_places=4,
+        max_digits=12,
+        initial=0,
+        required=False,
+    )
     b_accise_iva = forms.DecimalField(label="Accise + IVA", decimal_places=4, max_digits=12, initial=0)
 
     def __init__(self, *args, **kwargs):
@@ -90,6 +103,10 @@ class ConfrontoForm(forms.Form):
             raise forms.ValidationError("Il mese finale non può essere precedente al mese iniziale.")
         bonus = cleaned.get("b_bonus_sociale")
         cleaned["b_bonus_sociale"] = -abs(bonus) if bonus else 0
+        cleaned["b_servizi_accessori"] = cleaned.get("b_servizi_accessori") or 0
+        cleaned["servizi_accessori_iva"] = services.normalize_accessory_services_vat_label(
+            cleaned.get("servizi_accessori_iva")
+        )
         return cleaned
 
     def service_data(self):
@@ -117,6 +134,7 @@ def session_to_service_data(raw):
         data[key] = services.parse_number(data.get(key))
     data["provider"] = services.normalize_provider(data.get("provider", "ILLUMIA"))
     data["bill_tariff_type"] = services.normalize_bill_tariff_type(data.get("bill_tariff_type"))
+    data["servizi_accessori_iva"] = services.normalize_accessory_services_vat_label(data.get("servizi_accessori_iva"))
     data["comparison_datetime"] = data.get("comparison_datetime")
     data["offer_var_choice"] = data.get("offer_var_choice", "")
     data["offer_fix_choice"] = data.get("offer_fix_choice", "")

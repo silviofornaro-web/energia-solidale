@@ -17,6 +17,7 @@ def valid_payload(**overrides):
         "commodity": "EE",
         "bill_tariff_type": "VARIABILE",
         "provider": "ILLUMIA",
+        "servizi_accessori_iva": "22%",
         "offer_var_choice": "",
         "offer_fix_choice": "",
         "bill_start": "2026-01",
@@ -31,6 +32,7 @@ def valid_payload(**overrides):
         "b_ricalcoli": "0",
         "b_bonus_sociale": "21.60",
         "b_arrotondamenti": "0",
+        "b_servizi_accessori": "0",
         "b_accise_iva": "12.12",
         "action": "calculate",
     }
@@ -79,7 +81,9 @@ class ServiceUtilityTests(SimpleTestCase):
             "b_ricalcoli": 0,
             "b_bonus_sociale": 21.6,
             "b_arrotondamenti": 0,
+            "b_servizi_accessori": 0,
             "b_accise_iva": 12,
+            "servizi_accessori_iva": "22%",
             "ill_sconto_var": -3,
             "ill_sconto_fix": -3,
         }
@@ -99,6 +103,42 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertEqual(values["variabile"]["bonus_sociale"], -21.6)
         self.assertEqual(values["fissa"]["bonus_sociale"], -21.6)
         self.assertAlmostEqual(values["fissa"]["accise_iva"], 12 / 71.4 * 46.4, places=6)
+
+    def test_accessory_services_are_copied_and_taxed_with_selected_vat_rate(self):
+        data = {
+            "commodity": "EE",
+            "b_vendita_consumo": 40,
+            "b_vendita_fissa": 10,
+            "b_rete_consumi": 8,
+            "b_rete_fissa": 1,
+            "b_quota_potenza": 12,
+            "b_sconti": 0,
+            "b_ricalcoli": 0,
+            "b_bonus_sociale": 21.6,
+            "b_arrotondamenti": 0,
+            "b_servizi_accessori": 5,
+            "b_accise_iva": 12,
+            "servizi_accessori_iva": "10%",
+            "ill_sconto_var": -3,
+            "ill_sconto_fix": -3,
+        }
+        calc = {
+            "billing_months": 3,
+            "v_cons": 35,
+            "v_fix": 15,
+            "f_cons": 30,
+            "f_fix": 18,
+            "offer_var": "Variabile",
+            "offer_fix": "Fissa",
+        }
+        values = services.build_comparison_values(data, calc)
+        self.assertEqual(values["bolletta"]["servizi_accessori"], 5)
+        self.assertEqual(values["variabile"]["servizi_accessori"], 5)
+        self.assertEqual(values["fissa"]["servizi_accessori"], 5)
+        self.assertEqual(values["servizi_accessori_iva_label"], "10%")
+        self.assertAlmostEqual(values["fissa"]["accise_iva"], ((12 - 0.5) / 71.4 * 46.4) + 0.5, places=6)
+        rows = services.build_comparison_table_rows(values)
+        self.assertIn("Servizi accessori (IVA 10%)", [row["voce"] for row in rows])
 
     def test_table_marks_missing_illumia_offers_as_nd(self):
         data = service_data()
@@ -273,15 +313,27 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(ws["A1"].value, "Mario Rossi")
         self.assertEqual(ws["F6"].value, "Tipo tariffa bolletta: Variabile")
         self.assertTrue(str(ws["F7"].value).startswith("Confronto eseguito: "))
+        self.assertEqual(ws["F8"].value, "IVA servizi accessori: 22%")
         self.assertEqual(ws["A12"].value, "Bonus Sociale")
+        self.assertEqual(ws["A13"].value, "Arrotondamenti")
+        self.assertEqual(ws["A14"].value, "Servizi accessori (IVA 22%)")
+        self.assertEqual(ws["A15"].value, "Accise e Iva")
+        self.assertEqual(ws["A16"].value, "Totale")
         self.assertEqual(ws["B12"].value, -21.6)
         self.assertEqual(ws["C12"].value, -21.6)
         self.assertEqual(ws["D12"].value, -21.6)
+        self.assertEqual(ws["B14"].value, 0)
         self.assertAlmostEqual(ws["B6"].value, 11.1, places=4)
         self.assertAlmostEqual(ws["B8"].value, 1.1901, places=4)
-        self.assertEqual(ws["C13"].value, "=SUM(C4:C12)*B13/SUM(B4:B12)")
-        self.assertEqual(ws["D13"].value, "=SUM(D4:D12)*B13/SUM(B4:B12)")
-        self.assertEqual(ws["B14"].value, "=SUM(B4:B12)+B13")
+        self.assertEqual(
+            ws["C15"].value,
+            "=IFERROR((SUM(C4:C14)-C14)*(B15-B14*0.22)/(SUM(B4:B14)-B14)+C14*0.22,0)",
+        )
+        self.assertEqual(
+            ws["D15"].value,
+            "=IFERROR((SUM(D4:D14)-D14)*(B15-B14*0.22)/(SUM(B4:B14)-B14)+D14*0.22,0)",
+        )
+        self.assertEqual(ws["B16"].value, "=SUM(B4:B14)+B15")
 
     @patch("confronti.services.load_tariffe_file_for_segment", return_value=None)
     def test_missing_illumia_offer_keeps_bill_and_marks_offers_nd(self, _mock_load_file):
