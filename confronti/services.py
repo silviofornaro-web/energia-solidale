@@ -823,6 +823,7 @@ def build_offer_column_values(data, calc, base_values, provider_result, offer_ty
         offer_name = provider_result["offer_fix"]
     vals["ricalcoli"] = 0.0
     vals["arrotondamenti"] = 0.0
+    vals["servizi_accessori"] = 0.0
     vals["accise_iva"] = calculate_accise_iva(data, calc, vals, comm)
     type_label = "Variabile" if offer_type == "VARIABILE" else "Fissa"
     return {

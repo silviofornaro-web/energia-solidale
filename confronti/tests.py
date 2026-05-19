@@ -142,7 +142,7 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertEqual(values["fissa"]["bonus_sociale"], -21.6)
         self.assertAlmostEqual(values["fissa"]["accise_iva"], 6.8, places=6)
 
-    def test_accessory_services_are_copied_and_taxed_with_selected_vat_rate(self):
+    def test_accessory_services_stay_only_on_bill_column(self):
         data = {
             "commodity": "EE",
             "segmento": "RESIDENZIALE",
@@ -177,12 +177,13 @@ class ServiceUtilityTests(SimpleTestCase):
         }
         values = services.build_comparison_values(data, calc)
         self.assertEqual(values["bolletta"]["servizi_accessori"], 5)
-        self.assertEqual(values["variabile"]["servizi_accessori"], 5)
-        self.assertEqual(values["fissa"]["servizi_accessori"], 5)
+        self.assertEqual(values["variabile"]["servizi_accessori"], 0)
+        self.assertEqual(values["fissa"]["servizi_accessori"], 0)
         self.assertEqual(values["servizi_accessori_iva_label"], "10%")
-        self.assertAlmostEqual(values["fissa"]["accise_iva"], 7.3, places=6)
+        self.assertAlmostEqual(values["fissa"]["accise_iva"], 6.8, places=6)
         rows = services.build_comparison_table_rows(values)
-        self.assertIn("Servizi accessori (IVA 10%)", [row["voce"] for row in rows])
+        servizi_row = next(row for row in rows if row["voce"] == "Servizi accessori (IVA 10%)")
+        self.assertEqual(servizi_row["cells"], ["€ 5,00", "€ 0,00", "€ 0,00"])
 
     def test_gas_annual_consumption_changes_accise_iva(self):
         data = {
@@ -450,7 +451,7 @@ class ConfrontoViewTests(TestCase):
 
     def test_excel_download_contains_expected_labels_values_and_formulas(self):
         self.login()
-        self.client.post("/", valid_payload())
+        self.client.post("/", valid_payload(b_servizi_accessori="5", servizi_accessori_iva="10%"))
         response = self.client.get("/scarica-excel/")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -468,19 +469,21 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(ws["F3"].font.color.rgb[-6:], "B3261E")
         self.assertEqual(ws["F6"].value, "Tipo tariffa bolletta: Variabile")
         self.assertTrue(str(ws["F7"].value).startswith("Confronto eseguito: "))
-        self.assertEqual(ws["F8"].value, "IVA servizi accessori: 22%")
+        self.assertEqual(ws["F8"].value, "IVA servizi accessori: 10%")
         self.assertEqual(ws["F9"].value, "Consumo annuo stimato: 1200 kWh/anno")
         self.assertTrue(str(ws["F10"].value).startswith("Parametri Accise/IVA: "))
         self.assertIsNone(ws["F11"].value)
         self.assertEqual(ws["A12"].value, "Bonus Sociale")
         self.assertEqual(ws["A13"].value, "Arrotondamenti")
-        self.assertEqual(ws["A14"].value, "Servizi accessori (IVA 22%)")
+        self.assertEqual(ws["A14"].value, "Servizi accessori (IVA 10%)")
         self.assertEqual(ws["A15"].value, "Accise e Iva")
         self.assertEqual(ws["A16"].value, "Totale")
         self.assertEqual(ws["B12"].value, -21.6)
         self.assertEqual(ws["C12"].value, -21.6)
         self.assertEqual(ws["D12"].value, -21.6)
-        self.assertEqual(ws["B14"].value, 0)
+        self.assertEqual(ws["B14"].value, 5)
+        self.assertEqual(ws["C14"].value, 0)
+        self.assertEqual(ws["D14"].value, 0)
         self.assertAlmostEqual(ws["B6"].value, 11.1, places=4)
         self.assertAlmostEqual(ws["B8"].value, 1.1901, places=4)
         self.assertIsInstance(ws["C15"].value, (int, float))
