@@ -887,6 +887,7 @@ def build_comparison_values(data, calc):
 def prepare_comparison(data):
     bill_start = data["bill_start"]
     bill_end = data["bill_end"]
+    bill_offer_expiry = data.get("bill_offer_expiry")
     segmento = data["segmento"]
     commodity = data["commodity"]
     providers = normalize_providers(data.get("providers") or data.get("provider", "ILLUMIA"))
@@ -923,6 +924,8 @@ def prepare_comparison(data):
         "billing_divisor": billing_divisor,
         "billing_label": billing_label_from_months(billing_months),
         "period_label": bill_period_label(bill_start, bill_end),
+        "bill_offer_expiry": bill_offer_expiry,
+        "bill_offer_expiry_label": date_label_it(bill_offer_expiry),
         "indice": indice,
         "indice_reason": indice_reason,
         "pun": pun,
@@ -937,9 +940,7 @@ def prepare_comparison(data):
             "offer_file": primary.get("offer_file", ""),
             "offer_valid_from": primary.get("offer_valid_from"),
             "offer_valid_to": primary.get("offer_valid_to"),
-            "offer_expiry_label": " | ".join(
-                f"{result['provider_label']}: {result['offer_expiry_label']}" for result in provider_results
-            ),
+            "offer_expiry_label": calc["bill_offer_expiry_label"],
             "offer_period_warning": " ".join(
                 f"{result['provider_label']}: {result['offer_period_warning']}"
                 for result in provider_results
@@ -1081,12 +1082,12 @@ def write_export_metadata(ws, prepared, start_col="F"):
     for result in calc.get("provider_results", []):
         provider_lines.append(
             f"{result['provider_label']}: variabile {result['offer_var'] or 'N.D.'}; "
-            f"fissa {result['offer_fix'] or 'N.D.'}; scadenza {result.get('offer_expiry_label', 'N.D.')}"
+            f"fissa {result['offer_fix'] or 'N.D.'}"
         )
         file_lines.append(f"{result['provider_label']}: {result.get('offer_file') or 'N.D.'}")
     ws[f"{start_col}1"] = f"Fornitori confronto: {calc.get('providers_label', calc.get('provider_label', 'Illumia'))}"
     ws[f"{start_col}2"] = " | ".join(provider_lines) if provider_lines else "Offerte: N.D."
-    ws[f"{start_col}3"] = f"Scadenza offerta: {calc.get('offer_expiry_label', 'N.D.')}"
+    ws[f"{start_col}3"] = f"Scadenza offerta bolletta: {calc.get('bill_offer_expiry_label', 'N.D.')}"
     ws[f"{start_col}3"].font = Font(bold=True, color="B3261E")
     ws[f"{start_col}4"] = f"File tariffe: {' | '.join(file_lines) if file_lines else 'N.D.'}"
     indice = calc["indice"] or {}

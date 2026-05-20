@@ -112,6 +112,11 @@ class ConfrontoForm(forms.Form):
         initial=0,
         required=False,
     )
+    bill_offer_expiry = forms.DateField(
+        label="Data fine offerta bolletta",
+        input_formats=["%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"],
+        widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+    )
     b_accise_iva = ItalianDecimalField(label="Accise + IVA", decimal_places=4, max_digits=12, initial=0)
 
     def __init__(self, *args, **kwargs):
@@ -202,6 +207,7 @@ def session_to_service_data(raw):
     data = dict(raw)
     data["bill_start"] = services.parse_date_any(data.get("bill_start"))
     data["bill_end"] = services.parse_date_any(data.get("bill_end"))
+    data["bill_offer_expiry"] = services.parse_date_any(data.get("bill_offer_expiry"))
     for key in [
         "consumo",
         "tax_power_kw",

@@ -64,6 +64,7 @@
         <label>{{ form.b_arrotondamenti.label }}{{ form.b_arrotondamenti }}{{ form.b_arrotondamenti.errors }}</label>
         <label>{{ form.b_servizi_accessori.label }}{{ form.b_servizi_accessori }}{{ form.b_servizi_accessori.errors }}</label>
         <label>{{ form.servizi_accessori_iva.label }}{{ form.servizi_accessori_iva }}{{ form.servizi_accessori_iva.errors }}</label>
+        <label>{{ form.bill_offer_expiry.label }}{{ form.bill_offer_expiry }}{{ form.bill_offer_expiry.errors }}</label>
         <label>{{ form.b_accise_iva.label }}{{ form.b_accise_iva }}{{ form.b_accise_iva.errors }}</label>
     </div>
 
@@ -76,7 +77,7 @@
 {% if prepared %}
 <section class="panel result">
     <div class="offer-expiry">
-        <strong>Scadenza offerta:</strong> {{ prepared.calc.offer_expiry_label }}
+        <strong>Scadenza offerta bolletta:</strong> {{ prepared.calc.bill_offer_expiry_label }}
     </div>
 
     <div class="meta">

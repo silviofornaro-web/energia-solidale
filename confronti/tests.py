@@ -42,6 +42,7 @@ def valid_payload(**overrides):
         "b_bonus_sociale": "21.60",
         "b_arrotondamenti": "0",
         "b_servizi_accessori": "0",
+        "bill_offer_expiry": "2026-12-31",
         "b_accise_iva": "12.12",
         "action": "calculate",
     }
@@ -258,6 +259,9 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertEqual(prepared["calc"]["offer_var"], "E.ON Flex Gas")
         self.assertEqual(prepared["calc"]["offer_fix"], "E.ON Gas Tua")
         self.assertEqual(prepared["calc"]["offer_valid_to"], date(2026, 5, 21))
+        self.assertEqual(prepared["calc"]["bill_offer_expiry"], date(2026, 12, 31))
+        self.assertEqual(prepared["calc"]["bill_offer_expiry_label"], "31/12/2026")
+        self.assertEqual(prepared["calc"]["offer_expiry_label"], "31/12/2026")
         self.assertEqual(prepared["values"]["variabile"]["sconti"], -10)
         self.assertEqual(prepared["values"]["fissa"]["sconti"], -10)
         self.assertAlmostEqual(prepared["values"]["fissa"]["vendita_consumo"], 54.8, places=4)
@@ -273,6 +277,7 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertEqual(form.fields["providers"].choices[0], ("ILLUMIA", "Illumia"))
         self.assertIsNone(form.fields["bill_start"].initial)
         self.assertIsNone(form.fields["bill_end"].initial)
+        self.assertIsNone(form.fields["bill_offer_expiry"].initial)
         self.assertIsNone(form.fields["tax_annual_consumption"].initial)
 
         invalid = ConfrontoForm(
@@ -285,6 +290,7 @@ class ConfrontoFormTests(SimpleTestCase):
                 tax_annual_consumption="",
                 bill_start="",
                 bill_end="",
+                bill_offer_expiry="",
             )
         )
         self.assertFalse(invalid.is_valid())
@@ -296,6 +302,7 @@ class ConfrontoFormTests(SimpleTestCase):
             "providers",
             "bill_start",
             "bill_end",
+            "bill_offer_expiry",
             "tax_annual_consumption",
         ]:
             self.assertIn(field, invalid.errors)
@@ -305,6 +312,7 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertTrue(form.is_valid(), form.errors.as_data())
         self.assertEqual(form.cleaned_data["bill_start"], date(2026, 1, 1))
         self.assertEqual(form.cleaned_data["bill_end"], date(2026, 3, 31))
+        self.assertEqual(form.cleaned_data["bill_offer_expiry"], date(2026, 12, 31))
         self.assertEqual(float(form.cleaned_data["b_bonus_sociale"]), -21.6)
 
     def test_bonus_sociale_is_optional(self):
@@ -363,6 +371,7 @@ class ConfrontoViewTests(TestCase):
         self.login()
         response = self.client.get("/")
         self.assertContains(response, 'type="month"')
+        self.assertContains(response, 'type="date"')
         self.assertContains(response, "Cambia bolletta")
         self.assertContains(response, "Fornitori confronto")
 
@@ -384,7 +393,7 @@ class ConfrontoViewTests(TestCase):
         self.assertIn("Confronto eseguito:</strong>", html)
         self.assertIn("Tipo tariffa bolletta:</strong> Variabile", html)
         self.assertIn("Consumo annuo stimato:</strong> 1200 kWh/anno", html)
-        self.assertIn("Scadenza offerta:</strong>", html)
+        self.assertIn("Scadenza offerta bolletta:</strong> 31/12/2026", html)
         self.assertNotIn("periodo bolletta NON rientra", html)
         self.assertIn("TRIMESTRALE", html)
         self.assertIn('data-download-excel', html)
@@ -392,6 +401,7 @@ class ConfrontoViewTests(TestCase):
         self.assertIn("last_confronto", self.client.session)
         self.assertEqual(self.client.session["last_confronto"]["bill_start"], "2026-01-01")
         self.assertEqual(self.client.session["last_confronto"]["bill_end"], "2026-03-31")
+        self.assertEqual(self.client.session["last_confronto"]["bill_offer_expiry"], "2026-12-31")
 
     def test_calculate_can_compare_selected_eon_offer(self):
         self.login()
@@ -464,9 +474,10 @@ class ConfrontoViewTests(TestCase):
         wb = load_workbook(BytesIO(response.content), data_only=False)
         ws = wb["Confronto"]
         self.assertEqual(ws["A1"].value, "Mario Rossi")
-        self.assertTrue(str(ws["F3"].value).startswith("Scadenza offerta: "))
+        self.assertEqual(ws["F3"].value, "Scadenza offerta bolletta: 31/12/2026")
         self.assertTrue(ws["F3"].font.bold)
         self.assertEqual(ws["F3"].font.color.rgb[-6:], "B3261E")
+        self.assertNotIn("scadenza", ws["F2"].value.lower())
         self.assertEqual(ws["F6"].value, "Tipo tariffa bolletta: Variabile")
         self.assertTrue(str(ws["F7"].value).startswith("Confronto eseguito: "))
         self.assertEqual(ws["F8"].value, "IVA servizi accessori: 10%")
