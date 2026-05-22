@@ -24,6 +24,10 @@ class ConfrontoForm(forms.Form):
     COMMODITIES = [("GAS", "Gas"), ("EE", "Luce")]
     PROVIDERS = [("ILLUMIA", "Illumia"), ("EON", "E.ON")]
     BILL_TARIFF_TYPES = [("VARIABILE", "Variabile"), ("FISSA", "Fissa")]
+    TARIFF_SELECTION_MODES = [
+        ("LATEST", "Ultime tariffe disponibili"),
+        ("PERIOD", "Tariffe del periodo bolletta"),
+    ]
     PRIMARY_HOME_CHOICES = [("SI", "Sì"), ("NO", "No")]
     SEGMENT_CHOICES = [("", "Seleziona segmento")] + SEGMENTI
     COMMODITY_CHOICES = [("", "Seleziona fornitura")] + COMMODITIES
@@ -36,6 +40,11 @@ class ConfrontoForm(forms.Form):
     segmento = forms.ChoiceField(label="Segmento", choices=SEGMENT_CHOICES)
     commodity = forms.ChoiceField(label="Fornitura", choices=COMMODITY_CHOICES)
     bill_tariff_type = forms.ChoiceField(label="Tipo tariffa bolletta", choices=BILL_TARIFF_TYPE_CHOICES)
+    tariff_selection_mode = forms.ChoiceField(
+        label="Logica tariffe confronto",
+        choices=TARIFF_SELECTION_MODES,
+        widget=forms.RadioSelect,
+    )
     providers = forms.MultipleChoiceField(
         label="Fornitori confronto",
         choices=PROVIDER_CHOICES,
@@ -167,6 +176,9 @@ class ConfrontoForm(forms.Form):
         providers = [services.normalize_provider(provider) for provider in cleaned.get("providers", [])]
         cleaned["providers"] = providers
         cleaned["provider"] = providers[0] if providers else ""
+        cleaned["tariff_selection_mode"] = services.normalize_tariff_selection_mode(
+            cleaned.get("tariff_selection_mode")
+        )
         if cleaned.get("tax_annual_consumption") is None:
             self.add_error("tax_annual_consumption", "Indica il consumo annuo stimato.")
         if commodity == "GAS":
@@ -217,6 +229,7 @@ def session_to_service_data(raw):
     data["providers"] = services.normalize_providers(data.get("providers") or data.get("provider", "ILLUMIA"))
     data["provider"] = data["providers"][0] if data["providers"] else "ILLUMIA"
     data["bill_tariff_type"] = services.normalize_bill_tariff_type(data.get("bill_tariff_type"))
+    data["tariff_selection_mode"] = services.normalize_tariff_selection_mode(data.get("tariff_selection_mode"))
     data["tax_primary_home"] = services.normalize_primary_home(data.get("tax_primary_home"))
     data["tax_region"] = services.normalize_region(data.get("tax_region"))
     data["servizi_accessori_iva"] = services.normalize_accessory_services_vat_label(data.get("servizi_accessori_iva"))

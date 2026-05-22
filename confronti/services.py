@@ -56,6 +56,10 @@ BILL_TARIFF_TYPE_LABELS = {
     "VARIABILE": "Variabile",
     "FISSA": "Fissa",
 }
+TARIFF_SELECTION_MODE_LABELS = {
+    "LATEST": "Ultime tariffe disponibili",
+    "PERIOD": "Tariffe del periodo bolletta",
+}
 ACCESSORY_SERVICES_VAT_RATES = {
     "22%": 0.22,
     "10%": 0.10,
@@ -139,6 +143,15 @@ def normalize_bill_tariff_type(value) -> str:
 
 def bill_tariff_type_label(value) -> str:
     return BILL_TARIFF_TYPE_LABELS.get(normalize_bill_tariff_type(value), "Variabile")
+
+
+def normalize_tariff_selection_mode(value) -> str:
+    cleaned = clean_text(value).upper()
+    return cleaned if cleaned in TARIFF_SELECTION_MODE_LABELS else "LATEST"
+
+
+def tariff_selection_mode_label(value) -> str:
+    return TARIFF_SELECTION_MODE_LABELS[normalize_tariff_selection_mode(value)]
 
 
 def normalize_accessory_services_vat_label(value) -> str:
@@ -364,6 +377,9 @@ def tariff_month_key(path: Path) -> str:
             return part
         if re.match(r"^\d{4}$", part) and i + 1 < len(parts) and re.match(r"^\d{2}$", parts[i + 1]):
             return f"{part}-{parts[i + 1]}"
+    match = re.search(r"(\d{4})-(\d{2})", path.name)
+    if match:
+        return f"{match.group(1)}-{match.group(2)}"
     return ""
 
 
@@ -380,25 +396,51 @@ def tariff_matches_segment(path: Path, segmento: str) -> bool:
     return ("residenziale" in parts or "template" in name) and "business" not in name
 
 
-def load_latest_eon_tariffe_file():
-    if not EON_TARIFFE_DIR.exists():
-        return None
-    candidates = [p for p in EON_TARIFFE_DIR.glob("eon_tariffe_*.xlsx") if p.is_file() and not p.name.startswith("~$")]
-    if not candidates:
-        return None
-    candidates.sort(key=lambda p: (p.name, p.stat().st_mtime))
-    return candidates[-1]
-
-
-def load_tariffe_file_for_segment(segmento: str, provider: str = "ILLUMIA"):
+def tariff_file_candidates_for_segment(segmento: str, provider: str = "ILLUMIA"):
     if normalize_provider(provider) == "EON":
-        return load_latest_eon_tariffe_file()
-    if not TARIFFE_BASE.exists():
-        return None
-    candidates = [p for p in TARIFFE_BASE.rglob("*.xlsx") if tariff_matches_segment(p, segmento)]
+        if not EON_TARIFFE_DIR.exists():
+            return []
+        candidates = [
+            p for p in EON_TARIFFE_DIR.glob("eon_tariffe_*.xlsx") if p.is_file() and not p.name.startswith("~$")
+        ]
+    else:
+        if not TARIFFE_BASE.exists():
+            return []
+        candidates = [p for p in TARIFFE_BASE.rglob("*.xlsx") if tariff_matches_segment(p, segmento)]
+    candidates.sort(key=lambda p: (tariff_month_key(p), p.stat().st_mtime, p.name))
+    return candidates
+
+
+def select_tariffe_file_from_candidates(candidates, target_month: str = ""):
+    candidates = list(candidates)
     if not candidates:
         return None
-    candidates.sort(key=lambda p: (tariff_month_key(p), p.stat().st_mtime, p.name))
+    target_month = clean_text(target_month)
+    if not target_month:
+        return candidates[-1]
+    with_month = [p for p in candidates if tariff_month_key(p)]
+    if not with_month:
+        return candidates[-1]
+    exact = [p for p in with_month if tariff_month_key(p) == target_month]
+    return exact[-1] if exact else None
+
+
+def load_latest_eon_tariffe_file():
+    candidates = tariff_file_candidates_for_segment("RESIDENZIALE", "EON")
+    return candidates[-1] if candidates else None
+
+
+def load_tariffe_file_for_segment(
+    segmento: str,
+    provider: str = "ILLUMIA",
+    selection_mode: str = "LATEST",
+    target_month: str = "",
+):
+    candidates = tariff_file_candidates_for_segment(segmento, provider)
+    if not candidates:
+        return None
+    if normalize_tariff_selection_mode(selection_mode) == "PERIOD":
+        return select_tariffe_file_from_candidates(candidates, target_month)
     return candidates[-1]
 
 
@@ -520,8 +562,9 @@ def offer_options_payload():
     payload = {}
     for provider in PROVIDERS:
         for segmento in SEGMENTS:
-            offer_file = load_tariffe_file_for_segment(segmento, provider)
-            rows = filter_rows_by_context(load_tariffe_from_path(offer_file), provider, segmento) if offer_file else []
+            rows = []
+            for offer_file in tariff_file_candidates_for_segment(segmento, provider):
+                rows.extend(filter_rows_by_context(load_tariffe_from_path(offer_file), provider, segmento))
             for commodity in ("GAS", "EE"):
                 key = f"{provider}|{segmento}|{commodity}"
                 payload[key] = {
@@ -743,7 +786,12 @@ def calculate_provider_result(data, base_calc, provider):
     pun = base_calc["pun"]
     psv = base_calc["psv"]
 
-    offer_file = load_tariffe_file_for_segment(segmento, provider_norm)
+    offer_file = load_tariffe_file_for_segment(
+        segmento,
+        provider_norm,
+        base_calc.get("tariff_selection_mode", "LATEST"),
+        base_calc.get("tariff_target_month", ""),
+    )
     tariffe_rows = filter_rows_by_context(load_tariffe_from_path(offer_file), provider_norm, segmento) if offer_file else []
     offer_valid_from, offer_valid_to = get_file_valid_range(offer_file) if offer_file else (None, None)
     offer_var = select_offer_name(
@@ -893,8 +941,10 @@ def prepare_comparison(data):
     providers = normalize_providers(data.get("providers") or data.get("provider", "ILLUMIA"))
     if not providers:
         providers = [normalize_provider(data.get("provider", "ILLUMIA"))]
+    tariff_selection_mode = normalize_tariff_selection_mode(data.get("tariff_selection_mode"))
     billing_months = billing_months_from_dates(bill_start, bill_end)
     billing_divisor = billing_divisor_from_months(billing_months)
+    tariff_target_month = month_key_from_date(bill_end)
 
     indici_rows = load_indici_rows(INDICI_XLSX)
     indice, indice_reason = select_indice_for_bill_period(indici_rows, bill_start, bill_end)
@@ -918,6 +968,9 @@ def prepare_comparison(data):
         "comparison_datetime_label": comparison_datetime_label(data.get("comparison_datetime")),
         "providers": providers,
         "providers_label": provider_list_label(providers),
+        "tariff_selection_mode": tariff_selection_mode,
+        "tariff_selection_mode_label": tariff_selection_mode_label(tariff_selection_mode),
+        "tariff_target_month": tariff_target_month,
         "provider": providers[0],
         "provider_label": provider_label(providers[0]),
         "billing_months": billing_months,
@@ -1097,6 +1150,9 @@ def write_export_metadata(ws, prepared, start_col="F"):
     ws[f"{start_col}8"] = f"IVA servizi accessori: {calc.get('servizi_accessori_iva_label', '22%')}"
     ws[f"{start_col}9"] = f"Consumo annuo stimato: {calc.get('tax_annual_consumption_label', 'N.D.')}"
     ws[f"{start_col}10"] = f"Parametri Accise/IVA: {calc.get('fiscal_parameters_label', '')}"
+    ws[f"{start_col}11"] = (
+        f"Logica tariffe: {calc.get('tariff_selection_mode_label', 'Ultime tariffe disponibili')}"
+    )
 
 
 def _excel_decimal(value: float) -> str:

@@ -16,6 +16,7 @@ def valid_payload(**overrides):
         "segmento": "RESIDENZIALE",
         "commodity": "EE",
         "bill_tariff_type": "VARIABILE",
+        "tariff_selection_mode": "LATEST",
         "provider": "ILLUMIA",
         "providers": ["ILLUMIA"],
         "tax_primary_home": "SI",
@@ -247,6 +248,21 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertIn("E.ON Profilo Dinamico Gas P", options["EON|BUSINESS|GAS"]["VARIABILE"])
         self.assertIn("E.ON Profilo Sicuro T", options["EON|BUSINESS|EE"]["FISSA"])
 
+    def test_tariff_selection_can_use_bill_period_month(self):
+        latest = services.load_tariffe_file_for_segment("RESIDENZIALE", "ILLUMIA", "LATEST", "2026-03")
+        period = services.load_tariffe_file_for_segment("RESIDENZIALE", "ILLUMIA", "PERIOD", "2026-03")
+        self.assertIn("2026-05", str(latest))
+        self.assertIn("2026-03", str(period))
+        self.assertIsNone(services.load_tariffe_file_for_segment("RESIDENZIALE", "EON", "PERIOD", "2026-03"))
+
+    def test_prepare_comparison_uses_period_tariffe_when_selected(self):
+        latest = services.prepare_comparison(service_data(tariff_selection_mode="LATEST"))
+        period = services.prepare_comparison(service_data(tariff_selection_mode="PERIOD"))
+        self.assertIn("2026-05", latest["calc"]["offer_file"])
+        self.assertIn("2026-03", period["calc"]["offer_file"])
+        self.assertEqual(period["calc"]["tariff_selection_mode_label"], "Tariffe del periodo bolletta")
+        self.assertEqual(period["calc"]["tariff_target_month"], "2026-03")
+
     def test_prepare_comparison_uses_selected_eon_fixed_gas_offer(self):
         data = service_data(
             provider="EON",
@@ -275,6 +291,7 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertEqual(form.fields["commodity"].choices[0], ("", "Seleziona fornitura"))
         self.assertEqual(form.fields["bill_tariff_type"].choices[0], ("", "Seleziona tariffa"))
         self.assertEqual(form.fields["providers"].choices[0], ("ILLUMIA", "Illumia"))
+        self.assertIsNone(form.fields["tariff_selection_mode"].initial)
         self.assertIsNone(form.fields["bill_start"].initial)
         self.assertIsNone(form.fields["bill_end"].initial)
         self.assertIsNone(form.fields["bill_offer_expiry"].initial)
@@ -286,6 +303,7 @@ class ConfrontoFormTests(SimpleTestCase):
                 segmento="",
                 commodity="",
                 bill_tariff_type="",
+                tariff_selection_mode="",
                 providers=[],
                 tax_annual_consumption="",
                 bill_start="",
@@ -299,6 +317,7 @@ class ConfrontoFormTests(SimpleTestCase):
             "segmento",
             "commodity",
             "bill_tariff_type",
+            "tariff_selection_mode",
             "providers",
             "bill_start",
             "bill_end",
@@ -313,6 +332,7 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertEqual(form.cleaned_data["bill_start"], date(2026, 1, 1))
         self.assertEqual(form.cleaned_data["bill_end"], date(2026, 3, 31))
         self.assertEqual(form.cleaned_data["bill_offer_expiry"], date(2026, 12, 31))
+        self.assertEqual(form.cleaned_data["tariff_selection_mode"], "LATEST")
         self.assertEqual(float(form.cleaned_data["b_bonus_sociale"]), -21.6)
 
     def test_bonus_sociale_is_optional(self):
@@ -394,6 +414,7 @@ class ConfrontoViewTests(TestCase):
         self.assertIn("Tipo tariffa bolletta:</strong> Variabile", html)
         self.assertIn("Consumo annuo stimato:</strong> 1200 kWh/anno", html)
         self.assertIn("Scadenza offerta bolletta:</strong> 31/12/2026", html)
+        self.assertIn("Logica tariffe:</strong> Ultime tariffe disponibili", html)
         self.assertNotIn("periodo bolletta NON rientra", html)
         self.assertIn("TRIMESTRALE", html)
         self.assertIn('data-download-excel', html)
@@ -402,6 +423,7 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(self.client.session["last_confronto"]["bill_start"], "2026-01-01")
         self.assertEqual(self.client.session["last_confronto"]["bill_end"], "2026-03-31")
         self.assertEqual(self.client.session["last_confronto"]["bill_offer_expiry"], "2026-12-31")
+        self.assertEqual(self.client.session["last_confronto"]["tariff_selection_mode"], "LATEST")
 
     def test_calculate_can_compare_selected_eon_offer(self):
         self.login()
@@ -483,7 +505,7 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(ws["F8"].value, "IVA servizi accessori: 10%")
         self.assertEqual(ws["F9"].value, "Consumo annuo stimato: 1200 kWh/anno")
         self.assertTrue(str(ws["F10"].value).startswith("Parametri Accise/IVA: "))
-        self.assertIsNone(ws["F11"].value)
+        self.assertEqual(ws["F11"].value, "Logica tariffe: Ultime tariffe disponibili")
         self.assertEqual(ws["A12"].value, "Bonus Sociale")
         self.assertEqual(ws["A13"].value, "Arrotondamenti")
         self.assertEqual(ws["A14"].value, "Servizi accessori (IVA 10%)")

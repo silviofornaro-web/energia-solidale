@@ -20,6 +20,11 @@
             {{ form.providers }}
             {{ form.providers.errors }}
         </fieldset>
+        <fieldset class="provider-picker">
+            <legend>{{ form.tariff_selection_mode.label }}</legend>
+            {{ form.tariff_selection_mode }}
+            {{ form.tariff_selection_mode.errors }}
+        </fieldset>
     </div>
 
     <h2>Offerte confronto</h2>
@@ -90,6 +95,7 @@
         <div><strong>Mesi fatturati:</strong> {{ prepared.calc.billing_months }}</div>
         <div><strong>Indice usato:</strong> {{ prepared.calc.indice.mese|default:"N.D." }}</div>
         <div><strong>Fornitori confronto:</strong> {{ prepared.calc.providers_label }}</div>
+        <div><strong>Logica tariffe:</strong> {{ prepared.calc.tariff_selection_mode_label }}</div>
         {% for provider in prepared.calc.provider_results %}
             <div><strong>{{ provider.provider_label }} variabile:</strong> {{ provider.offer_var|default:"N.D." }}</div>
             <div><strong>{{ provider.provider_label }} fissa:</strong> {{ provider.offer_fix|default:"N.D." }}</div>

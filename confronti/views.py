@@ -21,6 +21,7 @@ def confronto(request):
                     "segmento": request.POST.get("segmento") or "",
                     "commodity": request.POST.get("commodity") or "",
                     "bill_tariff_type": request.POST.get("bill_tariff_type") or "",
+                    "tariff_selection_mode": request.POST.get("tariff_selection_mode") or "",
                     "providers": [provider for provider in providers if provider],
                     "tax_primary_home": request.POST.get("tax_primary_home") or "SI",
                     "tax_power_kw": request.POST.get("tax_power_kw") or "0",
