@@ -320,7 +320,6 @@ class ConfrontoFormTests(SimpleTestCase):
             "tariff_selection_mode",
             "providers",
             "bill_start",
-            "bill_end",
             "bill_offer_expiry",
             "tax_annual_consumption",
         ]:
@@ -334,6 +333,12 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertEqual(form.cleaned_data["bill_offer_expiry"], date(2026, 12, 31))
         self.assertEqual(form.cleaned_data["tariff_selection_mode"], "LATEST")
         self.assertEqual(float(form.cleaned_data["b_bonus_sociale"]), -21.6)
+
+    def test_missing_end_month_defaults_to_start_month(self):
+        form = ConfrontoForm(valid_payload(bill_start="2026-02", bill_end=""))
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+        self.assertEqual(form.cleaned_data["bill_start"], date(2026, 2, 1))
+        self.assertEqual(form.cleaned_data["bill_end"], date(2026, 2, 28))
 
     def test_bonus_sociale_is_optional(self):
         form = ConfrontoForm(valid_payload(b_bonus_sociale=""))
@@ -392,7 +397,7 @@ class ConfrontoViewTests(TestCase):
         response = self.client.get("/")
         self.assertContains(response, 'type="month"')
         self.assertContains(response, 'type="date"')
-        self.assertContains(response, "Cambia bolletta")
+        self.assertContains(response, "Nuova bolletta")
         self.assertContains(response, "Fornitori confronto")
 
     def test_invalid_form_renders_field_errors(self):
@@ -468,13 +473,17 @@ class ConfrontoViewTests(TestCase):
         self.login()
         self.client.post("/", valid_payload())
         self.assertIn("last_confronto", self.client.session)
-        response = self.client.post("/", valid_payload(action="reset_bill", b_vendita_consumo="999"))
+        response = self.client.post(
+            "/",
+            valid_payload(action="reset_bill", b_vendita_consumo="999", tax_annual_consumption="9999"),
+        )
         html = response.content.decode()
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("last_confronto", self.client.session)
         self.assertNotIn("Scarica Excel", html)
         self.assertIn("Mario Rossi", html)
         self.assertNotIn("999", html)
+        self.assertEqual(response.context["form"].initial["tax_annual_consumption"], "")
 
     def test_download_requires_a_previous_comparison(self):
         self.login()

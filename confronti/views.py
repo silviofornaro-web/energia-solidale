@@ -25,7 +25,7 @@ def confronto(request):
                     "providers": [provider for provider in providers if provider],
                     "tax_primary_home": request.POST.get("tax_primary_home") or "SI",
                     "tax_power_kw": request.POST.get("tax_power_kw") or "0",
-                    "tax_annual_consumption": request.POST.get("tax_annual_consumption") or "",
+                    "tax_annual_consumption": "",
                     "tax_region": request.POST.get("tax_region") or "Veneto",
                     "servizi_accessori_iva": "22%",
                     "offer_var_choice_illumia": request.POST.get("offer_var_choice_illumia") or "",

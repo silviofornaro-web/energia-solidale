@@ -87,6 +87,7 @@ class ConfrontoForm(forms.Form):
     bill_end = forms.DateField(
         label="Al mese",
         input_formats=MONTH_INPUT_FORMATS,
+        required=False,
         widget=forms.DateInput(format="%Y-%m", attrs={"type": "month"}),
     )
     consumo = ItalianDecimalField(label="Consumo", min_value=0, decimal_places=4, max_digits=12, initial=0)
@@ -169,6 +170,10 @@ class ConfrontoForm(forms.Form):
         if bill_end:
             last_day = monthrange(bill_end.year, bill_end.month)[1]
             cleaned["bill_end"] = date(bill_end.year, bill_end.month, last_day)
+            bill_end = cleaned["bill_end"]
+        elif bill_start:
+            last_day = monthrange(bill_start.year, bill_start.month)[1]
+            cleaned["bill_end"] = date(bill_start.year, bill_start.month, last_day)
             bill_end = cleaned["bill_end"]
         if cleaned.get("bill_start") and cleaned.get("bill_end") and cleaned["bill_end"] < cleaned["bill_start"]:
             raise forms.ValidationError("Il mese finale non può essere precedente al mese iniziale.")
