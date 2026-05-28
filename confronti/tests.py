@@ -248,6 +248,27 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertIn("E.ON Profilo Dinamico Gas P", options["EON|BUSINESS|GAS"]["VARIABILE"])
         self.assertIn("E.ON Profilo Sicuro T", options["EON|BUSINESS|EE"]["FISSA"])
 
+    def test_missing_microbusiness_tariffe_falls_back_to_business(self):
+        latest = services.load_tariffe_file_for_segment("MICROBUSINESS", "ILLUMIA", "LATEST", "2026-05")
+        self.assertIn("/business/", str(latest))
+
+        options = services.offer_options_payload()
+        self.assertIn("GAS BUSINESS PREMIUM FLEX", options["ILLUMIA|MICROBUSINESS|GAS"]["VARIABILE"])
+
+        prepared = services.prepare_comparison(
+            service_data(
+                segmento="MICROBUSINESS",
+                provider="ILLUMIA",
+                providers=["ILLUMIA"],
+                commodity="GAS",
+                tax_power_kw="0",
+                b_quota_potenza="0",
+            )
+        )
+        self.assertIn("/business/", prepared["calc"]["offer_file"])
+        self.assertEqual(prepared["calc"]["provider_results"][0]["tariff_segment"], "BUSINESS")
+        self.assertEqual(prepared["calc"]["offer_var"], "GAS PREMIUM FLEX BUSINESS")
+
     def test_tariff_selection_can_use_bill_period_month(self):
         latest = services.load_tariffe_file_for_segment("RESIDENZIALE", "ILLUMIA", "LATEST", "2026-03")
         period = services.load_tariffe_file_for_segment("RESIDENZIALE", "ILLUMIA", "PERIOD", "2026-03")
@@ -558,7 +579,7 @@ class ConfrontoViewTests(TestCase):
         self.assertIn("E.ON:", ws["H2"].value)
         self.assertEqual(ws["F16"].value, "=SUM(F4:F14)+F15")
 
-    @patch("confronti.services.load_tariffe_file_for_segment", return_value=None)
+    @patch("confronti.services.load_tariffe_file_for_segment_with_effective_segment", return_value=(None, "RESIDENZIALE"))
     def test_missing_illumia_offer_keeps_bill_and_marks_offers_nd(self, _mock_load_file):
         self.login()
         response = self.client.post("/", valid_payload())
