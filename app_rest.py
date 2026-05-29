@@ -1022,8 +1022,12 @@ def find_row_map(ws):
             rm["arrotondamenti"] = r
         elif "servizi" in t and "access" in t:
             rm["servizi_accessori"] = r
-        elif "accise" in t:
+        elif "accise" in t and "iva" in t:
             rm["accise_iva"] = r
+        elif t.startswith("accise"):
+            rm["accise"] = r
+        elif t == "iva":
+            rm["iva"] = r
         elif t == "totale":
             rm["totale"] = r
 
@@ -1054,6 +1058,10 @@ def ensure_export_rows(ws):
     if "arrotondamenti" not in rm:
         missing_count += 1
     if "servizi_accessori" not in rm:
+        missing_count += 1
+    if "accise" not in rm:
+        missing_count += 1
+    if "iva" not in rm:
         missing_count += 1
     if missing_count == 0:
         return
@@ -1095,6 +1103,7 @@ def write_comparison_summary(ws):
 def apply_export_labels(ws, nome_cliente: str):
     ensure_export_summary_rows(ws)
     ensure_export_rows(ws)
+    accise_label = "Accise + Addizionale regionale" if st.session_state.get("commodity") == "GAS" else "Accise"
     labels = {
         6: None,
         7: "VOCE",
@@ -1109,8 +1118,10 @@ def apply_export_labels(ws, nome_cliente: str):
         16: "Bonus Sociale",
         17: "Arrotondamenti",
         18: "Servizi accessori",
-        19: "Accise e Iva",
-        20: "Totale",
+        19: accise_label,
+        20: "IVA",
+        21: "Accise e Iva",
+        22: "Totale",
     }
     for row, value in labels.items():
         ws[f"A{row}"] = value
@@ -1147,6 +1158,8 @@ def validate_row_map(rm):
         "bonus_sociale",
         "arrotondamenti",
         "servizi_accessori",
+        "accise",
+        "iva",
         "accise_iva",
         "totale",
     ]
@@ -1157,7 +1170,7 @@ def validate_row_map(rm):
 def apply_total_formula(ws, rm, col_letter):
     acc = rm["accise_iva"]
     start = rm["vendita_consumo"]
-    end = acc - 1
+    end = rm.get("accise", acc) - 1
     ws[f"{col_letter}{rm['totale']}"] = f"=SUM({col_letter}{start}:{col_letter}{end})+{col_letter}{acc}"
 
 def write_column(ws, rm, col, vals, commodity):
@@ -1181,6 +1194,10 @@ def write_column(ws, rm, col, vals, commodity):
         ws[f"{col}{rm['arrotondamenti']}"] = float(vals["arrotondamenti"])
     if "servizi_accessori" in rm:
         ws[f"{col}{rm['servizi_accessori']}"] = float(vals.get("servizi_accessori", 0.0))
+    for key in ("accise", "iva"):
+        if key in rm:
+            value = vals.get(key)
+            ws[f"{col}{rm[key]}"] = "N.D." if value is None else float(value)
 
 def fill_column_text(ws, rm, col, text):
     for key, r in rm.items():
@@ -1263,7 +1280,7 @@ def format_fiscal_parameters():
         f"IVA servizi accessori: {accessory_services_vat_label()}"
     )
 
-def calculate_accise_iva(vals, commodity):
+def calculate_tax_breakdown(vals, commodity):
     period_consumption = max(0.0, float(st.session_state.get("consumo", 0.0)))
     accessory_services = float(vals.get("servizi_accessori", 0.0))
     social_bonus = float(vals.get("bonus_sociale", 0.0))
@@ -1282,7 +1299,12 @@ def calculate_accise_iva(vals, commodity):
         excise = taxable_kwh * EE_EXCISE_RATE
         vat_rate = 0.10 if residential and primary_home else 0.22
         vat = ((taxable_supply_subtotal + excise) * vat_rate) + accessory_services_vat
-        return excise + vat
+        return {
+            "accise": excise,
+            "iva": vat,
+            "accise_iva": excise + vat,
+            "addizionale_regionale": 0.0,
+        }
 
     annual_consumption = fiscal_annual_consumption()
     excise = annual_progressive_tax_for_period(period_consumption, annual_consumption, GAS_EXCISE_BRACKETS)
@@ -1309,7 +1331,15 @@ def calculate_accise_iva(vals, commodity):
         + (fixed_base * 0.22)
         + accessory_services_vat
     )
-    return excise + regional + vat
+    return {
+        "accise": excise + regional,
+        "iva": vat,
+        "accise_iva": excise + regional + vat,
+        "addizionale_regionale": regional,
+    }
+
+def calculate_accise_iva(vals, commodity):
+    return calculate_tax_breakdown(vals, commodity)["accise_iva"]
 
 def comparison_subtotal(vals, commodity):
     subtotal = (
@@ -1337,6 +1367,8 @@ def build_comparison_values():
     b_vals["bonus_sociale"] = -abs(float(b_vals.get("bonus_sociale", 0.0)))
     b_vals["vendita_fissa"] = bill_fixed_period_amount(b_vals["vendita_fissa"])
     b_vals["rete_fissa"] = bill_fixed_period_amount(b_vals["rete_fissa"])
+    b_vals["accise"] = None
+    b_vals["iva"] = None
 
     c_vals = b_vals.copy()
     d_vals = b_vals.copy()
@@ -1353,8 +1385,14 @@ def build_comparison_values():
     d_vals["ricalcoli"] = 0.0
     d_vals["arrotondamenti"] = 0.0
 
-    c_vals["accise_iva"] = calculate_accise_iva(c_vals, comm)
-    d_vals["accise_iva"] = calculate_accise_iva(d_vals, comm)
+    c_tax = calculate_tax_breakdown(c_vals, comm)
+    d_tax = calculate_tax_breakdown(d_vals, comm)
+    c_vals["accise"] = c_tax["accise"]
+    c_vals["iva"] = c_tax["iva"]
+    c_vals["accise_iva"] = c_tax["accise_iva"]
+    d_vals["accise"] = d_tax["accise"]
+    d_vals["iva"] = d_tax["iva"]
+    d_vals["accise_iva"] = d_tax["accise_iva"]
 
     return {
         "commodity": comm,
@@ -1372,6 +1410,9 @@ def comparison_value(vals, key, commodity):
         return float(vals["vendita_fissa"]) if commodity == "GAS" else "N.A."
     if key == "quota_potenza":
         return float(vals["quota_potenza"]) if commodity == "EE" else "N.A."
+    if key in {"accise", "iva"}:
+        value = vals.get(key)
+        return "N.D." if value is None else float(value)
     if key == "totale":
         return comparison_total(vals, commodity)
     return float(vals.get(key, 0.0))
@@ -1425,6 +1466,7 @@ def build_comparison_table_rows(values=None):
     values = values or build_comparison_values()
     comm = values["commodity"]
     var_label, fix_label = supplier_column_labels()
+    accise_label = "Accise + Addizionale regionale" if comm == "GAS" else "Accise"
     rows_config = [
         ("vendita_consumo", "Vendita Consumo"),
         ("rete_consumi", "Rete e oneri di sistema Consumi"),
@@ -1437,6 +1479,8 @@ def build_comparison_table_rows(values=None):
         ("bonus_sociale", "Bonus Sociale"),
         ("arrotondamenti", "Arrotondamenti"),
         ("servizi_accessori", "Servizi accessori"),
+        ("accise", accise_label),
+        ("iva", "IVA"),
         ("accise_iva", "Accise e Iva"),
         ("totale", "Totale"),
     ]

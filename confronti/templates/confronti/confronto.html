@@ -43,8 +43,24 @@
 
     <h2>Periodicità</h2>
     <div class="form-grid">
-        <label>{{ form.bill_start.label }}{{ form.bill_start }}{{ form.bill_start.errors }}</label>
-        <label>{{ form.bill_end.label }}{{ form.bill_end }}{{ form.bill_end.errors }}</label>
+        <label class="month-picker" data-month-field="bill_start" data-required="true">
+            {{ form.bill_start.label }}
+            {{ form.bill_start }}
+            <span class="month-picker-controls">
+                <select data-month-part="month" aria-label="Mese inizio fatturazione" required></select>
+                <select data-month-part="year" aria-label="Anno inizio fatturazione" required></select>
+            </span>
+            {{ form.bill_start.errors }}
+        </label>
+        <label class="month-picker" data-month-field="bill_end">
+            {{ form.bill_end.label }}
+            {{ form.bill_end }}
+            <span class="month-picker-controls">
+                <select data-month-part="month" aria-label="Mese fine fatturazione"></select>
+                <select data-month-part="year" aria-label="Anno fine fatturazione"></select>
+            </span>
+            {{ form.bill_end.errors }}
+        </label>
         <label>{{ form.consumo.label }}{{ form.consumo }}{{ form.consumo.errors }}</label>
     </div>
 
@@ -146,6 +162,24 @@
     const quotaPotenza = document.getElementById("id_b_quota_potenza");
     const dataElement = document.getElementById("offer-options-data");
     const offerOptions = dataElement ? JSON.parse(dataElement.textContent) : {};
+    const months = [
+        ["01", "Gennaio"],
+        ["02", "Febbraio"],
+        ["03", "Marzo"],
+        ["04", "Aprile"],
+        ["05", "Maggio"],
+        ["06", "Giugno"],
+        ["07", "Luglio"],
+        ["08", "Agosto"],
+        ["09", "Settembre"],
+        ["10", "Ottobre"],
+        ["11", "Novembre"],
+        ["12", "Dicembre"],
+    ];
+    const currentYear = new Date().getFullYear();
+    const firstYear = 2024;
+    const lastYear = Math.max(currentYear + 5, 2030);
+    const years = Array.from({ length: lastYear - firstYear + 1 }, (_item, index) => String(firstYear + index));
 
     const selectedProviders = () => providerChecks.filter((box) => box.checked).map((box) => box.value);
 
@@ -201,6 +235,53 @@
         refreshOffers();
     };
 
+    const parseMonthValue = (value) => {
+        const match = String(value || "").match(/^(\d{4})-(\d{2})/);
+        return match ? { year: match[1], month: match[2] } : { year: "", month: "" };
+    };
+
+    const appendOption = (select, value, label) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        select.appendChild(option);
+    };
+
+    const setupMonthPicker = (wrapper) => {
+        const fieldName = wrapper.dataset.monthField;
+        const hidden = document.getElementById(`id_${fieldName}`);
+        const monthSelect = wrapper.querySelector("[data-month-part='month']");
+        const yearSelect = wrapper.querySelector("[data-month-part='year']");
+        if (!hidden || !monthSelect || !yearSelect) return;
+
+        const parsed = parseMonthValue(hidden.value);
+        const required = wrapper.dataset.required === "true";
+
+        appendOption(monthSelect, "", required ? "Seleziona mese" : "Stesso mese di inizio");
+        months.forEach(([value, label]) => appendOption(monthSelect, value, label));
+
+        appendOption(yearSelect, "", required ? "Seleziona anno" : "Stesso anno di inizio");
+        const yearValues = new Set(years);
+        if (parsed.year) yearValues.add(parsed.year);
+        Array.from(yearValues).sort().forEach((year) => appendOption(yearSelect, year, year));
+
+        monthSelect.value = parsed.month;
+        yearSelect.value = parsed.year;
+
+        const updateHidden = () => {
+            if (monthSelect.value && yearSelect.value) {
+                hidden.value = `${yearSelect.value}-${monthSelect.value}`;
+            } else {
+                hidden.value = "";
+            }
+        };
+
+        monthSelect.addEventListener("change", updateHidden);
+        yearSelect.addEventListener("change", updateHidden);
+        updateHidden();
+    };
+
+    document.querySelectorAll("[data-month-field]").forEach(setupMonthPicker);
     providerChecks.forEach((box) => box.addEventListener("change", refreshOffers));
     if (segmento) segmento.addEventListener("change", refreshOffers);
     if (commodity) {

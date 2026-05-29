@@ -717,6 +717,9 @@ def comparison_value(vals, key, commodity):
         return float(vals["vendita_fissa"]) if commodity == "GAS" else "N.A."
     if key == "quota_potenza":
         return float(vals["quota_potenza"]) if commodity == "EE" else "N.A."
+    if key in {"accise", "iva"}:
+        value = vals.get(key)
+        return "N.D." if value is None else float(value)
     if key == "totale":
         return comparison_total(vals, commodity)
     return float(vals[key])
@@ -725,6 +728,7 @@ def comparison_value(vals, key, commodity):
 def build_comparison_table_rows(values):
     comm = values["commodity"]
     servizi_accessori_label = f"Servizi accessori (IVA {values['servizi_accessori_iva_label']})"
+    accise_label = "Accise + Addizionale regionale" if comm == "GAS" else "Accise"
     rows_config = [
         ("vendita_consumo", "Vendita Consumo"),
         ("rete_consumi", "Rete e oneri di sistema Consumi"),
@@ -737,6 +741,8 @@ def build_comparison_table_rows(values):
         ("bonus_sociale", "Bonus Sociale"),
         ("arrotondamenti", "Arrotondamenti"),
         ("servizi_accessori", servizi_accessori_label),
+        ("accise", accise_label),
+        ("iva", "IVA"),
         ("accise_iva", "Accise e Iva"),
         ("totale", "Totale"),
     ]
@@ -773,7 +779,7 @@ def format_fiscal_parameters(data, calc=None) -> str:
     )
 
 
-def calculate_accise_iva(data, calc, vals, commodity):
+def calculate_tax_breakdown(data, calc, vals, commodity):
     period_consumption = max(0.0, float(data.get("consumo", 0.0)))
     accessory_vat_rate_value = accessory_services_vat_rate(data.get("servizi_accessori_iva"))
     accessory_services = float(vals.get("servizi_accessori", 0.0))
@@ -793,7 +799,12 @@ def calculate_accise_iva(data, calc, vals, commodity):
         excise = taxable_kwh * EE_EXCISE_RATE
         vat_rate = 0.10 if residential and primary_home else 0.22
         vat = ((taxable_supply_subtotal + excise) * vat_rate) + accessory_services_vat
-        return excise + vat
+        return {
+            "accise": excise,
+            "iva": vat,
+            "accise_iva": excise + vat,
+            "addizionale_regionale": 0.0,
+        }
 
     annual_consumption = max(0.0, float(data.get("tax_annual_consumption", 0.0)))
     excise = annual_progressive_tax_for_period(period_consumption, annual_consumption, GAS_EXCISE_BRACKETS)
@@ -819,7 +830,16 @@ def calculate_accise_iva(data, calc, vals, commodity):
         + (fixed_base * 0.22)
         + accessory_services_vat
     )
-    return excise + regional + vat
+    return {
+        "accise": excise + regional,
+        "iva": vat,
+        "accise_iva": excise + regional + vat,
+        "addizionale_regionale": regional,
+    }
+
+
+def calculate_accise_iva(data, calc, vals, commodity):
+    return calculate_tax_breakdown(data, calc, vals, commodity)["accise_iva"]
 
 
 def offer_choice_from_data(data, provider, offer_type):
@@ -937,7 +957,10 @@ def build_offer_column_values(data, calc, base_values, provider_result, offer_ty
     vals["ricalcoli"] = 0.0
     vals["arrotondamenti"] = 0.0
     vals["servizi_accessori"] = 0.0
-    vals["accise_iva"] = calculate_accise_iva(data, calc, vals, comm)
+    tax = calculate_tax_breakdown(data, calc, vals, comm)
+    vals["accise"] = tax["accise"]
+    vals["iva"] = tax["iva"]
+    vals["accise_iva"] = tax["accise_iva"]
     type_label = "Variabile" if offer_type == "VARIABILE" else "Fissa"
     return {
         "provider": provider_result["provider"],
@@ -962,6 +985,8 @@ def build_comparison_values(data, calc):
     b_vals["rete_fissa"] *= months
     if comm == "GAS":
         b_vals["quota_potenza"] = 0.0
+    b_vals["accise"] = None
+    b_vals["iva"] = None
 
     provider_results = calc.get("provider_results") or [
         {
@@ -1107,8 +1132,12 @@ def find_row_map(ws):
             rm["arrotondamenti"] = r
         elif "servizi" in t and "access" in t:
             rm["servizi_accessori"] = r
-        elif "accise" in t or "iva" in t:
+        elif "accise" in t and "iva" in t:
             rm["accise_iva"] = r
+        elif t.startswith("accise"):
+            rm["accise"] = r
+        elif t == "iva":
+            rm["iva"] = r
         elif t == "totale":
             rm["totale"] = r
     if "arrotondamenti" not in rm and "bonus_sociale" not in rm and "accise_iva" in rm:
@@ -1140,6 +1169,10 @@ def ensure_export_rows(ws):
         missing_count += 1
     if "servizi_accessori" not in rm:
         missing_count += 1
+    if "accise" not in rm:
+        missing_count += 1
+    if "iva" not in rm:
+        missing_count += 1
     if missing_count == 0:
         return
 
@@ -1163,6 +1196,8 @@ def validate_row_map(rm):
         "bonus_sociale",
         "arrotondamenti",
         "servizi_accessori",
+        "accise",
+        "iva",
         "accise_iva",
         "totale",
     ]
@@ -1171,7 +1206,8 @@ def validate_row_map(rm):
         raise ValueError("Template Excel incompleto: mancano le righe " + ", ".join(missing))
 
 
-def apply_export_labels(ws, nome_cliente: str, servizi_accessori_iva_label: str = "22%"):
+def apply_export_labels(ws, nome_cliente: str, servizi_accessori_iva_label: str = "22%", commodity: str = "EE"):
+    accise_label = "Accise + Addizionale regionale" if commodity == "GAS" else "Accise"
     labels = {
         1: nome_cliente or "Cliente",
         3: "VOCE",
@@ -1186,8 +1222,10 @@ def apply_export_labels(ws, nome_cliente: str, servizi_accessori_iva_label: str 
         12: "Bonus Sociale",
         13: "Arrotondamenti",
         14: f"Servizi accessori (IVA {servizi_accessori_iva_label})",
-        15: "Accise e Iva",
-        16: "Totale",
+        15: accise_label,
+        16: "IVA",
+        17: "Accise e Iva",
+        18: "Totale",
     }
     for row, value in labels.items():
         ws[f"A{row}"] = value
@@ -1228,7 +1266,7 @@ def _excel_decimal(value: float) -> str:
 def apply_accise_formula_conforme(ws, rm, col_letter, servizi_accessori_iva_rate=0.0):
     acc = rm["accise_iva"]
     start = rm["vendita_consumo"]
-    end = acc - 1
+    end = rm.get("accise", acc) - 1
     if "servizi_accessori" in rm:
         svc = rm["servizi_accessori"]
         rate = _excel_decimal(servizi_accessori_iva_rate)
@@ -1244,7 +1282,7 @@ def apply_accise_formula_conforme(ws, rm, col_letter, servizi_accessori_iva_rate
 def apply_total_formula(ws, rm, col_letter):
     acc = rm["accise_iva"]
     start = rm["vendita_consumo"]
-    end = acc - 1
+    end = rm.get("accise", acc) - 1
     ws[f"{col_letter}{rm['totale']}"] = f"=SUM({col_letter}{start}:{col_letter}{end})+{col_letter}{acc}"
 
 
@@ -1268,6 +1306,10 @@ def write_column(ws, rm, col, vals, commodity):
         ws[f"{col}{rm['arrotondamenti']}"] = float(vals["arrotondamenti"])
     if "servizi_accessori" in rm:
         ws[f"{col}{rm['servizi_accessori']}"] = float(vals.get("servizi_accessori", 0.0))
+    for key in ("accise", "iva"):
+        if key in rm:
+            value = vals.get(key)
+            ws[f"{col}{rm[key]}"] = "N.D." if value is None else float(value)
 
 
 def fill_column_text(ws, rm, col, text):
@@ -1284,15 +1326,15 @@ def build_excel_bytes(data, prepared=None):
     ensure_export_rows(ws)
     servizi_accessori_iva_label = normalize_accessory_services_vat_label(data.get("servizi_accessori_iva"))
     servizi_accessori_iva_rate = accessory_services_vat_rate(servizi_accessori_iva_label)
-    apply_export_labels(ws, data.get("nome_cliente", "Cliente"), servizi_accessori_iva_label)
+    values = prepared["values"]
+    comm = values["commodity"]
+    apply_export_labels(ws, data.get("nome_cliente", "Cliente"), servizi_accessori_iva_label, comm)
     rm = find_row_map(ws)
     validate_row_map(rm)
     ws["B1"] = None
     ws["C1"] = float(data["consumo"])
     ws["B3"] = "Bolletta"
 
-    values = prepared["values"]
-    comm = values["commodity"]
     b_vals = values["bolletta"]
 
     write_column(ws, rm, "B", b_vals, comm)

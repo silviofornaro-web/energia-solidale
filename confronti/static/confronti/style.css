@@ -147,6 +147,12 @@ select {
     font-weight: 400;
 }
 
+.month-picker-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(92px, 0.65fr);
+    gap: 8px;
+}
+
 input:disabled,
 select:disabled {
     background: #eef2f7;

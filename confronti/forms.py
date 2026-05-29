@@ -82,13 +82,13 @@ class ConfrontoForm(forms.Form):
     bill_start = forms.DateField(
         label="Dal mese",
         input_formats=MONTH_INPUT_FORMATS,
-        widget=forms.DateInput(format="%Y-%m", attrs={"type": "month"}),
+        widget=forms.HiddenInput(),
     )
     bill_end = forms.DateField(
         label="Al mese",
         input_formats=MONTH_INPUT_FORMATS,
         required=False,
-        widget=forms.DateInput(format="%Y-%m", attrs={"type": "month"}),
+        widget=forms.HiddenInput(),
     )
     consumo = ItalianDecimalField(label="Consumo", min_value=0, decimal_places=4, max_digits=12, initial=0)
 
