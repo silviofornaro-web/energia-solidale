@@ -1,4 +1,5 @@
 import io
+import os
 import re
 from copy import copy
 from datetime import date, datetime
@@ -16,6 +17,9 @@ TEMPLATE_XLSX = BASE_DIR / "esempio_confronto_corretto.xlsx"
 TARIFFE_BASE = BASE_DIR / "tariffe"
 EON_TARIFFE_DIR = BASE_DIR / "estrazioni_tariffe"
 INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
+CONFRONTI_ARCHIVE_DIR = Path(
+    os.environ.get("CONFRONTI_ARCHIVE_DIR", BASE_DIR / "archivio" / "confronti")
+)
 PROVIDERS = {
     "ILLUMIA": "Illumia",
     "EON": "E.ON",
@@ -228,6 +232,23 @@ def date_label_it(value) -> str:
 def safe_download_filename(name: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", str(name).strip())
     return cleaned or "confronto_bollette.xlsx"
+
+
+def archive_excel_filename(data, timestamp=None) -> str:
+    comparison_datetime = comparison_datetime_from_data(timestamp or data.get("comparison_datetime"))
+    nome_cliente = clean_text(data.get("nome_cliente")) or "Cliente"
+    commodity = clean_text(data.get("commodity")).upper() or "ENERGIA"
+    return safe_download_filename(
+        f"{nome_cliente}_{commodity}_{comparison_datetime.strftime('%Y%m%d_%H%M%S')}.xlsx"
+    )
+
+
+def archive_excel_bytes(content: bytes, data, archive_dir=None) -> Path:
+    destination_dir = Path(archive_dir or CONFRONTI_ARCHIVE_DIR)
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    destination = destination_dir / archive_excel_filename(data)
+    destination.write_bytes(content)
+    return destination
 
 
 def parse_number(x) -> float:
