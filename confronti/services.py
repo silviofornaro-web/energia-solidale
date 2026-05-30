@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import re
 from copy import copy
@@ -20,6 +21,12 @@ INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
 CONFRONTI_ARCHIVE_DIR = Path(
     os.environ.get("CONFRONTI_ARCHIVE_DIR", BASE_DIR / "archivio" / "confronti")
 )
+GOOGLE_DRIVE_FOLDER_ID = os.environ.get(
+    "GOOGLE_DRIVE_FOLDER_ID", "1A6oUV3QefVqd_3h50_LqCUTn4HBY0_bc"
+)
+GOOGLE_DRIVE_CREDENTIALS_ENV = "GOOGLE_DRIVE_CREDENTIALS_JSON"
+GOOGLE_DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file"
+EXCEL_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 PROVIDERS = {
     "ILLUMIA": "Illumia",
     "EON": "E.ON",
@@ -249,6 +256,60 @@ def archive_excel_bytes(content: bytes, data, archive_dir=None) -> Path:
     destination = destination_dir / archive_excel_filename(data)
     destination.write_bytes(content)
     return destination
+
+
+def google_drive_archive_configured() -> bool:
+    return bool(clean_text(os.environ.get(GOOGLE_DRIVE_CREDENTIALS_ENV)))
+
+
+def google_drive_credentials_from_json(credentials_json=None):
+    raw_credentials = credentials_json or os.environ.get(GOOGLE_DRIVE_CREDENTIALS_ENV, "")
+    if not clean_text(raw_credentials):
+        raise ValueError(f"Variabile {GOOGLE_DRIVE_CREDENTIALS_ENV} non configurata.")
+    credentials_info = json.loads(raw_credentials)
+    credential_type = clean_text(credentials_info.get("type")).lower()
+    if credential_type == "authorized_user":
+        from google.oauth2.credentials import Credentials
+
+        return Credentials.from_authorized_user_info(credentials_info, scopes=[GOOGLE_DRIVE_FILE_SCOPE])
+    if credential_type == "service_account":
+        from google.oauth2.service_account import Credentials
+
+        return Credentials.from_service_account_info(credentials_info, scopes=[GOOGLE_DRIVE_FILE_SCOPE])
+    raise ValueError("Credenziali Google Drive non supportate: usa authorized_user oppure service_account.")
+
+
+def upload_excel_to_google_drive(
+    content: bytes,
+    data,
+    credentials_json=None,
+    folder_id=None,
+    drive_service=None,
+    media_upload_factory=None,
+):
+    destination_folder = clean_text(folder_id or GOOGLE_DRIVE_FOLDER_ID)
+    if not destination_folder:
+        raise ValueError("Cartella Google Drive non configurata.")
+    if drive_service is None:
+        from googleapiclient.discovery import build
+
+        credentials = google_drive_credentials_from_json(credentials_json)
+        drive_service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+    if media_upload_factory is None:
+        from googleapiclient.http import MediaIoBaseUpload
+
+        media_upload_factory = MediaIoBaseUpload
+    media = media_upload_factory(io.BytesIO(content), mimetype=EXCEL_MIME_TYPE, resumable=False)
+    return (
+        drive_service.files()
+        .create(
+            body={"name": archive_excel_filename(data), "parents": [destination_folder]},
+            media_body=media,
+            fields="id,name,webViewLink",
+            supportsAllDrives=True,
+        )
+        .execute()
+    )
 
 
 def parse_number(x) -> float:

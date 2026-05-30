@@ -84,6 +84,44 @@ class ServiceUtilityTests(SimpleTestCase):
             self.assertEqual(destination.name, "Mario_Rossi_GAS_20260530_153045.xlsx")
             self.assertEqual(destination.read_bytes(), b"excel")
 
+    def test_google_drive_archive_uses_illumia_folder(self):
+        captured = {}
+
+        class FakeRequest:
+            def execute(self):
+                return {"id": "drive-file-id", "name": captured["body"]["name"]}
+
+        class FakeFiles:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+                return FakeRequest()
+
+        class FakeDriveService:
+            def files(self):
+                return FakeFiles()
+
+        def fake_media_factory(stream, **kwargs):
+            captured["content"] = stream.read()
+            captured["media_kwargs"] = kwargs
+            return "media"
+
+        result = services.upload_excel_to_google_drive(
+            b"excel",
+            {
+                "nome_cliente": "Mario Rossi",
+                "commodity": "GAS",
+                "comparison_datetime": "2026-05-30T15:30:45+02:00",
+            },
+            drive_service=FakeDriveService(),
+            media_upload_factory=fake_media_factory,
+        )
+
+        self.assertEqual(captured["body"]["parents"], ["1A6oUV3QefVqd_3h50_LqCUTn4HBY0_bc"])
+        self.assertEqual(captured["body"]["name"], "Mario_Rossi_GAS_20260530_153045.xlsx")
+        self.assertEqual(captured["content"], b"excel")
+        self.assertEqual(captured["media_kwargs"]["mimetype"], services.EXCEL_MIME_TYPE)
+        self.assertEqual(result["id"], "drive-file-id")
+
     def test_billing_months_and_labels(self):
         self.assertEqual(services.billing_months_from_dates(date(2026, 1, 1), date(2026, 3, 31)), 3)
         self.assertEqual(services.billing_label_from_months(1), "MENSILE")
@@ -423,6 +461,12 @@ class ConfrontoViewTests(TestCase):
         self.archive_excel_patch = patch("confronti.views.archive_excel_bytes")
         self.mock_archive_excel = self.archive_excel_patch.start()
         self.addCleanup(self.archive_excel_patch.stop)
+        self.google_drive_configured_patch = patch("confronti.views.google_drive_archive_configured", return_value=False)
+        self.mock_google_drive_configured = self.google_drive_configured_patch.start()
+        self.addCleanup(self.google_drive_configured_patch.stop)
+        self.google_drive_upload_patch = patch("confronti.views.upload_excel_to_google_drive")
+        self.mock_google_drive_upload = self.google_drive_upload_patch.start()
+        self.addCleanup(self.google_drive_upload_patch.stop)
 
     def login(self):
         self.assertTrue(self.client.login(username="tester", password="secret"))
@@ -620,3 +664,11 @@ class ConfrontoViewTests(TestCase):
         self.assertTrue(
             all(value != "N.D." for voce, value in bill_rows.items() if voce not in {"Accise", "IVA"})
         )
+
+    def test_excel_download_uploads_to_google_drive_when_configured(self):
+        self.login()
+        self.mock_google_drive_configured.return_value = True
+        self.client.post("/", valid_payload())
+        response = self.client.get("/scarica-excel/")
+        self.assertEqual(response.status_code, 200)
+        self.mock_google_drive_upload.assert_called_once()
