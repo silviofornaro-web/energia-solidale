@@ -5,7 +5,8 @@ from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils import timezone
 
-from .forms import ConfrontoForm, session_to_service_data
+from .bill_parser import parse_uploaded_bill
+from .forms import BillUploadForm, ConfrontoForm, session_to_service_data
 from .services import (
     archive_excel_bytes,
     build_excel_bytes,
@@ -25,8 +26,29 @@ logger = logging.getLogger(__name__)
 def confronto(request):
     prepared = None
     rows = None
+    extraction_warnings = []
+    extraction_count = 0
+    upload_form = BillUploadForm()
     if request.method == "POST":
-        if request.POST.get("action") == "reset_bill":
+        action = request.POST.get("action")
+        if action == "extract_bill":
+            request.session.pop("last_confronto", None)
+            upload_form = BillUploadForm(request.POST, request.FILES)
+            if upload_form.is_valid():
+                try:
+                    parsed = parse_uploaded_bill(upload_form.cleaned_data["bill_pdf"])
+                except Exception:
+                    logger.exception("Impossibile leggere il PDF della bolletta.")
+                    form = ConfrontoForm()
+                    extraction_warnings = ["Non sono riuscito a leggere questo PDF. Inserisci manualmente i valori della bolletta."]
+                else:
+                    form = ConfrontoForm(initial=parsed.values)
+                    extraction_warnings = parsed.warnings
+                    extraction_count = len(parsed.values)
+                    upload_form = BillUploadForm()
+            else:
+                form = ConfrontoForm()
+        elif action == "reset_bill":
             request.session.pop("last_confronto", None)
             providers = request.POST.getlist("providers") or [request.POST.get("provider") or ""]
             form = ConfrontoForm(
@@ -69,6 +91,9 @@ def confronto(request):
             "prepared": prepared,
             "rows": rows,
             "offer_options": offer_options_payload(),
+            "upload_form": upload_form,
+            "extraction_warnings": extraction_warnings,
+            "extraction_count": extraction_count,
         },
     )
 
