@@ -18,10 +18,24 @@ ITALIAN_MONTHS = {
     "novembre": 11,
     "dicembre": 12,
 }
+ABBREVIATED_ITALIAN_MONTHS = {
+    "gen": 1,
+    "feb": 2,
+    "mar": 3,
+    "apr": 4,
+    "mag": 5,
+    "giu": 6,
+    "lug": 7,
+    "ago": 8,
+    "set": 9,
+    "ott": 10,
+    "nov": 11,
+    "dic": 12,
+}
 NUMBER_PATTERN = r"[-+]?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d+)?"
 DATE_PATTERN = (
-    r"\d{1,2}[/.]\d{1,2}[/.]\d{2,4}"
-    r"|\d{1,2}\s+(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+\d{4}"
+    r"(?:\d{1,2}[/.]\d{1,2}[/.]\d{2,4}"
+    r"|\d{1,2}\s+(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+\d{4})"
 )
 
 
@@ -38,6 +52,7 @@ def _normalize_text(text):
         .replace("ʼ", "'")
         .replace("’", "'")
         .replace("–", "-")
+        .replace("−", "-")
         .replace("\xa0", " ")
     )
 
@@ -83,6 +98,20 @@ def _billing_months(start, end):
     return max(1, (end.year - start.year) * 12 + end.month - start.month + 1)
 
 
+def _month_range(month_name, year):
+    month = ITALIAN_MONTHS.get(str(month_name).lower()) or ABBREVIATED_ITALIAN_MONTHS.get(
+        str(month_name).lower()[:3]
+    )
+    if not month:
+        return None, None
+    start = date(int(year), month, 1)
+    if month == 12:
+        next_month = date(int(year) + 1, 1, 1)
+    else:
+        next_month = date(int(year), month + 1, 1)
+    return start, date.fromordinal(next_month.toordinal() - 1)
+
+
 def _first_match(text, patterns, flags=re.IGNORECASE):
     for pattern in patterns:
         match = re.search(pattern, text, flags)
@@ -104,7 +133,7 @@ def _last_number(text):
 def _amount_from_chunk(chunk):
     currency_totals = re.findall(rf"({NUMBER_PATTERN})\s*€(?!\s*/)", chunk)
     if currency_totals:
-        return _float(currency_totals[-1])
+        return _float(currency_totals[0])
     return _last_number(chunk)
 
 
@@ -147,15 +176,30 @@ def _extract_name(text):
 
 
 def _extract_period(text):
+    collapsed = _collapsed(text)
     match = _first_match(
-        _collapsed(text),
+        collapsed,
         [
             rf"Periodo (?:oggetto )?di fatturazione\s*:?\s*(?:dal\s*)?({DATE_PATTERN})\s*(?:al|-)\s*({DATE_PATTERN})",
+            rf"Periodo di riferimento\s*:?.{{0,180}}?({DATE_PATTERN})\s*-\s*({DATE_PATTERN})",
+            rf"Consumo Energia Attiva.*?({DATE_PATTERN})\s*-\s*({DATE_PATTERN})\s+Effettivo",
         ],
     )
-    if not match:
+    if match:
+        return _parse_date(match.group(1)), _parse_date(match.group(2))
+    month_match = _first_match(
+        collapsed,
+        [
+            r"Periodo di riferimento\s*:?\s*([a-z]+)\s+(\d{4})",
+            r"Periodo\s+([a-z]{3})\s+(\d{4})\s*-\s*([a-z]{3})\s+(\d{4})",
+        ],
+    )
+    if not month_match:
         return None, None
-    return _parse_date(match.group(1)), _parse_date(match.group(2))
+    start, end = _month_range(month_match.group(1), month_match.group(2))
+    if month_match.lastindex == 4:
+        _, end = _month_range(month_match.group(3), month_match.group(4))
+    return start, end
 
 
 def _extract_commodity(text):
@@ -189,12 +233,23 @@ def _extract_pod_pdr(text, commodity):
 
 def _extract_consumption(text):
     collapsed = _collapsed(text)
+    receipt = _receipt_section(text)
+    match = _first_match(
+        receipt,
+        [
+            rf"Quota per consumi\s*({NUMBER_PATTERN})\s*(?:(?:Smc|kWh)\b|(?={NUMBER_PATTERN}))",
+        ],
+    )
+    if match:
+        return _float(match.group(1))
     match = _first_match(
         collapsed,
         [
             rf"Consumo totale fatturato(?: del periodo)?\s*:?\s*({NUMBER_PATTERN})\s*(?:Smc|kWh)",
+            rf"Consumo fatturato(?: nel periodo di fatturazione)?\s*:?\s*({NUMBER_PATTERN})\s*(?:Smc|kWh)",
             rf"Consumo (?:totale )?del periodo(?: di fatturazione)?\s*:?\s*({NUMBER_PATTERN})\s*(?:Smc|kWh)",
             rf"Spesa totale quota consumi\s*({NUMBER_PATTERN})\s*(?:Smc|kWh)",
+            rf"A quanto ammonta il consumo fatturato\?.{{0,120}}?({NUMBER_PATTERN})\s*(?:Smc|kWh)",
         ],
     )
     return _float(match.group(1)) if match else None
@@ -207,6 +262,9 @@ def _extract_annual_consumption(text):
         [
             rf"(?:Il tuo consumo annuo aggiornato|In un anno hai consumato)\s*({NUMBER_PATTERN})\s*(?:Smc|kWh)",
             rf"CONSUMO ANNUO(?:\s+mc)?\s*({NUMBER_PATTERN})",
+            rf"CONSUMO ANNUO\s*:?\s*Da\s+{DATE_PATTERN}\s+a\s+{DATE_PATTERN}\s*:\s*({NUMBER_PATTERN})\s*(?:Smc|kWh)",
+            rf"Consumo annuo aggiornato(?:\s+dal\s+{DATE_PATTERN}\s+al\s+{DATE_PATTERN})?\s*:?\s*({NUMBER_PATTERN})\s*(?:Smc|kWh)",
+            rf"Consumo annuo\s*:?\s*({NUMBER_PATTERN})\s*(?:Smc|kWh)",
             rf"Da inizio fornitura hai consumato\s*({NUMBER_PATTERN})\s*(?:Smc|kWh)",
         ],
     )
@@ -219,6 +277,14 @@ def _extract_bill_tariff_type(text):
         return "FISSA"
     if re.search(r"Tipologia offerta\s*:?\s*(?:Offerta )?a prezzo variabile", collapsed, re.IGNORECASE):
         return "VARIABILE"
+    if re.search(r"Tipologia di offerta\s*:?\s*(?:Offerta )?a prezzo fisso|Tipologia di offerta\s*:?\s*prezzo fisso", collapsed, re.IGNORECASE):
+        return "FISSA"
+    if re.search(
+        r"Tipologia di offerta\s*:?\s*(?:Offerta )?a prezzo variabile|Tipologia di offerta\s*:?\s*prezzo indicizzato",
+        collapsed,
+        re.IGNORECASE,
+    ):
+        return "VARIABILE"
     return ""
 
 
@@ -228,11 +294,13 @@ def _extract_offer_expiry(text):
         collapsed,
         [
             rf"(?:Data di )?[Ss]cadenza condizioni economiche\s*:?\s*({DATE_PATTERN})",
+            rf"Data di scadenza delle condizioni economiche\s*:?\s*({DATE_PATTERN})",
             rf"Data scadenza offerta\s*:?\s*({DATE_PATTERN})",
             rf"condizioni economiche dell[' ]offerta sono valide fino al\s*({DATE_PATTERN})",
         ],
     )
-    return _parse_date(match.group(1)) if match else None
+    expiry = _parse_date(match.group(1)) if match else None
+    return None if expiry and expiry.year >= 9999 else expiry
 
 
 def _extract_receipt_values(text, billing_months):
@@ -248,7 +316,7 @@ def _extract_receipt_values(text, billing_months):
         r"(?:QUOTA POTENZA|Spesa totale quota potenza|Altre partite|Accise e IVA|Totale bolletta)",
     )
     sale_label = r"di cui spesa per (?:la )?vendita (?:di )?(?:energia elettrica|gas naturale)"
-    network_label = r"di cui spesa per (?:la )?rete(?: e| gli)?(?: e| gli)? oneri generali di sistema"
+    network_label = r"di cui spesa per (?:la )?rete(?:\s+e)?\s+(?:gli\s+)?oneri(?:\s+generali)?\s+di\s+sistema\d*"
     values = {}
     sale_consumption = _expense_amount(consumption, sale_label)
     network_consumption = _expense_amount(consumption, network_label)
@@ -273,17 +341,40 @@ def _extract_receipt_values(text, billing_months):
             r"QUOTA POTENZA(.*?)(?=di cui spesa|Altre partite|Arrotondamento|Accise e IVA|Totale bolletta|$)",
             receipt,
         )
+    if not power_match:
+        power_match = re.search(
+            rf"\b{NUMBER_PATTERN}\s*kW\s+(?:x|per)\s+{NUMBER_PATTERN}\s*mesi?.*?({NUMBER_PATTERN})\s*€(?!\s*/)",
+            receipt,
+            re.IGNORECASE,
+        )
     if power_match:
         values["b_quota_potenza"] = _amount_from_chunk(power_match.group(1))
 
     for key, pattern in [
         ("b_ricalcoli", rf"Totale ricalcoli\s*({NUMBER_PATTERN})\s*€?"),
-        ("b_arrotondamenti", rf"Arrotondamento.*?({NUMBER_PATTERN})\s*€"),
+        (
+            "b_arrotondamenti",
+            rf"Arrotondament[oi]\s*(?:(?:\([^)]*\)|attuale|corrente)\s*)*:?\s*({NUMBER_PATTERN})\s*€",
+        ),
         ("b_accise_iva", rf"Accise e IVA\s*({NUMBER_PATTERN})\s*€?"),
     ]:
         match = re.search(pattern, receipt, re.IGNORECASE)
         if match:
             values[key] = _float(match.group(1))
+    social_bonus = re.search(
+        rf"Altre partite[^€]{{0,160}}Bonus sociale[^€]{{0,100}}({NUMBER_PATTERN})\s*€",
+        receipt,
+        re.IGNORECASE,
+    )
+    if social_bonus:
+        values["b_bonus_sociale"] = _float(social_bonus.group(1))
+    supplier_discount = re.search(
+        rf"Altre partite[^€]{{0,220}}Bonus(?! sociale).*?({NUMBER_PATTERN})\s*€",
+        receipt,
+        re.IGNORECASE,
+    )
+    if supplier_discount:
+        values["b_sconti"] = _float(supplier_discount.group(1))
     return values
 
 
@@ -319,10 +410,13 @@ def parse_bill_text(text):
     annual = _extract_annual_consumption(normalized)
     if annual is not None:
         values["tax_annual_consumption"] = annual
-    power_match = re.search(
-        r"Potenza impegnata.{{0,220}}?({})\s*kW".format(NUMBER_PATTERN),
+    power_match = _first_match(
         normalized,
-        re.IGNORECASE | re.DOTALL,
+        [
+            rf"Potenza impegnata\s*\(kW\)\s*:?\s*({NUMBER_PATTERN})",
+            rf"Potenza impegnata.{{0,220}}?({NUMBER_PATTERN})\s*kW(?!h)",
+        ],
+        flags=re.IGNORECASE | re.DOTALL,
     )
     if power_match:
         values["tax_power_kw"] = _float(power_match.group(1))

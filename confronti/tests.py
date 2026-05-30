@@ -454,6 +454,145 @@ class BillParserTests(SimpleTestCase):
         self.assertEqual(parsed.values["b_rete_fissa"], 3.875)
         self.assertEqual(parsed.values["b_ricalcoli"], -10.19)
 
+    def test_parses_argos_electric_bill_with_power_total_and_fixed_offer(self):
+        parsed = parse_bill_text(
+            """
+            Grazie per la tua fornitura di ENERGIA ELETTRICA, FRIZZIERO ALBERTO.
+            FRIZZIERO ALBERTO
+            VIA ROMA 1
+            Qual è il mio consumo annuo?
+            2.493,39 kWh
+            Consumo annuo: 2.493,39 kWh
+            PERIODO DI RIFERIMENTO: NON ATTIVO valida fino al 01/10/2026
+            01/10/2025 - 31/10/2025
+            Codice POD: IT001E35110608
+            Potenza Impegnata (kW): 4,50
+            Scontrino dell'energia
+            Quota per consumi
+            205,00 kWh X 0,249512 €/kWh 51,15 €
+            di cui spesa per la vendita di energia elettrica 41,96 €
+            di cui spesa per la rete e gli oneri di sistema 9,19 €
+            Quota fissa e Quota potenza
+            1 mese X 18,180000 €/mese 18,18 €
+            di cui spesa per la vendita di energia elettrica 16,28 €
+            di cui spesa per la rete e gli oneri di sistema 1,90 €
+            4,5kW per 1 mese X 2,106667 €/kW/mese 9,48 €
+            Accise e IVA 13,00 €
+            Tipologia di offerta prezzo fisso
+            Data di scadenza delle condizioni economiche 01/10/2026
+            """
+        )
+        self.assertEqual(parsed.values["bill_start"], date(2025, 10, 1))
+        self.assertEqual(parsed.values["tax_annual_consumption"], 2493.39)
+        self.assertEqual(parsed.values["tax_power_kw"], 4.5)
+        self.assertEqual(parsed.values["b_quota_potenza"], 9.48)
+        self.assertEqual(parsed.values["bill_tariff_type"], "FISSA")
+
+    def test_parses_edison_electric_bill_with_abbreviated_months(self):
+        parsed = parse_bill_text(
+            """
+            CONDOMINIO COMETA
+            VIA ROMA 1
+            Energia elettrica Codice POD IT001E31581163
+            Periodo OTT 2025 - NOV 2025
+            Consumo annuo aggiornato dal 01/12/2024 al 30/11/2025 1.828 kWh
+            Potenza impegnata: 6 kW
+            Scontrino dell'energia
+            Quota per consumi
+            259 kWh 0,235290 €/kWh 60,94 €
+            di cui spesa per la vendita di energia elettrica 45,90 €
+            di cui spesa per la rete e gli oneri di sistema 15,04 €
+            Quota fissa e Quota potenza
+            2 mesi 26,85 €/mese 53,70 €
+            di cui spesa per la vendita di energia elettrica 46,68 €
+            di cui spesa per la rete e gli oneri di sistema 7,02 €
+            6 kW per 2 mesi 4,68 €/kW/mese 56,18 €
+            Accise e IVA 20,65 €
+            Tipologia Offerta Offerta a prezzo variabile
+            Data di scadenza delle condizioni economiche 28/02/2026
+            """
+        )
+        self.assertEqual(parsed.values["bill_start"], date(2025, 10, 1))
+        self.assertEqual(parsed.values["bill_end"], date(2025, 11, 30))
+        self.assertEqual(parsed.values["tax_annual_consumption"], 1828)
+        self.assertEqual(parsed.values["b_vendita_fissa"], 23.34)
+        self.assertEqual(parsed.values["b_rete_fissa"], 3.51)
+        self.assertEqual(parsed.values["b_quota_potenza"], 56.18)
+
+    def test_maps_acea_promotional_bonus_to_bill_discount(self):
+        parsed = parse_bill_text(
+            """
+            SANDRA SEGATO
+            VIA ROMA 1
+            GAS NATURALE Codice PDR 00883203478775
+            Periodo di fatturazione 01/02/2026 - 28/02/2026
+            Consumo annuo aggiornato 819 Smc
+            Scontrino dell'energia
+            Quota per consumi 105 Smc 0,783810 €/Smc 82,30 €
+            di cui spesa per vendita di gas naturale 50,58 €
+            di cui spesa per la rete e gli oneri generali di sistema 31,72 €
+            QUOTA FISSA 1 mese 11,73 €
+            di cui spesa per vendita di gas naturale 7,75 €
+            di cui spesa per la rete e gli oneri generali di sistema 3,98 €
+            Altre partite "Bonus - Un mese di contributo fisso gratis" -7,75 €
+            Accise e IVA 32,94 €
+            Tipologia di offerta Offerta a prezzo variabile
+            Data scadenza condizioni economiche 30/06/2027
+            BONUS SOCIALE GAS: informazione generale per il cliente 58,33 €
+            """
+        )
+        self.assertEqual(parsed.values["b_sconti"], -7.75)
+        self.assertEqual(parsed.values["b_bonus_sociale"], 0)
+
+    def test_parses_unoenergy_gas_bill_without_unit_in_receipt_quantity(self):
+        parsed = parse_bill_text(
+            """
+            GAS NATURALE - Servizio Mercato Libero
+            MARCON SARA
+            VIA ROMA 1
+            PDR 03081001259602
+            CONSUMO ANNUO:
+            Da 31/10/2024 a 31/10/2025 : 636 Smc
+            SCADENZA CONDIZIONI ECONOMICHE
+            31/12/9999
+            PERIODO DI RIFERIMENTO:
+            OTTOBRE 2025
+            SCONTRINO DELL'ENERGIA
+            Quota per consumi 16,29 0,819695 13,36 €
+            Di cui spesa per la vendita di gas naturale 8,69 €
+            Di cui spesa per la rete e gli oneri di sistema 4,67 €
+            QUOTA FISSA 1 mese 10,78 €
+            Di cui spesa per la vendita di gas naturale 7,00 €
+            Di cui spesa per la rete e gli oneri di sistema 3,78 €
+            Accise e IVA 7,40 €
+            Arrotondamento attuale 0,27 €
+            Tipologia di offerta PREZZO INDICIZZATO MENSILE
+            """
+        )
+        self.assertEqual(parsed.values["bill_start"], date(2025, 10, 1))
+        self.assertEqual(parsed.values["bill_end"], date(2025, 10, 31))
+        self.assertEqual(parsed.values["consumo"], 16.29)
+        self.assertEqual(parsed.values["tax_annual_consumption"], 636)
+        self.assertNotIn("bill_offer_expiry", parsed.values)
+        self.assertEqual(parsed.values["b_arrotondamenti"], 0.27)
+
+    def test_does_not_parse_rounding_from_generic_information_text(self):
+        parsed = parse_bill_text(
+            """
+            GAS NATURALE
+            MARIO ROSSI
+            VIA ROMA 1
+            PDR 01234567890123
+            SCONTRINO DELL'ENERGIA
+            Quota per consumi 10 Smc 5,00 €
+            QUOTA FISSA 1 mese 1,00 €
+            Accise e IVA 1,00 €
+            Eventuali mancate quadrature sono dovute agli arrotondamenti.
+            Fonti primarie utilizzate nel 2025: 10,00 €
+            """
+        )
+        self.assertEqual(parsed.values["b_arrotondamenti"], 0)
+
     def test_scanned_bill_returns_manual_entry_warning(self):
         parsed = parse_bill_text("")
         self.assertEqual(parsed.values, {})
