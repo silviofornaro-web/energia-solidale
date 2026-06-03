@@ -3,22 +3,6 @@
 {% block content %}
 <h1>Confronto bollette</h1>
 
-<form method="post" enctype="multipart/form-data" class="panel upload-panel">
-    {% csrf_token %}
-    <div>
-        <h2>Importa bolletta PDF</h2>
-        <p>Compila automaticamente i dati leggibili. Puoi sempre correggerli prima del confronto.</p>
-    </div>
-    <label>{{ upload_form.bill_pdf.label }}{{ upload_form.bill_pdf }}{{ upload_form.bill_pdf.errors }}</label>
-    <button type="submit" name="action" value="extract_bill">Leggi bolletta PDF</button>
-</form>
-{% if extraction_count %}
-    <div class="extraction-message">Ho riportato nella dashboard {{ extraction_count }} valori riconosciuti dalla bolletta.</div>
-{% endif %}
-{% for warning in extraction_warnings %}
-    <div class="validity-warning">{{ warning }}</div>
-{% endfor %}
-
 <form method="post" class="panel">
     {% csrf_token %}
     {{ form.non_field_errors }}
@@ -28,7 +12,6 @@
 
     <div class="form-grid top">
         <label>{{ form.nome_cliente.label }}{{ form.nome_cliente }}{{ form.nome_cliente.errors }}</label>
-        <label>{{ form.pod_pdr.label }}{{ form.pod_pdr }}{{ form.pod_pdr.errors }}</label>
         <label>{{ form.segmento.label }}{{ form.segmento }}{{ form.segmento.errors }}</label>
         <label>{{ form.commodity.label }}{{ form.commodity }}{{ form.commodity.errors }}</label>
         <label>{{ form.bill_tariff_type.label }}{{ form.bill_tariff_type }}{{ form.bill_tariff_type.errors }}</label>
@@ -120,7 +103,6 @@
 
     <div class="meta">
         <div><strong>Cliente:</strong> {{ prepared.calc.nome_cliente }}</div>
-        <div><strong>Codice POD/PDR:</strong> {{ prepared.calc.pod_pdr|default:"N.D." }}</div>
         <div><strong>Confronto eseguito:</strong> {{ prepared.calc.comparison_datetime_label }}</div>
         <div><strong>Tipo tariffa bolletta:</strong> {{ prepared.calc.bill_tariff_type_label }}</div>
         <div><strong>Consumo annuo stimato:</strong> {{ prepared.calc.tax_annual_consumption_label }}</div>

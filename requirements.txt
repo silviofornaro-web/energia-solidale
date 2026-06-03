@@ -4,6 +4,3 @@ gunicorn>=23,<24
 dj-database-url>=3,<4
 psycopg2-binary>=2.9,<3
 whitenoise[brotli]>=6.11,<7
-google-api-python-client>=2.180,<3
-google-auth>=2.40,<3
-pypdf>=6.0,<7

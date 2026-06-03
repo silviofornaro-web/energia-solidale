@@ -1,15 +1,11 @@
 from datetime import date
 from io import BytesIO
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, SimpleTestCase, TestCase
 from openpyxl import load_workbook
 
-from .bill_parser import ParsedBill, parse_bill_text
 from .forms import ConfrontoForm
 from . import services
 
@@ -17,7 +13,6 @@ from . import services
 def valid_payload(**overrides):
     data = {
         "nome_cliente": "Mario Rossi",
-        "pod_pdr": "IT001E12345678",
         "segmento": "RESIDENZIALE",
         "commodity": "EE",
         "bill_tariff_type": "VARIABILE",
@@ -74,56 +69,6 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertEqual(services.parse_number("€ 1.234,56"), 1234.56)
         self.assertEqual(services.parse_number("-€ 21,60"), -21.6)
         self.assertEqual(services.parse_number(""), 0.0)
-
-    def test_archive_excel_bytes_uses_customer_commodity_and_timestamp(self):
-        data = {
-            "nome_cliente": "Mario Rossi",
-            "commodity": "GAS",
-            "comparison_datetime": "2026-05-30T15:30:45+02:00",
-        }
-        with TemporaryDirectory() as tmpdir:
-            destination = services.archive_excel_bytes(b"excel", data, tmpdir)
-            self.assertEqual(destination.parent, Path(tmpdir))
-            self.assertEqual(destination.name, "Mario_Rossi_GAS_20260530_153045.xlsx")
-            self.assertEqual(destination.read_bytes(), b"excel")
-
-    def test_google_drive_archive_uses_illumia_folder(self):
-        captured = {}
-
-        class FakeRequest:
-            def execute(self):
-                return {"id": "drive-file-id", "name": captured["body"]["name"]}
-
-        class FakeFiles:
-            def create(self, **kwargs):
-                captured.update(kwargs)
-                return FakeRequest()
-
-        class FakeDriveService:
-            def files(self):
-                return FakeFiles()
-
-        def fake_media_factory(stream, **kwargs):
-            captured["content"] = stream.read()
-            captured["media_kwargs"] = kwargs
-            return "media"
-
-        result = services.upload_excel_to_google_drive(
-            b"excel",
-            {
-                "nome_cliente": "Mario Rossi",
-                "commodity": "GAS",
-                "comparison_datetime": "2026-05-30T15:30:45+02:00",
-            },
-            drive_service=FakeDriveService(),
-            media_upload_factory=fake_media_factory,
-        )
-
-        self.assertEqual(captured["body"]["parents"], ["1A6oUV3QefVqd_3h50_LqCUTn4HBY0_bc"])
-        self.assertEqual(captured["body"]["name"], "Mario_Rossi_GAS_20260530_153045.xlsx")
-        self.assertEqual(captured["content"], b"excel")
-        self.assertEqual(captured["media_kwargs"]["mimetype"], services.EXCEL_MIME_TYPE)
-        self.assertEqual(result["id"], "drive-file-id")
 
     def test_billing_months_and_labels(self):
         self.assertEqual(services.billing_months_from_dates(date(2026, 1, 1), date(2026, 3, 31)), 3)
@@ -361,244 +306,6 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertAlmostEqual(prepared["values"]["fissa"]["vendita_consumo"], 54.8, places=4)
 
 
-class BillParserTests(SimpleTestCase):
-    def test_parses_dolomiti_gas_bill_with_textual_months(self):
-        parsed = parse_bill_text(
-            """
-            GAS NATURALE
-            MERCATO LIBERO
-            MASSIMO PASSARELLA
-            VIA SIGNORIA 79
-            Periodo oggetto di fatturazione: 1 ottobre 2025 - 31 ottobre 2025
-            Consumo totale fatturato: 21,41202 Smc
-            Consumo da inizio contratto (mc): 564
-            Scadenza condizioni economiche: 30/09/2027
-            SCONTRINO DELL'ENERGIA
-            Codice PDR: 15351410010036
-            QUOTA PER CONSUMI
-            21,412020 Smc 0,714552 €/Smc 15,30
-            di cui spesa per vendita gas naturale 0,487110 €/Smc 10,43
-            di cui spesa per la rete e gli oneri generali di sistema 0,227442 €/Smc 4,87
-            QUOTA FISSA
-            1 mesi 16,330000 €/mese 16,33
-            di cui spesa per vendita gas naturale 9,000000 €/mese 9,00
-            di cui spesa per la rete e gli oneri generali di sistema 7,330000 €/mese 7,33
-            Accise e IVA 12,07
-            """
-        )
-        self.assertEqual(parsed.values["commodity"], "GAS")
-        self.assertEqual(parsed.values["pod_pdr"], "15351410010036")
-        self.assertEqual(parsed.values["bill_start"], date(2025, 10, 1))
-        self.assertAlmostEqual(parsed.values["b_rete_fissa"], 7.33)
-
-    def test_parses_eon_electric_bill_sections_and_power(self):
-        parsed = parse_bill_text(
-            """
-            CUPPOLETTI MATTEO
-            VIA UMBRIA 7G
-            Energia elettrica
-            PERIODO DI FATTURAZIONE
-            01 dicembre 2025 - 31 dicembre 2025
-            Consumo totale fatturato 188,86 kWh
-            Il tuo consumo annuo aggiornato 2.226,30 kWh
-            Scontrino dell'energia
-            Quota consumi 48,33 €
-            Spesa totale quota consumi 188,86 kWh x 0,255900 €/kWh 48,33 €
-            di cui spesa per vendita energia elettrica 188,86 kWh x 0,211052 €/kWh 39,86 €
-            di cui spesa per la rete e gli oneri generali di sistema 188,86 kWh x 0,044847 €/kWh 8,47 €
-            Quota fissa e quota potenza 25,64 €
-            Spesa totale quota fissa 1 mese x 13,000000 €/mese 13,00 €
-            di cui spesa per vendita energia elettrica 1 mese x 11,100000 €/mese 11,10 €
-            di cui spesa per la rete e gli oneri generali di sistema 1 mese x 1,900000 €/mese 1,90 €
-            Spesa totale quota potenza 6,0 kW x 1 mese x 2,106667 €/kW 12,64 €
-            Arrotondamento (Attuale 0,28 + Precedente -0,37) -0,09 €
-            Accise e IVA 12,12 €
-            Tipologia offerta Offerta a prezzo variabile
-            Data scadenza offerta 31/07/2026
-            Codice POD IT001E32758120
-            Potenza impegnata 6,0 kW
-            """
-        )
-        self.assertEqual(parsed.values["commodity"], "EE")
-        self.assertEqual(parsed.values["bill_tariff_type"], "VARIABILE")
-        self.assertEqual(parsed.values["tax_annual_consumption"], 2226.3)
-        self.assertEqual(parsed.values["b_quota_potenza"], 12.64)
-        self.assertEqual(parsed.values["b_vendita_fissa"], 11.1)
-
-    def test_parses_plenitude_gas_bill_and_converts_fixed_totals_to_monthly_values(self):
-        parsed = parse_bill_text(
-            """
-            Contratto intestato a:
-            ANTONIO ROSSETTI
-            Codice Fiscale/Partita IVA
-            Periodo di fatturazione: dal 01/12/2025 al 31/01/2026
-            Consumo totale fatturato del periodo 1086 Smc
-            In un anno hai consumato 2.343 Smc
-            Indirizzo di fornitura PDR
-            Borgo San Giovanni 557, Chioggia VE 00883203352194
-            Scontrino dell'energia
-            QUOTA PER CONSUMI 1086 Smc 737,95 €0,679512 €/Smc
-            di cui spesa per la vendita di gas naturale 450,82 €0,415120 €/Smc
-            di cui spesa per la rete e gli oneri generali di sistema 287,13 €0,264392 €/Smc
-            QUOTA FISSA 2 mesi 16,41 €8,205000 €/mese
-            di cui spesa per la vendita di gas naturale 8,66 €4,330000 €/mese
-            di cui spesa per la rete e gli oneri generali di sistema 7,75 €3,875000 €/mese
-            Totale ricalcoli -10,19 €
-            Accise e IVA 364,74 €
-            Tipologia offerta: a prezzo variabile
-            """
-        )
-        self.assertEqual(parsed.values["commodity"], "GAS")
-        self.assertEqual(parsed.values["tax_annual_consumption"], 2343)
-        self.assertEqual(parsed.values["b_vendita_fissa"], 4.33)
-        self.assertEqual(parsed.values["b_rete_fissa"], 3.875)
-        self.assertEqual(parsed.values["b_ricalcoli"], -10.19)
-
-    def test_parses_argos_electric_bill_with_power_total_and_fixed_offer(self):
-        parsed = parse_bill_text(
-            """
-            Grazie per la tua fornitura di ENERGIA ELETTRICA, FRIZZIERO ALBERTO.
-            FRIZZIERO ALBERTO
-            VIA ROMA 1
-            Qual è il mio consumo annuo?
-            2.493,39 kWh
-            Consumo annuo: 2.493,39 kWh
-            PERIODO DI RIFERIMENTO: NON ATTIVO valida fino al 01/10/2026
-            01/10/2025 - 31/10/2025
-            Codice POD: IT001E35110608
-            Potenza Impegnata (kW): 4,50
-            Scontrino dell'energia
-            Quota per consumi
-            205,00 kWh X 0,249512 €/kWh 51,15 €
-            di cui spesa per la vendita di energia elettrica 41,96 €
-            di cui spesa per la rete e gli oneri di sistema 9,19 €
-            Quota fissa e Quota potenza
-            1 mese X 18,180000 €/mese 18,18 €
-            di cui spesa per la vendita di energia elettrica 16,28 €
-            di cui spesa per la rete e gli oneri di sistema 1,90 €
-            4,5kW per 1 mese X 2,106667 €/kW/mese 9,48 €
-            Accise e IVA 13,00 €
-            Tipologia di offerta prezzo fisso
-            Data di scadenza delle condizioni economiche 01/10/2026
-            """
-        )
-        self.assertEqual(parsed.values["bill_start"], date(2025, 10, 1))
-        self.assertEqual(parsed.values["tax_annual_consumption"], 2493.39)
-        self.assertEqual(parsed.values["tax_power_kw"], 4.5)
-        self.assertEqual(parsed.values["b_quota_potenza"], 9.48)
-        self.assertEqual(parsed.values["bill_tariff_type"], "FISSA")
-
-    def test_parses_edison_electric_bill_with_abbreviated_months(self):
-        parsed = parse_bill_text(
-            """
-            CONDOMINIO COMETA
-            VIA ROMA 1
-            Energia elettrica Codice POD IT001E31581163
-            Periodo OTT 2025 - NOV 2025
-            Consumo annuo aggiornato dal 01/12/2024 al 30/11/2025 1.828 kWh
-            Potenza impegnata: 6 kW
-            Scontrino dell'energia
-            Quota per consumi
-            259 kWh 0,235290 €/kWh 60,94 €
-            di cui spesa per la vendita di energia elettrica 45,90 €
-            di cui spesa per la rete e gli oneri di sistema 15,04 €
-            Quota fissa e Quota potenza
-            2 mesi 26,85 €/mese 53,70 €
-            di cui spesa per la vendita di energia elettrica 46,68 €
-            di cui spesa per la rete e gli oneri di sistema 7,02 €
-            6 kW per 2 mesi 4,68 €/kW/mese 56,18 €
-            Accise e IVA 20,65 €
-            Tipologia Offerta Offerta a prezzo variabile
-            Data di scadenza delle condizioni economiche 28/02/2026
-            """
-        )
-        self.assertEqual(parsed.values["bill_start"], date(2025, 10, 1))
-        self.assertEqual(parsed.values["bill_end"], date(2025, 11, 30))
-        self.assertEqual(parsed.values["tax_annual_consumption"], 1828)
-        self.assertEqual(parsed.values["b_vendita_fissa"], 23.34)
-        self.assertEqual(parsed.values["b_rete_fissa"], 3.51)
-        self.assertEqual(parsed.values["b_quota_potenza"], 56.18)
-
-    def test_maps_acea_promotional_bonus_to_bill_discount(self):
-        parsed = parse_bill_text(
-            """
-            SANDRA SEGATO
-            VIA ROMA 1
-            GAS NATURALE Codice PDR 00883203478775
-            Periodo di fatturazione 01/02/2026 - 28/02/2026
-            Consumo annuo aggiornato 819 Smc
-            Scontrino dell'energia
-            Quota per consumi 105 Smc 0,783810 €/Smc 82,30 €
-            di cui spesa per vendita di gas naturale 50,58 €
-            di cui spesa per la rete e gli oneri generali di sistema 31,72 €
-            QUOTA FISSA 1 mese 11,73 €
-            di cui spesa per vendita di gas naturale 7,75 €
-            di cui spesa per la rete e gli oneri generali di sistema 3,98 €
-            Altre partite "Bonus - Un mese di contributo fisso gratis" -7,75 €
-            Accise e IVA 32,94 €
-            Tipologia di offerta Offerta a prezzo variabile
-            Data scadenza condizioni economiche 30/06/2027
-            BONUS SOCIALE GAS: informazione generale per il cliente 58,33 €
-            """
-        )
-        self.assertEqual(parsed.values["b_sconti"], -7.75)
-        self.assertEqual(parsed.values["b_bonus_sociale"], 0)
-
-    def test_parses_unoenergy_gas_bill_without_unit_in_receipt_quantity(self):
-        parsed = parse_bill_text(
-            """
-            GAS NATURALE - Servizio Mercato Libero
-            MARCON SARA
-            VIA ROMA 1
-            PDR 03081001259602
-            CONSUMO ANNUO:
-            Da 31/10/2024 a 31/10/2025 : 636 Smc
-            SCADENZA CONDIZIONI ECONOMICHE
-            31/12/9999
-            PERIODO DI RIFERIMENTO:
-            OTTOBRE 2025
-            SCONTRINO DELL'ENERGIA
-            Quota per consumi 16,29 0,819695 13,36 €
-            Di cui spesa per la vendita di gas naturale 8,69 €
-            Di cui spesa per la rete e gli oneri di sistema 4,67 €
-            QUOTA FISSA 1 mese 10,78 €
-            Di cui spesa per la vendita di gas naturale 7,00 €
-            Di cui spesa per la rete e gli oneri di sistema 3,78 €
-            Accise e IVA 7,40 €
-            Arrotondamento attuale 0,27 €
-            Tipologia di offerta PREZZO INDICIZZATO MENSILE
-            """
-        )
-        self.assertEqual(parsed.values["bill_start"], date(2025, 10, 1))
-        self.assertEqual(parsed.values["bill_end"], date(2025, 10, 31))
-        self.assertEqual(parsed.values["consumo"], 16.29)
-        self.assertEqual(parsed.values["tax_annual_consumption"], 636)
-        self.assertNotIn("bill_offer_expiry", parsed.values)
-        self.assertEqual(parsed.values["b_arrotondamenti"], 0.27)
-
-    def test_does_not_parse_rounding_from_generic_information_text(self):
-        parsed = parse_bill_text(
-            """
-            GAS NATURALE
-            MARIO ROSSI
-            VIA ROMA 1
-            PDR 01234567890123
-            SCONTRINO DELL'ENERGIA
-            Quota per consumi 10 Smc 5,00 €
-            QUOTA FISSA 1 mese 1,00 €
-            Accise e IVA 1,00 €
-            Eventuali mancate quadrature sono dovute agli arrotondamenti.
-            Fonti primarie utilizzate nel 2025: 10,00 €
-            """
-        )
-        self.assertEqual(parsed.values["b_arrotondamenti"], 0)
-
-    def test_scanned_bill_returns_manual_entry_warning(self):
-        parsed = parse_bill_text("")
-        self.assertEqual(parsed.values, {})
-        self.assertIn("scansione", parsed.warnings[0])
-
-
 class ConfrontoFormTests(SimpleTestCase):
     def test_dashboard_context_fields_are_required_and_not_prefilled(self):
         form = ConfrontoForm()
@@ -699,15 +406,6 @@ class ConfrontoViewTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username="tester", password="secret")
         self.client = Client()
-        self.archive_excel_patch = patch("confronti.views.archive_excel_bytes")
-        self.mock_archive_excel = self.archive_excel_patch.start()
-        self.addCleanup(self.archive_excel_patch.stop)
-        self.google_drive_configured_patch = patch("confronti.views.google_drive_archive_configured", return_value=False)
-        self.mock_google_drive_configured = self.google_drive_configured_patch.start()
-        self.addCleanup(self.google_drive_configured_patch.stop)
-        self.google_drive_upload_patch = patch("confronti.views.upload_excel_to_google_drive")
-        self.mock_google_drive_upload = self.google_drive_upload_patch.start()
-        self.addCleanup(self.google_drive_upload_patch.stop)
 
     def login(self):
         self.assertTrue(self.client.login(username="tester", password="secret"))
@@ -727,7 +425,6 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, 'type="date"')
         self.assertContains(response, "Nuova bolletta")
         self.assertContains(response, "Fornitori confronto")
-        self.assertContains(response, "Importa bolletta PDF")
 
     def test_invalid_form_renders_field_errors(self):
         self.login()
@@ -814,33 +511,6 @@ class ConfrontoViewTests(TestCase):
         self.assertNotIn("999", html)
         self.assertEqual(response.context["form"].initial["tax_annual_consumption"], "")
 
-    @patch("confronti.views.parse_uploaded_bill")
-    def test_pdf_upload_prefills_recognized_bill_values(self, mock_parse_uploaded_bill):
-        mock_parse_uploaded_bill.return_value = ParsedBill(
-            values={
-                "nome_cliente": "Federico Boetto",
-                "pod_pdr": "00881906523889",
-                "commodity": "GAS",
-                "consumo": 83,
-                "tax_annual_consumption": 83,
-                "b_vendita_consumo": 37.81,
-            },
-            warnings=["Data fine offerta bolletta non riconosciuta: compilala manualmente."],
-        )
-        self.login()
-        response = self.client.post(
-            "/",
-            {
-                "action": "extract_bill",
-                "bill_pdf": SimpleUploadedFile("bolletta.pdf", b"%PDF-test", content_type="application/pdf"),
-            },
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Ho riportato nella dashboard 6 valori riconosciuti")
-        self.assertContains(response, "Federico Boetto")
-        self.assertContains(response, "00881906523889")
-        self.assertContains(response, "Data fine offerta bolletta non riconosciuta")
-
     def test_download_requires_a_previous_comparison(self):
         self.login()
         response = self.client.get("/scarica-excel/")
@@ -855,7 +525,6 @@ class ConfrontoViewTests(TestCase):
             response["Content-Type"],
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-        self.mock_archive_excel.assert_called_once()
         self.assertIn("confronto_illumia_Mario_Rossi_EE.xlsx", response["Content-Disposition"])
         self.assertEqual(response.content[:2], b"PK")
 
@@ -872,9 +541,6 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(ws["F9"].value, "Consumo annuo stimato: 1200 kWh/anno")
         self.assertTrue(str(ws["F10"].value).startswith("Parametri Accise/IVA: "))
         self.assertEqual(ws["F11"].value, "Logica tariffe: Ultime tariffe disponibili")
-        self.assertEqual(ws["F12"].value, "Codice POD/PDR: IT001E12345678")
-        self.assertEqual(ws["F13"].value, "Fornitura: Luce")
-        self.assertEqual(ws["F14"].value, "Periodo bolletta: Gennaio 2026 - Marzo 2026")
         self.assertEqual(ws["A12"].value, "Bonus Sociale")
         self.assertEqual(ws["A13"].value, "Arrotondamenti")
         self.assertEqual(ws["A14"].value, "Servizi accessori (IVA 10%)")
@@ -895,7 +561,7 @@ class ConfrontoViewTests(TestCase):
         self.assertAlmostEqual(ws["B8"].value, 1.1901, places=4)
         self.assertIsInstance(ws["C15"].value, (int, float))
         self.assertIsInstance(ws["D15"].value, (int, float))
-        self.assertEqual(ws["B18"].value, "=SUM(B4:B14)+B17")
+        self.assertEqual(ws["B16"].value, "=SUM(B4:B14)+B15")
 
     def test_excel_download_contains_both_provider_columns(self):
         self.login()
@@ -921,7 +587,7 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(ws["H1"].value, "Fornitori confronto: Illumia + E.ON")
         self.assertIn("Illumia:", ws["H2"].value)
         self.assertIn("E.ON:", ws["H2"].value)
-        self.assertEqual(ws["F18"].value, "=SUM(F4:F14)+F17")
+        self.assertEqual(ws["F16"].value, "=SUM(F4:F14)+F15")
 
     @patch("confronti.services.load_tariffe_file_for_segment_with_effective_segment", return_value=(None, "RESIDENZIALE"))
     def test_missing_illumia_offer_keeps_bill_and_marks_offers_nd(self, _mock_load_file):
@@ -930,17 +596,4 @@ class ConfrontoViewTests(TestCase):
         rows = response.context["rows"]
         self.assertTrue(all(row["variabile"] == "N.D." for row in rows))
         self.assertTrue(all(row["fissa"] == "N.D." for row in rows))
-        bill_rows = {row["voce"]: row["bolletta"] for row in rows}
-        self.assertEqual(bill_rows["Accise"], "N.D.")
-        self.assertEqual(bill_rows["IVA"], "N.D.")
-        self.assertTrue(
-            all(value != "N.D." for voce, value in bill_rows.items() if voce not in {"Accise", "IVA"})
-        )
-
-    def test_excel_download_uploads_to_google_drive_when_configured(self):
-        self.login()
-        self.mock_google_drive_configured.return_value = True
-        self.client.post("/", valid_payload())
-        response = self.client.get("/scarica-excel/")
-        self.assertEqual(response.status_code, 200)
-        self.mock_google_drive_upload.assert_called_once()
+        self.assertTrue(all(row["bolletta"] != "N.D." for row in rows))

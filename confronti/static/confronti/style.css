@@ -56,35 +56,6 @@ h2 span {
     margin: 0 auto 22px;
 }
 
-.upload-panel {
-    align-items: end;
-    display: grid;
-    gap: 14px;
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 1fr) auto;
-}
-
-.upload-panel h2,
-.upload-panel p,
-.upload-panel button {
-    margin: 0;
-}
-
-.upload-panel p {
-    color: #475569;
-    font-size: 14px;
-    margin-top: 6px;
-}
-
-.extraction-message {
-    background: #eefbf3;
-    border: 1px solid #9dd9b1;
-    border-radius: 6px;
-    color: #166534;
-    font-weight: 700;
-    margin-bottom: 16px;
-    padding: 10px 12px;
-}
-
 .form-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -312,7 +283,6 @@ footer strong {
 @media (max-width: 760px) {
     .form-grid,
     .form-grid.top,
-    .upload-panel,
     .meta {
         grid-template-columns: 1fr;
     }

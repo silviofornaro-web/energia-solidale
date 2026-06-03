@@ -28,7 +28,3 @@ services:
         sync: false
       - key: DJANGO_SUPERUSER_PASSWORD
         sync: false
-      - key: GOOGLE_DRIVE_FOLDER_ID
-        value: 1A6oUV3QefVqd_3h50_LqCUTn4HBY0_bc
-      - key: GOOGLE_DRIVE_CREDENTIALS_JSON
-        sync: false
