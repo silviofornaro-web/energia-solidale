@@ -2,6 +2,7 @@ from calendar import monthrange
 from datetime import date
 
 from django import forms
+from django.core.validators import FileExtensionValidator
 
 from . import services
 
@@ -17,6 +18,20 @@ class ItalianDecimalField(forms.DecimalField):
             else:
                 value = value.replace(",", ".")
         return super().to_python(value)
+
+
+class BillUploadForm(forms.Form):
+    bill_pdf = forms.FileField(
+        label="Bolletta PDF",
+        validators=[FileExtensionValidator(["pdf"])],
+        widget=forms.ClearableFileInput(attrs={"accept": "application/pdf"}),
+    )
+
+    def clean_bill_pdf(self):
+        bill_pdf = self.cleaned_data["bill_pdf"]
+        if bill_pdf.size > 15 * 1024 * 1024:
+            raise forms.ValidationError("Il PDF supera il limite di 15 MB.")
+        return bill_pdf
 
 
 class ConfrontoForm(forms.Form):
@@ -37,6 +52,7 @@ class ConfrontoForm(forms.Form):
     MONTH_INPUT_FORMATS = ["%Y-%m", "%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"]
 
     nome_cliente = forms.CharField(label="Nome e Cognome", max_length=120)
+    pod_pdr = forms.CharField(label="Codice POD/PDR", max_length=24, required=False)
     segmento = forms.ChoiceField(label="Segmento", choices=SEGMENT_CHOICES)
     commodity = forms.ChoiceField(label="Fornitura", choices=COMMODITY_CHOICES)
     bill_tariff_type = forms.ChoiceField(label="Tipo tariffa bolletta", choices=BILL_TARIFF_TYPE_CHOICES)

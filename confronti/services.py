@@ -1043,6 +1043,8 @@ def prepare_comparison(data):
 
     calc = {
         "nome_cliente": clean_text(data.get("nome_cliente")) or "Cliente",
+        "pod_pdr": clean_text(data.get("pod_pdr")),
+        "commodity": commodity,
         "bill_tariff_type": normalize_bill_tariff_type(data.get("bill_tariff_type")),
         "bill_tariff_type_label": bill_tariff_type_label(data.get("bill_tariff_type")),
         "tax_primary_home": normalize_primary_home(data.get("tax_primary_home")),
@@ -1256,6 +1258,9 @@ def write_export_metadata(ws, prepared, start_col="F"):
     ws[f"{start_col}11"] = (
         f"Logica tariffe: {calc.get('tariff_selection_mode_label', 'Ultime tariffe disponibili')}"
     )
+    ws[f"{start_col}12"] = f"Codice POD/PDR: {calc.get('pod_pdr') or 'N.D.'}"
+    ws[f"{start_col}13"] = f"Fornitura: {'Gas' if calc.get('commodity') == 'GAS' else 'Luce'}"
+    ws[f"{start_col}14"] = f"Periodo bolletta: {calc.get('period_label', 'N.D.')}"
 
 
 def _excel_decimal(value: float) -> str:
