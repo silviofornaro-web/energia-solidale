@@ -1,24 +1,10 @@
-import logging
-
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils import timezone
 
 from .forms import ConfrontoForm, session_to_service_data
-from .services import (
-    archive_excel_bytes,
-    build_excel_bytes,
-    google_drive_archive_configured,
-    offer_options_payload,
-    prepare_comparison,
-    provider_label,
-    safe_download_filename,
-    upload_excel_to_google_drive,
-)
-
-
-logger = logging.getLogger(__name__)
+from .services import build_excel_bytes, offer_options_payload, prepare_comparison, provider_label, safe_download_filename
 
 
 @login_required
@@ -81,15 +67,6 @@ def scarica_excel(request):
     data = session_to_service_data(raw)
     prepared = prepare_comparison(data)
     content = build_excel_bytes(data, prepared)
-    try:
-        archive_excel_bytes(content, data)
-    except OSError:
-        logger.exception("Impossibile archiviare il file Excel del confronto.")
-    if google_drive_archive_configured():
-        try:
-            upload_excel_to_google_drive(content, data)
-        except Exception:
-            logger.exception("Impossibile archiviare il file Excel del confronto su Google Drive.")
     provider_name = "_".join(provider_label(provider).lower().replace(".", "") for provider in data.get("providers", []))
     provider_name = provider_name or provider_label(data.get("provider", "ILLUMIA")).lower().replace(".", "")
     nome = safe_download_filename(

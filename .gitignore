@@ -14,7 +14,6 @@ db.sqlite3
 ~$*.xlsx
 confronto_illumia_*.xlsx
 static/downloads/*.xlsx
-archivio/confronti/*.xlsx
 staticfiles/
 FILE_GENERATO.xlsx
 *.zip

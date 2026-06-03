@@ -1,7 +1,5 @@
 from datetime import date
 from io import BytesIO
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -71,56 +69,6 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertEqual(services.parse_number("€ 1.234,56"), 1234.56)
         self.assertEqual(services.parse_number("-€ 21,60"), -21.6)
         self.assertEqual(services.parse_number(""), 0.0)
-
-    def test_archive_excel_bytes_uses_customer_commodity_and_timestamp(self):
-        data = {
-            "nome_cliente": "Mario Rossi",
-            "commodity": "GAS",
-            "comparison_datetime": "2026-05-30T15:30:45+02:00",
-        }
-        with TemporaryDirectory() as tmpdir:
-            destination = services.archive_excel_bytes(b"excel", data, tmpdir)
-            self.assertEqual(destination.parent, Path(tmpdir))
-            self.assertEqual(destination.name, "Mario_Rossi_GAS_20260530_153045.xlsx")
-            self.assertEqual(destination.read_bytes(), b"excel")
-
-    def test_google_drive_archive_uses_illumia_folder(self):
-        captured = {}
-
-        class FakeRequest:
-            def execute(self):
-                return {"id": "drive-file-id", "name": captured["body"]["name"]}
-
-        class FakeFiles:
-            def create(self, **kwargs):
-                captured.update(kwargs)
-                return FakeRequest()
-
-        class FakeDriveService:
-            def files(self):
-                return FakeFiles()
-
-        def fake_media_factory(stream, **kwargs):
-            captured["content"] = stream.read()
-            captured["media_kwargs"] = kwargs
-            return "media"
-
-        result = services.upload_excel_to_google_drive(
-            b"excel",
-            {
-                "nome_cliente": "Mario Rossi",
-                "commodity": "GAS",
-                "comparison_datetime": "2026-05-30T15:30:45+02:00",
-            },
-            drive_service=FakeDriveService(),
-            media_upload_factory=fake_media_factory,
-        )
-
-        self.assertEqual(captured["body"]["parents"], ["1A6oUV3QefVqd_3h50_LqCUTn4HBY0_bc"])
-        self.assertEqual(captured["body"]["name"], "Mario_Rossi_GAS_20260530_153045.xlsx")
-        self.assertEqual(captured["content"], b"excel")
-        self.assertEqual(captured["media_kwargs"]["mimetype"], services.EXCEL_MIME_TYPE)
-        self.assertEqual(result["id"], "drive-file-id")
 
     def test_billing_months_and_labels(self):
         self.assertEqual(services.billing_months_from_dates(date(2026, 1, 1), date(2026, 3, 31)), 3)
@@ -458,15 +406,6 @@ class ConfrontoViewTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username="tester", password="secret")
         self.client = Client()
-        self.archive_excel_patch = patch("confronti.views.archive_excel_bytes")
-        self.mock_archive_excel = self.archive_excel_patch.start()
-        self.addCleanup(self.archive_excel_patch.stop)
-        self.google_drive_configured_patch = patch("confronti.views.google_drive_archive_configured", return_value=False)
-        self.mock_google_drive_configured = self.google_drive_configured_patch.start()
-        self.addCleanup(self.google_drive_configured_patch.stop)
-        self.google_drive_upload_patch = patch("confronti.views.upload_excel_to_google_drive")
-        self.mock_google_drive_upload = self.google_drive_upload_patch.start()
-        self.addCleanup(self.google_drive_upload_patch.stop)
 
     def login(self):
         self.assertTrue(self.client.login(username="tester", password="secret"))
@@ -586,7 +525,6 @@ class ConfrontoViewTests(TestCase):
             response["Content-Type"],
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
-        self.mock_archive_excel.assert_called_once()
         self.assertIn("confronto_illumia_Mario_Rossi_EE.xlsx", response["Content-Disposition"])
         self.assertEqual(response.content[:2], b"PK")
 
@@ -623,7 +561,7 @@ class ConfrontoViewTests(TestCase):
         self.assertAlmostEqual(ws["B8"].value, 1.1901, places=4)
         self.assertIsInstance(ws["C15"].value, (int, float))
         self.assertIsInstance(ws["D15"].value, (int, float))
-        self.assertEqual(ws["B18"].value, "=SUM(B4:B14)+B17")
+        self.assertEqual(ws["B16"].value, "=SUM(B4:B14)+B15")
 
     def test_excel_download_contains_both_provider_columns(self):
         self.login()
@@ -649,7 +587,7 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(ws["H1"].value, "Fornitori confronto: Illumia + E.ON")
         self.assertIn("Illumia:", ws["H2"].value)
         self.assertIn("E.ON:", ws["H2"].value)
-        self.assertEqual(ws["F18"].value, "=SUM(F4:F14)+F17")
+        self.assertEqual(ws["F16"].value, "=SUM(F4:F14)+F15")
 
     @patch("confronti.services.load_tariffe_file_for_segment_with_effective_segment", return_value=(None, "RESIDENZIALE"))
     def test_missing_illumia_offer_keeps_bill_and_marks_offers_nd(self, _mock_load_file):
@@ -658,17 +596,4 @@ class ConfrontoViewTests(TestCase):
         rows = response.context["rows"]
         self.assertTrue(all(row["variabile"] == "N.D." for row in rows))
         self.assertTrue(all(row["fissa"] == "N.D." for row in rows))
-        bill_rows = {row["voce"]: row["bolletta"] for row in rows}
-        self.assertEqual(bill_rows["Accise"], "N.D.")
-        self.assertEqual(bill_rows["IVA"], "N.D.")
-        self.assertTrue(
-            all(value != "N.D." for voce, value in bill_rows.items() if voce not in {"Accise", "IVA"})
-        )
-
-    def test_excel_download_uploads_to_google_drive_when_configured(self):
-        self.login()
-        self.mock_google_drive_configured.return_value = True
-        self.client.post("/", valid_payload())
-        response = self.client.get("/scarica-excel/")
-        self.assertEqual(response.status_code, 200)
-        self.mock_google_drive_upload.assert_called_once()
+        self.assertTrue(all(row["bolletta"] != "N.D." for row in rows))
