@@ -10,7 +10,7 @@ services:
     plan: free
     region: frankfurt
     buildCommand: ./build.sh
-    startCommand: python3 manage.py migrate && python3 manage.py create_initial_superuser && gunicorn energia_solidale_django.wsgi:application --bind 0.0.0.0:$PORT
+    startCommand: gunicorn energia_solidale_django.wsgi:application --bind 0.0.0.0:$PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.13
