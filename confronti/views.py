@@ -1,5 +1,7 @@
 import logging
+import os
 
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.shortcuts import render
@@ -11,6 +13,14 @@ from .services import build_excel_bytes, offer_options_payload, prepare_comparis
 
 
 logger = logging.getLogger(__name__)
+LAST_UPLOADED_BILL_NAME_KEY = "last_uploaded_bill_name"
+APP_BUILD_LABEL = ""
+if not os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
+    APP_BUILD_LABEL = f"Build locale CAP-FISCALE 2026-06-06 · {settings.BASE_DIR}"
+
+
+def _display_upload_name(raw_name):
+    return (raw_name or "").replace("\\", "/").split("/")[-1].strip()
 
 
 @login_required
@@ -19,12 +29,20 @@ def confronto(request):
     rows = None
     extraction_warnings = []
     extraction_count = 0
+    uploaded_bill_name = request.session.get(LAST_UPLOADED_BILL_NAME_KEY, "")
     upload_form = BillUploadForm()
     if request.method == "POST":
         action = request.POST.get("action")
         if action == "extract_bill":
             request.session.pop("last_confronto", None)
             upload_form = BillUploadForm(request.POST, request.FILES)
+            uploaded_file = request.FILES.get("bill_pdf")
+            if uploaded_file:
+                uploaded_bill_name = _display_upload_name(uploaded_file.name)
+                request.session[LAST_UPLOADED_BILL_NAME_KEY] = uploaded_bill_name
+            else:
+                uploaded_bill_name = ""
+                request.session.pop(LAST_UPLOADED_BILL_NAME_KEY, None)
             if upload_form.is_valid():
                 try:
                     parsed = parse_uploaded_bill(upload_form.cleaned_data["bill_pdf"])
@@ -43,6 +61,8 @@ def confronto(request):
                 form = ConfrontoForm()
         elif action == "reset_bill":
             request.session.pop("last_confronto", None)
+            request.session.pop(LAST_UPLOADED_BILL_NAME_KEY, None)
+            uploaded_bill_name = ""
             providers = request.POST.getlist("providers") or [request.POST.get("provider") or ""]
             form = ConfrontoForm(
                 initial={
@@ -84,8 +104,10 @@ def confronto(request):
             "form": form,
             "prepared": prepared,
             "rows": rows,
+            "app_build_label": APP_BUILD_LABEL,
             "offer_options": offer_options_payload(),
             "upload_form": upload_form,
+            "uploaded_bill_name": uploaded_bill_name,
             "extraction_warnings": extraction_warnings,
             "extraction_count": extraction_count,
         },

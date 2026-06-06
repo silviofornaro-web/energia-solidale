@@ -225,9 +225,88 @@ class ServiceUtilityTests(SimpleTestCase):
             "offer_var": "Variabile",
             "offer_fix": "Fissa",
         }
-        high_annual = services.build_comparison_values(data, calc)["fissa"]["accise_iva"]
-        low_annual = services.build_comparison_values({**data, "tax_annual_consumption": 300}, calc)["fissa"]["accise_iva"]
+        offer_vals = {k: float(data.get(f"b_{k}", 0.0)) for k in services.KEYS}
+        offer_vals["bonus_sociale"] = -abs(float(offer_vals.get("bonus_sociale", 0.0)))
+        offer_vals["vendita_consumo"] = calc["f_cons"]
+        offer_vals["vendita_fissa"] = calc["f_fix"]
+        offer_vals["sconti"] = data["ill_sconto_fix"]
+        offer_vals["ricalcoli"] = 0.0
+        offer_vals["arrotondamenti"] = 0.0
+        offer_vals["servizi_accessori"] = 0.0
+
+        high_annual = services.calculate_tax_breakdown(data, calc, offer_vals, "GAS")["accise_iva"]
+        low_annual = services.calculate_tax_breakdown(
+            {**data, "tax_annual_consumption": 300},
+            calc,
+            offer_vals,
+            "GAS",
+        )["accise_iva"]
         self.assertNotEqual(round(high_annual, 6), round(low_annual, 6))
+
+    def test_offer_tax_is_capped_to_bill_percentage_incidence(self):
+        data = {
+            "commodity": "GAS",
+            "segmento": "RESIDENZIALE",
+            "consumo": 100,
+            "tax_primary_home": "SI",
+            "tax_power_kw": 0,
+            "tax_annual_consumption": 1200,
+            "tax_region": "Veneto",
+            "b_vendita_consumo": 40,
+            "b_vendita_fissa": 10,
+            "b_rete_consumi": 8,
+            "b_rete_fissa": 1,
+            "b_quota_potenza": 0,
+            "b_sconti": 0,
+            "b_ricalcoli": 0,
+            "b_bonus_sociale": 0,
+            "b_arrotondamenti": 0,
+            "b_servizi_accessori": 0,
+            "b_accise_iva": 5,
+            "servizi_accessori_iva": "22%",
+            "ill_sconto_var": -3,
+            "ill_sconto_fix": -3,
+        }
+        calc = {
+            "billing_months": 1,
+            "v_cons": 45,
+            "v_fix": 6,
+            "f_cons": 42,
+            "f_fix": 7,
+            "offer_var": "Variabile",
+            "offer_fix": "Fissa",
+        }
+
+        bill_vals = {k: float(data.get(f"b_{k}", 0.0)) for k in services.KEYS}
+        bill_vals["bonus_sociale"] = -abs(float(bill_vals.get("bonus_sociale", 0.0)))
+        bill_ratio = services.bill_tax_incidence_ratio(bill_vals, "GAS")
+
+        uncapped_offer_vals = bill_vals.copy()
+        uncapped_offer_vals["vendita_consumo"] = calc["f_cons"]
+        uncapped_offer_vals["vendita_fissa"] = calc["f_fix"]
+        uncapped_offer_vals["sconti"] = data["ill_sconto_fix"]
+        uncapped_offer_vals["ricalcoli"] = 0.0
+        uncapped_offer_vals["arrotondamenti"] = 0.0
+        uncapped_offer_vals["servizi_accessori"] = 0.0
+        uncapped_tax = services.calculate_tax_breakdown(data, calc, uncapped_offer_vals, "GAS")
+
+        values = services.build_comparison_values(data, calc)
+        capped_vals = values["fissa"]
+        capped_total = services.comparison_subtotal(capped_vals, "GAS") * bill_ratio
+        scale = capped_total / uncapped_tax["accise_iva"]
+        fixed_column = next(column for column in values["offer_columns"] if column["offer_type"] == "FISSA")
+
+        self.assertGreater(uncapped_tax["accise_iva"], capped_total)
+        self.assertAlmostEqual(capped_vals["accise_iva"], capped_total, places=6)
+        self.assertAlmostEqual(capped_vals["accise"], uncapped_tax["accise"] * scale, places=6)
+        self.assertAlmostEqual(capped_vals["iva"], uncapped_tax["iva"] * scale, places=6)
+        self.assertAlmostEqual(values["bill_tax_ratio"], bill_ratio, places=6)
+        self.assertEqual(values["bill_tax_ratio_label"], "8,47%")
+        self.assertTrue(fixed_column["tax_cap_applied"])
+        self.assertEqual(fixed_column["tax_cap_status_label"], "Si")
+        self.assertAlmostEqual(fixed_column["raw_tax_ratio"], uncapped_tax["accise_iva"] / services.comparison_subtotal(uncapped_offer_vals, "GAS"), places=6)
+        self.assertAlmostEqual(fixed_column["tax_ratio"], bill_ratio, places=6)
+        self.assertEqual(fixed_column["tax_ratio_label"], "8,47%")
 
     def test_table_marks_missing_illumia_offers_as_nd(self):
         data = service_data()
@@ -455,6 +534,7 @@ class ConfrontoViewTests(TestCase):
         self.login()
         response = self.client.get("/")
         self.assertNotContains(response, 'type="month"')
+        self.assertContains(response, "Build locale CAP-FISCALE 2026-06-06")
         self.assertContains(response, 'data-month-field="bill_start"')
         self.assertContains(response, 'data-month-field="bill_end"')
         self.assertContains(response, 'data-month-part="year"')
@@ -493,6 +573,35 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(self.client.session["last_confronto"]["bill_end"], "2026-03-31")
         self.assertEqual(self.client.session["last_confronto"]["bill_offer_expiry"], "2026-12-31")
         self.assertEqual(self.client.session["last_confronto"]["tariff_selection_mode"], "LATEST")
+
+    def test_calculate_renders_tax_cap_summary_for_capped_offer(self):
+        self.login()
+        response = self.client.post(
+            "/",
+            valid_payload(
+                commodity="GAS",
+                bill_tariff_type="VARIABILE",
+                tax_power_kw="0",
+                tax_annual_consumption="1200",
+                consumo="100",
+                b_vendita_consumo="40",
+                b_vendita_fissa="10",
+                b_rete_consumi="8",
+                b_rete_fissa="1",
+                b_quota_potenza="0",
+                b_sconti="0",
+                b_ricalcoli="0",
+                b_bonus_sociale="0",
+                b_arrotondamenti="0",
+                b_servizi_accessori="0",
+                b_accise_iva="5",
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("Incidenza fiscale bolletta:</strong> 6,17%", html)
+        self.assertIn("Cap fiscale applicato:</strong> Si", html)
+        self.assertIn("Incidenza teorica senza cap:</strong>", html)
 
     def test_calculate_can_compare_selected_eon_offer(self):
         self.login()
@@ -537,6 +646,9 @@ class ConfrontoViewTests(TestCase):
         self.login()
         self.client.post("/", valid_payload())
         self.assertIn("last_confronto", self.client.session)
+        session = self.client.session
+        session["last_uploaded_bill_name"] = "bolletta.pdf"
+        session.save()
         response = self.client.post(
             "/",
             valid_payload(action="reset_bill", b_vendita_consumo="999", tax_annual_consumption="9999"),
@@ -548,6 +660,8 @@ class ConfrontoViewTests(TestCase):
         self.assertIn("Mario Rossi", html)
         self.assertNotIn("999", html)
         self.assertEqual(response.context["form"].initial["tax_annual_consumption"], "")
+        self.assertNotIn("last_uploaded_bill_name", self.client.session)
+        self.assertEqual(response.context["uploaded_bill_name"], "")
 
     @patch("confronti.views.parse_uploaded_bill")
     def test_pdf_upload_prefills_recognized_bill_values(self, mock_parse_uploaded_bill):
@@ -575,6 +689,9 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Federico Boetto")
         self.assertContains(response, "00881906523889")
         self.assertContains(response, "Data fine offerta bolletta non riconosciuta")
+        self.assertContains(response, "File caricato: bolletta.pdf")
+        self.assertEqual(response.context["uploaded_bill_name"], "bolletta.pdf")
+        self.assertEqual(self.client.session["last_uploaded_bill_name"], "bolletta.pdf")
 
     def test_download_requires_a_previous_comparison(self):
         self.login()

@@ -33,6 +33,17 @@ h1 {
     font-size: 32px;
 }
 
+.build-banner {
+    background: #0f172a;
+    border-radius: 8px;
+    color: #f8fafc;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 13px;
+    margin: 0 0 18px;
+    padding: 10px 12px;
+    word-break: break-all;
+}
+
 h2 {
     margin: 24px 0 12px;
     font-size: 20px;
@@ -73,6 +84,28 @@ h2 span {
     color: #475569;
     font-size: 14px;
     margin-top: 6px;
+}
+
+.upload-file-picker {
+    align-self: stretch;
+}
+
+.upload-file-name {
+    background: #eef6fb;
+    border: 1px solid #cfe0ee;
+    border-radius: 6px;
+    color: #1f5f7a;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    min-height: 42px;
+    padding: 10px 12px;
+    word-break: break-word;
+}
+
+.upload-file-name.is-empty {
+    background: #f8fafc;
+    color: #64748b;
 }
 
 .extraction-message {
@@ -244,6 +277,36 @@ button.secondary {
     font-weight: 700;
     margin-bottom: 16px;
     padding: 10px 12px;
+}
+
+.tax-cap-summary {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    margin-bottom: 18px;
+}
+
+.tax-cap-card {
+    background: #f8fbfd;
+    border: 1px solid #d9e8f2;
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+
+.tax-cap-card-applied {
+    background: #eef8f1;
+    border-color: #9fd3ae;
+}
+
+.tax-cap-card-bill {
+    background: #f4f7fb;
+}
+
+.tax-cap-title {
+    color: #1f2937;
+    font-size: 14px;
+    font-weight: 700;
+    margin-bottom: 6px;
 }
 
 table {

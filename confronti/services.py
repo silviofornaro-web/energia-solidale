@@ -689,6 +689,18 @@ def format_eur(value):
     return f"{sign}€ {formatted}"
 
 
+def format_percent(value):
+    if value is None:
+        return "N.D."
+    return f"{float(value) * 100:.2f}".replace(".", ",") + "%"
+
+
+def tax_incidence_ratio(total_tax, subtotal):
+    if subtotal <= 0:
+        return None
+    return max(0.0, float(total_tax)) / float(subtotal)
+
+
 def comparison_subtotal(vals, commodity):
     subtotal = (
         float(vals["vendita_consumo"])
@@ -842,6 +854,30 @@ def calculate_accise_iva(data, calc, vals, commodity):
     return calculate_tax_breakdown(data, calc, vals, commodity)["accise_iva"]
 
 
+def bill_tax_incidence_ratio(vals, commodity):
+    subtotal = comparison_subtotal(vals, commodity)
+    return tax_incidence_ratio(vals.get("accise_iva", 0.0), subtotal)
+
+
+def cap_tax_breakdown_to_bill_incidence(tax, vals, commodity, bill_ratio):
+    if bill_ratio is None:
+        return tax
+    subtotal = comparison_subtotal(vals, commodity)
+    current_total = max(0.0, float(tax.get("accise_iva", 0.0)))
+    capped_total = max(0.0, float(bill_ratio)) * max(0.0, subtotal)
+    if subtotal <= 0 or current_total <= 0 or current_total <= capped_total:
+        return tax
+    scale = capped_total / current_total
+    accise = float(tax.get("accise", 0.0)) * scale
+    iva = float(tax.get("iva", 0.0)) * scale
+    return {
+        "accise": accise,
+        "iva": iva,
+        "accise_iva": accise + iva,
+        "addizionale_regionale": float(tax.get("addizionale_regionale", 0.0)) * scale,
+    }
+
+
 def offer_choice_from_data(data, provider, offer_type):
     provider_norm = normalize_provider(provider)
     suffix = provider_norm.lower()
@@ -941,7 +977,7 @@ def calculate_provider_result(data, base_calc, provider):
     }
 
 
-def build_offer_column_values(data, calc, base_values, provider_result, offer_type):
+def build_offer_column_values(data, calc, base_values, provider_result, offer_type, bill_ratio=None):
     comm = data["commodity"]
     vals = base_values.copy()
     if offer_type == "VARIABILE":
@@ -957,7 +993,14 @@ def build_offer_column_values(data, calc, base_values, provider_result, offer_ty
     vals["ricalcoli"] = 0.0
     vals["arrotondamenti"] = 0.0
     vals["servizi_accessori"] = 0.0
-    tax = calculate_tax_breakdown(data, calc, vals, comm)
+    subtotal = comparison_subtotal(vals, comm)
+    raw_tax = calculate_tax_breakdown(data, calc, vals, comm)
+    raw_tax_ratio = tax_incidence_ratio(raw_tax["accise_iva"], subtotal)
+    tax = cap_tax_breakdown_to_bill_incidence(raw_tax, vals, comm, bill_ratio)
+    final_tax_ratio = tax_incidence_ratio(tax["accise_iva"], subtotal)
+    tax_cap_applied = bool(
+        bill_ratio is not None and raw_tax_ratio is not None and raw_tax_ratio > float(bill_ratio) + 1e-9
+    )
     vals["accise"] = tax["accise"]
     vals["iva"] = tax["iva"]
     vals["accise_iva"] = tax["accise_iva"]
@@ -971,6 +1014,14 @@ def build_offer_column_values(data, calc, base_values, provider_result, offer_ty
         "label": f"{provider_result['provider_label']} {type_label}",
         "vals": vals,
         "has_offer": bool(offer_name),
+        "tax_cap_applied": tax_cap_applied,
+        "tax_cap_status_label": "Si" if tax_cap_applied else "No",
+        "bill_tax_ratio": bill_ratio,
+        "bill_tax_ratio_label": format_percent(bill_ratio),
+        "raw_tax_ratio": raw_tax_ratio,
+        "raw_tax_ratio_label": format_percent(raw_tax_ratio),
+        "tax_ratio": final_tax_ratio,
+        "tax_ratio_label": format_percent(final_tax_ratio),
     }
 
 
@@ -987,6 +1038,7 @@ def build_comparison_values(data, calc):
         b_vals["quota_potenza"] = 0.0
     b_vals["accise"] = None
     b_vals["iva"] = None
+    bill_ratio = bill_tax_incidence_ratio(b_vals, comm)
 
     provider_results = calc.get("provider_results") or [
         {
@@ -1004,8 +1056,8 @@ def build_comparison_values(data, calc):
     ]
     offer_columns = []
     for provider_result in provider_results:
-        offer_columns.append(build_offer_column_values(data, calc, b_vals, provider_result, "VARIABILE"))
-        offer_columns.append(build_offer_column_values(data, calc, b_vals, provider_result, "FISSA"))
+        offer_columns.append(build_offer_column_values(data, calc, b_vals, provider_result, "VARIABILE", bill_ratio))
+        offer_columns.append(build_offer_column_values(data, calc, b_vals, provider_result, "FISSA", bill_ratio))
 
     first_var = next((column for column in offer_columns if column["offer_type"] == "VARIABILE"), None)
     first_fix = next((column for column in offer_columns if column["offer_type"] == "FISSA"), None)
@@ -1015,6 +1067,8 @@ def build_comparison_values(data, calc):
         "offer_columns": offer_columns,
         "variabile": first_var["vals"] if first_var else b_vals.copy(),
         "fissa": first_fix["vals"] if first_fix else b_vals.copy(),
+        "bill_tax_ratio": bill_ratio,
+        "bill_tax_ratio_label": format_percent(bill_ratio),
         "servizi_accessori_iva_label": accessory_vat_label,
         "servizi_accessori_iva_rate": accessory_vat_rate,
         "has_offer_var": bool(first_var and first_var["has_offer"]),
