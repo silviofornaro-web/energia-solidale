@@ -36,6 +36,7 @@ def valid_payload(**overrides):
         "bill_start": "2026-01",
         "bill_end": "2026-03",
         "consumo": "100",
+        "bill_fixed_values_are_monthly": "1",
         "b_vendita_consumo": "39.86",
         "b_rete_consumi": "8.47",
         "b_vendita_fissa": "3.70",
@@ -497,6 +498,38 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertEqual(float(form.cleaned_data["b_vendita_consumo"]), 85.52)
         self.assertEqual(float(form.cleaned_data["b_rete_consumi"]), 24.61)
 
+    def test_service_data_normalizes_fixed_bill_amounts_to_monthly_values(self):
+        form = ConfrontoForm(
+            valid_payload(
+                bill_fixed_values_are_monthly="0",
+                bill_start="2026-01",
+                bill_end="2026-02",
+                b_vendita_fissa="10",
+                b_rete_fissa="4",
+            )
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+        data = form.service_data()
+        self.assertEqual(data["bill_fixed_values_are_monthly"], "1")
+        self.assertEqual(data["b_vendita_fissa"], 5.0)
+        self.assertEqual(data["b_rete_fissa"], 2.0)
+
+    def test_service_data_keeps_already_monthly_fixed_bill_amounts(self):
+        form = ConfrontoForm(
+            valid_payload(
+                bill_fixed_values_are_monthly="1",
+                bill_start="2026-01",
+                bill_end="2026-02",
+                b_vendita_fissa="5",
+                b_rete_fissa="2",
+            )
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+        data = form.service_data()
+        self.assertEqual(data["bill_fixed_values_are_monthly"], "1")
+        self.assertEqual(data["b_vendita_fissa"], 5)
+        self.assertEqual(data["b_rete_fissa"], 2)
+
     def test_gas_disables_and_zeros_power_fields(self):
         form = ConfrontoForm(
             valid_payload(
@@ -573,6 +606,24 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(self.client.session["last_confronto"]["bill_end"], "2026-03-31")
         self.assertEqual(self.client.session["last_confronto"]["bill_offer_expiry"], "2026-12-31")
         self.assertEqual(self.client.session["last_confronto"]["tariff_selection_mode"], "LATEST")
+
+    def test_calculate_normalizes_multi_month_fixed_bill_fields_in_rendered_form(self):
+        self.login()
+        response = self.client.post(
+            "/",
+            valid_payload(
+                bill_fixed_values_are_monthly="0",
+                bill_start="2026-01",
+                bill_end="2026-02",
+                b_vendita_fissa="10",
+                b_rete_fissa="4",
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        form = response.context["form"]
+        self.assertEqual(form["bill_fixed_values_are_monthly"].value(), "1")
+        self.assertEqual(form["b_vendita_fissa"].value(), 5.0)
+        self.assertEqual(form["b_rete_fissa"].value(), 2.0)
 
     def test_calculate_renders_tax_cap_summary_for_capped_offer(self):
         self.login()
