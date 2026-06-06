@@ -150,25 +150,6 @@
         {% endfor %}
     </div>
 
-    {% if prepared.values.bill_tax_ratio is not None %}
-    <div class="tax-cap-summary">
-        <div class="tax-cap-card tax-cap-card-bill">
-            <div class="tax-cap-title">Riferimento bolletta</div>
-            <div><strong>Incidenza fiscale bolletta:</strong> {{ prepared.values.bill_tax_ratio_label }}</div>
-        </div>
-        {% for column in prepared.values.offer_columns %}
-            {% if column.has_offer %}
-            <div class="tax-cap-card {% if column.tax_cap_applied %}tax-cap-card-applied{% endif %}">
-                <div class="tax-cap-title">{{ column.label }}</div>
-                <div><strong>Cap fiscale applicato:</strong> {{ column.tax_cap_status_label }}</div>
-                <div><strong>Incidenza fiscale finale:</strong> {{ column.tax_ratio_label }}</div>
-                <div><strong>Incidenza teorica senza cap:</strong> {{ column.raw_tax_ratio_label }}</div>
-            </div>
-            {% endif %}
-        {% endfor %}
-    </div>
-    {% endif %}
-
     <table>
         <thead>
             <tr>
@@ -189,6 +170,25 @@
             {% endfor %}
         </tbody>
     </table>
+
+    {% if prepared.values.bill_tax_ratio is not None %}
+    <div class="tax-cap-summary">
+        <div class="tax-cap-card tax-cap-card-bill">
+            <div class="tax-cap-title">Riferimento bolletta</div>
+            <div><strong>Incidenza fiscale bolletta:</strong> {{ prepared.values.bill_tax_ratio_label }}</div>
+        </div>
+        {% for column in prepared.values.offer_columns %}
+            {% if column.has_offer %}
+            <div class="tax-cap-card {% if column.tax_cap_applied %}tax-cap-card-applied{% endif %}">
+                <div class="tax-cap-title">{{ column.label }}</div>
+                <div><strong>Cap fiscale applicato:</strong> {{ column.tax_cap_status_label }}</div>
+                <div><strong>Incidenza fiscale finale:</strong> {{ column.tax_ratio_label }}</div>
+                <div><strong>Incidenza teorica senza cap:</strong> {{ column.raw_tax_ratio_label }}</div>
+            </div>
+            {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <a class="download" href="{% url 'scarica_excel' %}" download data-download-excel>Scarica Excel</a>
 </section>
