@@ -120,14 +120,14 @@ class ConfrontoForm(forms.Form):
         decimal_places=4,
         max_digits=12,
         initial=0,
-        help_text="Se la bolletta copre piu mesi, il sistema divide automaticamente il totale per i mesi fatturati e mantiene qui il valore mensile.",
+        help_text="Inserisci il totale che leggi in bolletta: se copre piu mesi, il sistema lo divide per i mesi fatturati e mantiene qui il valore mensile.",
     )
     b_rete_fissa = ItalianDecimalField(
         label="Rete/oneri fissa",
         decimal_places=4,
         max_digits=12,
         initial=0,
-        help_text="Se la bolletta copre piu mesi, il sistema divide automaticamente il totale per i mesi fatturati e mantiene qui il valore mensile.",
+        help_text="Inserisci il totale che leggi in bolletta: se copre piu mesi, il sistema lo divide per i mesi fatturati e mantiene qui il valore mensile.",
     )
     b_quota_potenza = ItalianDecimalField(
         label="Quota potenza",

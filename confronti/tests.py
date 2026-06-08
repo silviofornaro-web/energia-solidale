@@ -568,6 +568,8 @@ class ConfrontoViewTests(TestCase):
         response = self.client.get("/")
         self.assertNotContains(response, 'type="month"')
         self.assertContains(response, "Build locale CAP-FISCALE 2026-06-06")
+        self.assertContains(response, 'billFixedMonthlyFlag.value = "0"')
+        self.assertContains(response, "Inserisci il totale che leggi in bolletta")
         self.assertContains(response, 'data-month-field="bill_start"')
         self.assertContains(response, 'data-month-field="bill_end"')
         self.assertContains(response, 'data-month-part="year"')
