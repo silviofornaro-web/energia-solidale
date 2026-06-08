@@ -336,7 +336,7 @@
         Array.from(yearValues).sort().forEach((year) => appendOption(yearSelect, year, year));
 
         monthSelect.value = parsed.month;
-        yearSelect.value = parsed.year;
+        yearSelect.value = parsed.year || String(currentYear);
 
         const updateHidden = () => {
             if (monthSelect.value && yearSelect.value) {
