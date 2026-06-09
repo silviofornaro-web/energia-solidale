@@ -35,7 +35,6 @@
 
 <form method="post" class="panel">
     {% csrf_token %}
-    {{ form.bill_fixed_values_are_monthly }}
     {{ form.non_field_errors }}
     {% if form.errors %}
         <div class="form-error-summary">Il confronto non è partito: controlla i campi evidenziati sotto.</div>
@@ -108,8 +107,8 @@
     <div class="form-grid">
         <label>{{ form.b_vendita_consumo.label }}{{ form.b_vendita_consumo }}{{ form.b_vendita_consumo.errors }}</label>
         <label>{{ form.b_rete_consumi.label }}{{ form.b_rete_consumi }}{{ form.b_rete_consumi.errors }}</label>
-        <label>{{ form.b_vendita_fissa.label }}{{ form.b_vendita_fissa }}{{ form.b_vendita_fissa.errors }}{% if form.b_vendita_fissa.help_text %}<small class="field-help">{{ form.b_vendita_fissa.help_text }}</small>{% endif %}</label>
-        <label>{{ form.b_rete_fissa.label }}{{ form.b_rete_fissa }}{{ form.b_rete_fissa.errors }}{% if form.b_rete_fissa.help_text %}<small class="field-help">{{ form.b_rete_fissa.help_text }}</small>{% endif %}</label>
+        <label>{{ form.b_vendita_fissa.label }}{{ form.b_vendita_fissa }}{{ form.b_vendita_fissa.errors }}</label>
+        <label>{{ form.b_rete_fissa.label }}{{ form.b_rete_fissa }}{{ form.b_rete_fissa.errors }}</label>
         <label>{{ form.b_quota_potenza.label }}{{ form.b_quota_potenza }}{{ form.b_quota_potenza.errors }}</label>
         <label>{{ form.b_sconti.label }}{{ form.b_sconti }}{{ form.b_sconti.errors }}</label>
         <label>{{ form.b_ricalcoli.label }}{{ form.b_ricalcoli }}{{ form.b_ricalcoli.errors }}</label>
@@ -202,11 +201,6 @@
     const providerChecks = Array.from(document.querySelectorAll("input[name='providers']"));
     const segmento = document.getElementById("id_segmento");
     const commodity = document.getElementById("id_commodity");
-    const billFixedMonthlyFlag = document.getElementById("id_bill_fixed_values_are_monthly");
-    const billFixedInputs = [
-        document.getElementById("id_b_vendita_fissa"),
-        document.getElementById("id_b_rete_fissa"),
-    ].filter(Boolean);
     const offerControls = {
         ILLUMIA: {
             variable: document.getElementById("id_offer_var_choice_illumia"),
@@ -257,17 +251,6 @@
             updateBillName(file ? file.name : "");
         });
     }
-
-    const markBillFixedValuesAsPeriodTotals = () => {
-        if (billFixedMonthlyFlag) {
-            billFixedMonthlyFlag.value = "0";
-        }
-    };
-
-    billFixedInputs.forEach((input) => {
-        input.addEventListener("input", markBillFixedValuesAsPeriodTotals);
-        input.addEventListener("change", markBillFixedValuesAsPeriodTotals);
-    });
 
     const populate = (provider, select, type) => {
         const selected = select.value;

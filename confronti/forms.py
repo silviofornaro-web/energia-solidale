@@ -107,27 +107,19 @@ class ConfrontoForm(forms.Form):
         widget=forms.HiddenInput(),
     )
     consumo = ItalianDecimalField(label="Consumo", min_value=0, decimal_places=4, max_digits=12, initial=0)
-    bill_fixed_values_are_monthly = forms.CharField(
-        required=False,
-        initial="0",
-        widget=forms.HiddenInput(),
-    )
-
     b_vendita_consumo = ItalianDecimalField(label="Vendita consumo", decimal_places=4, max_digits=12, initial=0)
     b_rete_consumi = ItalianDecimalField(label="Rete/oneri consumi", decimal_places=4, max_digits=12, initial=0)
     b_vendita_fissa = ItalianDecimalField(
-        label="Vendita fissa",
+        label="Vendita fissa (totale bolletta)",
         decimal_places=4,
         max_digits=12,
         initial=0,
-        help_text="Inserisci il totale che leggi in bolletta: se copre piu mesi, il sistema lo divide per i mesi fatturati e mantiene qui il valore mensile.",
     )
     b_rete_fissa = ItalianDecimalField(
-        label="Rete/oneri fissa",
+        label="Rete/oneri fissa (totale bolletta)",
         decimal_places=4,
         max_digits=12,
         initial=0,
-        help_text="Inserisci il totale che leggi in bolletta: se copre piu mesi, il sistema lo divide per i mesi fatturati e mantiene qui il valore mensile.",
     )
     b_quota_potenza = ItalianDecimalField(
         label="Quota potenza",
@@ -236,13 +228,6 @@ class ConfrontoForm(forms.Form):
 
     def service_data(self):
         data = dict(self.cleaned_data)
-        months = services.billing_months_from_dates(data.get("bill_start"), data.get("bill_end"))
-        already_monthly = str(data.get("bill_fixed_values_are_monthly", "")).strip().lower() in {"1", "true", "yes", "on"}
-        if not already_monthly:
-            divisor = max(1, months)
-            data["b_vendita_fissa"] = float(data.get("b_vendita_fissa") or 0) / divisor
-            data["b_rete_fissa"] = float(data.get("b_rete_fissa") or 0) / divisor
-        data["bill_fixed_values_are_monthly"] = "1"
         data["ill_sconto_var"] = -3.0
         data["ill_sconto_fix"] = -3.0
         return data

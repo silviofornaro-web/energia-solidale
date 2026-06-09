@@ -36,7 +36,6 @@ def valid_payload(**overrides):
         "bill_start": "2026-01",
         "bill_end": "2026-03",
         "consumo": "100",
-        "bill_fixed_values_are_monthly": "1",
         "b_vendita_consumo": "39.86",
         "b_rete_consumi": "8.47",
         "b_vendita_fissa": "3.70",
@@ -107,7 +106,7 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertEqual(reason, "period")
         self.assertEqual(row["mese"], "2026-03")
 
-    def test_build_comparison_values_multiplies_monthly_fixed_items_and_copies_bonus(self):
+    def test_build_comparison_values_keeps_bill_fixed_items_as_entered_and_copies_bonus(self):
         data = {
             "commodity": "EE",
             "segmento": "RESIDENZIALE",
@@ -141,14 +140,14 @@ class ServiceUtilityTests(SimpleTestCase):
             "offer_fix": "Fissa",
         }
         values = services.build_comparison_values(data, calc)
-        self.assertEqual(values["bolletta"]["vendita_fissa"], 30)
-        self.assertEqual(values["bolletta"]["rete_fissa"], 3)
+        self.assertEqual(values["bolletta"]["vendita_fissa"], 10)
+        self.assertEqual(values["bolletta"]["rete_fissa"], 1)
         self.assertEqual(values["bolletta"]["bonus_sociale"], -21.6)
         self.assertEqual(values["variabile"]["bonus_sociale"], -21.6)
         self.assertEqual(values["fissa"]["bonus_sociale"], -21.6)
         self.assertAlmostEqual(values["fissa"]["accise"], 0.0, places=6)
-        self.assertAlmostEqual(values["fissa"]["iva"], 6.8, places=6)
-        self.assertAlmostEqual(values["fissa"]["accise_iva"], 6.8, places=6)
+        self.assertAlmostEqual(values["fissa"]["iva"], 6.6, places=6)
+        self.assertAlmostEqual(values["fissa"]["accise_iva"], 6.6, places=6)
 
     def test_accessory_services_stay_only_on_bill_column(self):
         data = {
@@ -188,7 +187,7 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertEqual(values["variabile"]["servizi_accessori"], 0)
         self.assertEqual(values["fissa"]["servizi_accessori"], 0)
         self.assertEqual(values["servizi_accessori_iva_label"], "10%")
-        self.assertAlmostEqual(values["fissa"]["accise_iva"], 6.8, places=6)
+        self.assertAlmostEqual(values["fissa"]["accise_iva"], 6.6, places=6)
         rows = services.build_comparison_table_rows(values)
         servizi_row = next(row for row in rows if row["voce"] == "Servizi accessori (IVA 10%)")
         self.assertEqual(servizi_row["cells"], ["€ 5,00", "€ 0,00", "€ 0,00"])
@@ -420,6 +419,35 @@ class BillParserTests(SimpleTestCase):
         self.assertEqual(parsed.values["bill_end"], date(2025, 10, 31))
         self.assertAlmostEqual(parsed.values["b_rete_fissa"], 7.33)
 
+    def test_parser_keeps_fixed_bill_amounts_for_multi_month_periods(self):
+        parsed = parse_bill_text(
+            """
+            GAS NATURALE
+            MERCATO LIBERO
+            MARIO ROSSI
+            VIA ROMA 10
+            Periodo oggetto di fatturazione: 1 gennaio 2026 - 28 febbraio 2026
+            Consumo totale fatturato: 100 Smc
+            Consumo da inizio contratto (mc): 1200
+            Scadenza condizioni economiche: 31/12/2026
+            SCONTRINO DELL'ENERGIA
+            Codice PDR: 15351410010036
+            QUOTA PER CONSUMI
+            100 Smc 0,400000 €/Smc 40,00
+            di cui spesa per vendita gas naturale 0,250000 €/Smc 25,00
+            di cui spesa per la rete e gli oneri generali di sistema 0,150000 €/Smc 15,00
+            QUOTA FISSA
+            2 mesi 5,000000 €/mese 10,00
+            di cui spesa per vendita gas naturale 6,000000
+            di cui spesa per la rete e gli oneri generali di sistema 4,000000
+            Accise e IVA 12,07
+            """
+        )
+        self.assertEqual(parsed.values["bill_start"], date(2026, 1, 1))
+        self.assertEqual(parsed.values["bill_end"], date(2026, 2, 28))
+        self.assertAlmostEqual(parsed.values["b_vendita_fissa"], 6.0)
+        self.assertAlmostEqual(parsed.values["b_rete_fissa"], 4.0)
+
 
 class ConfrontoFormTests(SimpleTestCase):
     def test_dashboard_context_fields_are_required_and_not_prefilled(self):
@@ -498,10 +526,9 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertEqual(float(form.cleaned_data["b_vendita_consumo"]), 85.52)
         self.assertEqual(float(form.cleaned_data["b_rete_consumi"]), 24.61)
 
-    def test_service_data_normalizes_fixed_bill_amounts_to_monthly_values(self):
+    def test_service_data_keeps_fixed_bill_amounts_as_entered(self):
         form = ConfrontoForm(
             valid_payload(
-                bill_fixed_values_are_monthly="0",
                 bill_start="2026-01",
                 bill_end="2026-02",
                 b_vendita_fissa="10",
@@ -510,25 +537,8 @@ class ConfrontoFormTests(SimpleTestCase):
         )
         self.assertTrue(form.is_valid(), form.errors.as_data())
         data = form.service_data()
-        self.assertEqual(data["bill_fixed_values_are_monthly"], "1")
-        self.assertEqual(data["b_vendita_fissa"], 5.0)
-        self.assertEqual(data["b_rete_fissa"], 2.0)
-
-    def test_service_data_keeps_already_monthly_fixed_bill_amounts(self):
-        form = ConfrontoForm(
-            valid_payload(
-                bill_fixed_values_are_monthly="1",
-                bill_start="2026-01",
-                bill_end="2026-02",
-                b_vendita_fissa="5",
-                b_rete_fissa="2",
-            )
-        )
-        self.assertTrue(form.is_valid(), form.errors.as_data())
-        data = form.service_data()
-        self.assertEqual(data["bill_fixed_values_are_monthly"], "1")
-        self.assertEqual(data["b_vendita_fissa"], 5)
-        self.assertEqual(data["b_rete_fissa"], 2)
+        self.assertEqual(data["b_vendita_fissa"], 10)
+        self.assertEqual(data["b_rete_fissa"], 4)
 
     def test_gas_disables_and_zeros_power_fields(self):
         form = ConfrontoForm(
@@ -568,8 +578,8 @@ class ConfrontoViewTests(TestCase):
         response = self.client.get("/")
         self.assertNotContains(response, 'type="month"')
         self.assertContains(response, "Build locale CAP-FISCALE 2026-06-06")
-        self.assertContains(response, 'billFixedMonthlyFlag.value = "0"')
-        self.assertContains(response, "Inserisci il totale che leggi in bolletta")
+        self.assertContains(response, "Vendita fissa (totale bolletta)")
+        self.assertContains(response, "Rete/oneri fissa (totale bolletta)")
         self.assertContains(response, 'data-month-field="bill_start"')
         self.assertContains(response, 'data-month-field="bill_end"')
         self.assertContains(response, 'data-month-part="year"')
@@ -609,12 +619,11 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(self.client.session["last_confronto"]["bill_offer_expiry"], "2026-12-31")
         self.assertEqual(self.client.session["last_confronto"]["tariff_selection_mode"], "LATEST")
 
-    def test_calculate_normalizes_multi_month_fixed_bill_fields_in_rendered_form(self):
+    def test_calculate_keeps_multi_month_fixed_bill_fields_as_entered_in_form(self):
         self.login()
         response = self.client.post(
             "/",
             valid_payload(
-                bill_fixed_values_are_monthly="0",
                 bill_start="2026-01",
                 bill_end="2026-02",
                 b_vendita_fissa="10",
@@ -623,9 +632,8 @@ class ConfrontoViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         form = response.context["form"]
-        self.assertEqual(form["bill_fixed_values_are_monthly"].value(), "1")
-        self.assertEqual(form["b_vendita_fissa"].value(), 5.0)
-        self.assertEqual(form["b_rete_fissa"].value(), 2.0)
+        self.assertEqual(form["b_vendita_fissa"].value(), 10)
+        self.assertEqual(form["b_rete_fissa"].value(), 4)
 
     def test_calculate_renders_tax_cap_summary_for_capped_offer(self):
         self.login()
@@ -652,7 +660,7 @@ class ConfrontoViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
-        self.assertIn("Incidenza fiscale bolletta:</strong> 6,17%", html)
+        self.assertIn("Incidenza fiscale bolletta:</strong> 8,47%", html)
         self.assertIn("Cap fiscale applicato:</strong> Si", html)
         self.assertIn("Incidenza teorica senza cap:</strong>", html)
 
@@ -795,8 +803,8 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(ws["C17"].value, ws["C15"].value + ws["C16"].value)
         self.assertEqual(ws["C14"].value, 0)
         self.assertEqual(ws["D14"].value, 0)
-        self.assertAlmostEqual(ws["B6"].value, 11.1, places=4)
-        self.assertAlmostEqual(ws["B8"].value, 1.1901, places=4)
+        self.assertAlmostEqual(ws["B6"].value, 3.7, places=4)
+        self.assertAlmostEqual(ws["B8"].value, 0.3967, places=4)
         self.assertIsInstance(ws["C15"].value, (int, float))
         self.assertIsInstance(ws["D15"].value, (int, float))
         self.assertEqual(ws["B17"].value, 12.12)

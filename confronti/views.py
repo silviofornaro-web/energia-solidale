@@ -53,7 +53,7 @@ def confronto(request):
                         "Non sono riuscito a leggere questo PDF. Inserisci manualmente i valori della bolletta."
                     ]
                 else:
-                    form = ConfrontoForm(initial={**parsed.values, "bill_fixed_values_are_monthly": "1"})
+                    form = ConfrontoForm(initial=parsed.values)
                     extraction_warnings = parsed.warnings
                     extraction_count = len(parsed.values)
                     upload_form = BillUploadForm()
@@ -77,7 +77,6 @@ def confronto(request):
                     "tax_power_kw": request.POST.get("tax_power_kw") or "0",
                     "tax_annual_consumption": "",
                     "tax_region": request.POST.get("tax_region") or "Veneto",
-                    "bill_fixed_values_are_monthly": "0",
                     "servizi_accessori_iva": "22%",
                     "offer_var_choice_illumia": request.POST.get("offer_var_choice_illumia") or "",
                     "offer_fix_choice_illumia": request.POST.get("offer_fix_choice_illumia") or "",

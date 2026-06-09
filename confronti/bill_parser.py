@@ -92,12 +92,6 @@ def _parse_date(value):
     return None
 
 
-def _billing_months(start, end):
-    if not start or not end:
-        return 1
-    return max(1, (end.year - start.year) * 12 + end.month - start.month + 1)
-
-
 def _month_range(month_name, year):
     month = ITALIAN_MONTHS.get(str(month_name).lower()) or ABBREVIATED_ITALIAN_MONTHS.get(
         str(month_name).lower()[:3]
@@ -303,7 +297,7 @@ def _extract_offer_expiry(text):
     return None if expiry and expiry.year >= 9999 else expiry
 
 
-def _extract_receipt_values(text, billing_months):
+def _extract_receipt_values(text):
     receipt = _receipt_section(text)
     consumption = _section(
         receipt,
@@ -327,9 +321,9 @@ def _extract_receipt_values(text, billing_months):
     if network_consumption is not None:
         values["b_rete_consumi"] = network_consumption
     if sale_fixed is not None:
-        values["b_vendita_fissa"] = sale_fixed / billing_months
+        values["b_vendita_fissa"] = sale_fixed
     if network_fixed is not None:
-        values["b_rete_fissa"] = network_fixed / billing_months
+        values["b_rete_fissa"] = network_fixed
 
     power_match = re.search(
         r"Spesa totale quota potenza(.*?)(?=di cui spesa|Altre partite|Arrotondamento|Accise e IVA|Totale bolletta|$)",
@@ -426,7 +420,7 @@ def parse_bill_text(text):
     expiry = _extract_offer_expiry(normalized)
     if expiry:
         values["bill_offer_expiry"] = expiry
-    values.update(_extract_receipt_values(normalized, _billing_months(start, end)))
+    values.update(_extract_receipt_values(normalized))
 
     if commodity == "GAS":
         values["tax_power_kw"] = 0

@@ -1027,13 +1027,10 @@ def build_offer_column_values(data, calc, base_values, provider_result, offer_ty
 
 def build_comparison_values(data, calc):
     comm = data["commodity"]
-    months = calc["billing_months"]
     accessory_vat_label = normalize_accessory_services_vat_label(data.get("servizi_accessori_iva"))
     accessory_vat_rate = accessory_services_vat_rate(accessory_vat_label)
     b_vals = {k: float(data.get(f"b_{k}", 0.0)) for k in KEYS}
     b_vals["bonus_sociale"] = -abs(float(b_vals.get("bonus_sociale", 0.0)))
-    b_vals["vendita_fissa"] *= months
-    b_vals["rete_fissa"] *= months
     if comm == "GAS":
         b_vals["quota_potenza"] = 0.0
     b_vals["accise"] = None
