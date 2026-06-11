@@ -451,9 +451,10 @@ def load_tariffe_file_for_segment(
     provider: str = "ILLUMIA",
     selection_mode: str = "LATEST",
     target_month: str = "",
+    commodity: str = "",
 ):
     offer_file, _effective_segment = load_tariffe_file_for_segment_with_effective_segment(
-        segmento, provider, selection_mode, target_month
+        segmento, provider, selection_mode, target_month, commodity
     )
     return offer_file
 
@@ -463,6 +464,7 @@ def load_tariffe_file_for_segment_with_effective_segment(
     provider: str = "ILLUMIA",
     selection_mode: str = "LATEST",
     target_month: str = "",
+    commodity: str = "",
 ):
     requested_segment = clean_text(segmento).upper()
     for effective_segment in tariff_segment_fallbacks(requested_segment):
@@ -471,20 +473,20 @@ def load_tariffe_file_for_segment_with_effective_segment(
             continue
         if normalize_tariff_selection_mode(selection_mode) == "PERIOD":
             selected = select_tariffe_file_from_candidates(candidates, target_month)
-            if selected:
+            if selected and tariff_file_has_context_options(selected, provider, effective_segment, commodity):
                 return selected, effective_segment
             continue
         for selected in reversed(candidates):
-            if tariff_file_has_context_options(selected, provider, effective_segment):
+            if tariff_file_has_context_options(selected, provider, effective_segment, commodity):
                 return selected, effective_segment
         return candidates[-1], effective_segment
     return None, requested_segment
 
 
-def tariff_file_has_context_options(path: Path, provider: str, segmento: str) -> bool:
+def tariff_file_has_context_options(path: Path, provider: str, segmento: str, commodity: str = "") -> bool:
     rows = load_tariffe_from_path(path)
-    filtered_rows, _effective_segment = filter_rows_by_context_with_fallback(rows, provider, segmento)
-    return rows_have_tariff_options(filtered_rows)
+    filtered_rows = filter_rows_by_context(rows, provider, segmento)
+    return rows_have_tariff_options(filtered_rows, commodity)
 
 
 def get_file_valid_range(xlsx_path: Path):
@@ -622,16 +624,17 @@ def offer_options_payload():
     payload = {}
     for provider in PROVIDERS:
         for segmento in SEGMENTS:
-            rows_by_commodity = {}
-            for offer_file in tariff_file_candidates_for_segment(segmento, provider):
-                file_rows = load_tariffe_from_path(offer_file)
-                for commodity in ("GAS", "EE"):
-                    filtered_rows, _effective_segment = filter_rows_by_context_with_fallback(
-                        file_rows, provider, segmento, commodity
-                    )
-                    rows_by_commodity.setdefault(commodity, []).extend(filtered_rows)
             for commodity in ("GAS", "EE"):
-                rows = rows_by_commodity.get(commodity, [])
+                rows = []
+                for effective_segment in tariff_segment_fallbacks(segmento):
+                    segment_rows = []
+                    for offer_file in _tariff_file_candidates_for_segment_exact(effective_segment, provider):
+                        segment_rows.extend(
+                            filter_rows_by_context(load_tariffe_from_path(offer_file), provider, effective_segment)
+                        )
+                    if rows_have_tariff_options(segment_rows, commodity):
+                        rows = segment_rows
+                        break
                 key = f"{provider}|{segmento}|{commodity}"
                 payload[key] = {
                     "VARIABILE": offer_names(rows, commodity, "VARIABILE"),
@@ -913,6 +916,7 @@ def calculate_provider_result(data, base_calc, provider):
         provider_norm,
         base_calc.get("tariff_selection_mode", "LATEST"),
         base_calc.get("tariff_target_month", ""),
+        commodity,
     )
     if offer_file:
         raw_tariffe_rows = load_tariffe_from_path(offer_file)

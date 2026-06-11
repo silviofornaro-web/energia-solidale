@@ -333,8 +333,16 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertIn("E.ON Profilo Sicuro T", options["EON|BUSINESS|EE"]["FISSA"])
 
     def test_eon_business_latest_uses_latest_file_with_business_rows(self):
-        latest = services.load_tariffe_file_for_segment("BUSINESS", "EON", "LATEST")
-        self.assertIn("2026-05", str(latest))
+        latest_gas = services.load_tariffe_file_for_segment("BUSINESS", "EON", "LATEST", commodity="GAS")
+        latest_luce = services.load_tariffe_file_for_segment("BUSINESS", "EON", "LATEST", commodity="EE")
+        self.assertIn("2026-06", str(latest_gas))
+        self.assertIn("2026-05", str(latest_luce))
+
+    def test_eon_microbusiness_latest_uses_commodity_specific_file(self):
+        latest_gas = services.load_tariffe_file_for_segment("MICROBUSINESS", "EON", "LATEST", commodity="GAS")
+        latest_luce = services.load_tariffe_file_for_segment("MICROBUSINESS", "EON", "LATEST", commodity="EE")
+        self.assertIn("2026-05", str(latest_gas))
+        self.assertIn("2026-06", str(latest_luce))
 
     def test_missing_microbusiness_tariffe_falls_back_to_business(self):
         latest = services.load_tariffe_file_for_segment("MICROBUSINESS", "ILLUMIA", "LATEST", "2026-06")
