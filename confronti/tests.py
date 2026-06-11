@@ -332,6 +332,10 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertIn("E.ON Profilo Dinamico Gas P", options["EON|BUSINESS|GAS"]["VARIABILE"])
         self.assertIn("E.ON Profilo Sicuro T", options["EON|BUSINESS|EE"]["FISSA"])
 
+    def test_eon_business_latest_uses_latest_file_with_business_rows(self):
+        latest = services.load_tariffe_file_for_segment("BUSINESS", "EON", "LATEST")
+        self.assertIn("2026-05", str(latest))
+
     def test_missing_microbusiness_tariffe_falls_back_to_business(self):
         latest = services.load_tariffe_file_for_segment("MICROBUSINESS", "ILLUMIA", "LATEST", "2026-06")
         self.assertIn("/business/", str(latest))
@@ -379,13 +383,13 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertEqual(prepared["calc"]["provider_label"], "E.ON")
         self.assertEqual(prepared["calc"]["offer_var"], "E.ON Flex Gas")
         self.assertEqual(prepared["calc"]["offer_fix"], "E.ON Gas Tua")
-        self.assertEqual(prepared["calc"]["offer_valid_to"], date(2026, 5, 21))
+        self.assertEqual(prepared["calc"]["offer_valid_to"], date(2026, 6, 25))
         self.assertEqual(prepared["calc"]["bill_offer_expiry"], date(2026, 12, 31))
         self.assertEqual(prepared["calc"]["bill_offer_expiry_label"], "31/12/2026")
         self.assertEqual(prepared["calc"]["offer_expiry_label"], "31/12/2026")
         self.assertEqual(prepared["values"]["variabile"]["sconti"], -10)
         self.assertEqual(prepared["values"]["fissa"]["sconti"], -10)
-        self.assertAlmostEqual(prepared["values"]["fissa"]["vendita_consumo"], 54.8, places=4)
+        self.assertAlmostEqual(prepared["values"]["fissa"]["vendita_consumo"], 57.8, places=4)
 
 
 class BillParserTests(SimpleTestCase):

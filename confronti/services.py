@@ -474,8 +474,17 @@ def load_tariffe_file_for_segment_with_effective_segment(
             if selected:
                 return selected, effective_segment
             continue
+        for selected in reversed(candidates):
+            if tariff_file_has_context_options(selected, provider, effective_segment):
+                return selected, effective_segment
         return candidates[-1], effective_segment
     return None, requested_segment
+
+
+def tariff_file_has_context_options(path: Path, provider: str, segmento: str) -> bool:
+    rows = load_tariffe_from_path(path)
+    filtered_rows, _effective_segment = filter_rows_by_context_with_fallback(rows, provider, segmento)
+    return rows_have_tariff_options(filtered_rows)
 
 
 def get_file_valid_range(xlsx_path: Path):
