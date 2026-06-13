@@ -37,7 +37,7 @@ class BillUploadForm(forms.Form):
 class ConfrontoForm(forms.Form):
     SEGMENTI = [("RESIDENZIALE", "Residenziale"), ("MICROBUSINESS", "Microbusiness"), ("BUSINESS", "Business")]
     COMMODITIES = [("GAS", "Gas"), ("EE", "Luce")]
-    PROVIDERS = [("ILLUMIA", "Illumia"), ("EON", "E.ON")]
+    PROVIDERS = [("ILLUMIA", "Illumia"), ("EON", "E.ON"), ("CVE", "CVE")]
     BILL_TARIFF_TYPES = [("VARIABILE", "Variabile"), ("FISSA", "Fissa")]
     TARIFF_SELECTION_MODES = [
         ("LATEST", "Ultime tariffe disponibili"),
@@ -95,6 +95,9 @@ class ConfrontoForm(forms.Form):
     offer_fix_choice_illumia = forms.ChoiceField(label="Illumia - Offerta fissa", required=False)
     offer_var_choice_eon = forms.ChoiceField(label="E.ON - Offerta variabile", required=False)
     offer_fix_choice_eon = forms.ChoiceField(label="E.ON - Offerta fissa", required=False)
+    cve_over70 = forms.BooleanField(label="Tariffa CVE Over 70", required=False)
+    offer_var_choice_cve = forms.ChoiceField(label="CVE - Offerta variabile", required=False)
+    offer_fix_choice_cve = forms.ChoiceField(label="CVE - Offerta fissa", required=False)
     bill_start = forms.DateField(
         label="Dal mese",
         input_formats=MONTH_INPUT_FORMATS,
@@ -162,6 +165,8 @@ class ConfrontoForm(forms.Form):
         self.fields["offer_fix_choice_illumia"].choices = self._offer_choices("ILLUMIA", segmento, commodity, "FISSA")
         self.fields["offer_var_choice_eon"].choices = self._offer_choices("EON", segmento, commodity, "VARIABILE")
         self.fields["offer_fix_choice_eon"].choices = self._offer_choices("EON", segmento, commodity, "FISSA")
+        self.fields["offer_var_choice_cve"].choices = self._offer_choices("CVE", segmento, commodity, "VARIABILE")
+        self.fields["offer_fix_choice_cve"].choices = self._offer_choices("CVE", segmento, commodity, "FISSA")
         self._apply_commodity_rules(commodity)
 
     def _current_value(self, field_name):
@@ -268,4 +273,7 @@ def session_to_service_data(raw):
     data["offer_fix_choice_illumia"] = data.get("offer_fix_choice_illumia", data.get("offer_fix_choice", ""))
     data["offer_var_choice_eon"] = data.get("offer_var_choice_eon", "")
     data["offer_fix_choice_eon"] = data.get("offer_fix_choice_eon", "")
+    data["offer_var_choice_cve"] = data.get("offer_var_choice_cve", "")
+    data["offer_fix_choice_cve"] = data.get("offer_fix_choice_cve", "")
+    data["cve_over70"] = services.bool_from_data(data.get("cve_over70"))
     return data

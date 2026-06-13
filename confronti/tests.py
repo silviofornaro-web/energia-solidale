@@ -33,6 +33,9 @@ def valid_payload(**overrides):
         "offer_fix_choice_illumia": "",
         "offer_var_choice_eon": "",
         "offer_fix_choice_eon": "",
+        "offer_var_choice_cve": "",
+        "offer_fix_choice_cve": "",
+        "cve_over70": "",
         "bill_start": "2026-01",
         "bill_end": "2026-03",
         "consumo": "100",
@@ -344,6 +347,66 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertIn("2026-05", str(latest_gas))
         self.assertIn("2026-06", str(latest_luce))
 
+    def test_cve_offer_options_include_residential_variable_tariffs_only(self):
+        options = services.offer_options_payload()
+        self.assertIn("CVE 1Casa Small Luce", options["CVE|RESIDENZIALE|EE"]["VARIABILE"])
+        self.assertIn("CVE 1Casa Smart Luce", options["CVE|RESIDENZIALE|EE"]["VARIABILE"])
+        self.assertIn("CVE 1Casa Big Gas", options["CVE|RESIDENZIALE|GAS"]["VARIABILE"])
+        self.assertIn("CVE 1Casa Over 70 Gas", options["CVE|RESIDENZIALE|GAS"]["VARIABILE"])
+        self.assertEqual(options["CVE|RESIDENZIALE|EE"]["FISSA"], [])
+        self.assertEqual(options["CVE|RESIDENZIALE|GAS"]["FISSA"], [])
+
+    def test_cve_annual_consumption_selects_small_smart_big_and_over70(self):
+        ee_small = services.prepare_comparison(
+            service_data(provider="CVE", providers=["CVE"], tax_annual_consumption="500")
+        )
+        ee_smart = services.prepare_comparison(
+            service_data(provider="CVE", providers=["CVE"], tax_annual_consumption="1200")
+        )
+        ee_big = services.prepare_comparison(
+            service_data(provider="CVE", providers=["CVE"], tax_annual_consumption="5000")
+        )
+        ee_over70 = services.prepare_comparison(
+            service_data(provider="CVE", providers=["CVE"], tax_annual_consumption="1200", cve_over70="on")
+        )
+        self.assertEqual(ee_small["calc"]["offer_var"], "CVE 1Casa Small Luce")
+        self.assertEqual(ee_smart["calc"]["offer_var"], "CVE 1Casa Smart Luce")
+        self.assertEqual(ee_big["calc"]["offer_var"], "CVE 1Casa Big Luce")
+        self.assertEqual(ee_over70["calc"]["offer_var"], "CVE 1Casa Over 70 Luce")
+        self.assertEqual(ee_over70["calc"]["offer_fix"], "")
+
+        gas_small = services.prepare_comparison(
+            service_data(provider="CVE", providers=["CVE"], commodity="GAS", tax_annual_consumption="300", consumo="50")
+        )
+        gas_smart = services.prepare_comparison(
+            service_data(provider="CVE", providers=["CVE"], commodity="GAS", tax_annual_consumption="800", consumo="50")
+        )
+        gas_big = services.prepare_comparison(
+            service_data(provider="CVE", providers=["CVE"], commodity="GAS", tax_annual_consumption="2000", consumo="50")
+        )
+        gas_over70 = services.prepare_comparison(
+            service_data(
+                provider="CVE",
+                providers=["CVE"],
+                commodity="GAS",
+                tax_annual_consumption="800",
+                consumo="50",
+                cve_over70="on",
+            )
+        )
+        self.assertEqual(gas_small["calc"]["offer_var"], "CVE 1Casa Small Gas")
+        self.assertEqual(gas_smart["calc"]["offer_var"], "CVE 1Casa Smart Gas")
+        self.assertEqual(gas_big["calc"]["offer_var"], "CVE 1Casa Big Gas")
+        self.assertEqual(gas_over70["calc"]["offer_var"], "CVE 1Casa Over 70 Gas")
+
+    def test_cve_period_tariffe_requires_exact_month_while_latest_uses_available_file(self):
+        latest = services.load_tariffe_file_for_segment("RESIDENZIALE", "CVE", "LATEST", "2026-06", commodity="EE")
+        period_march = services.load_tariffe_file_for_segment("RESIDENZIALE", "CVE", "PERIOD", "2026-03", commodity="EE")
+        period_june = services.load_tariffe_file_for_segment("RESIDENZIALE", "CVE", "PERIOD", "2026-06", commodity="EE")
+        self.assertIn("cve_tariffe_2026-03.xlsx", str(latest))
+        self.assertIn("cve_tariffe_2026-03.xlsx", str(period_march))
+        self.assertIsNone(period_june)
+
     def test_missing_microbusiness_tariffe_falls_back_to_business(self):
         latest = services.load_tariffe_file_for_segment("MICROBUSINESS", "ILLUMIA", "LATEST", "2026-06")
         self.assertIn("/business/", str(latest))
@@ -379,6 +442,22 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertIn("2026-03", period["calc"]["offer_file"])
         self.assertEqual(period["calc"]["tariff_selection_mode_label"], "Tariffe del periodo bolletta")
         self.assertEqual(period["calc"]["tariff_target_month"], "2026-03")
+
+    def test_prepare_comparison_can_compare_illumia_eon_and_cve_together(self):
+        prepared = services.prepare_comparison(
+            service_data(
+                providers=["ILLUMIA", "EON", "CVE"],
+                offer_var_choice_eon="E.ON Flex Luce Casa",
+                offer_fix_choice_eon="E.ON Luce Tua",
+                tax_annual_consumption="1200",
+            )
+        )
+        self.assertEqual(prepared["calc"]["providers_label"], "Illumia + E.ON + CVE")
+        self.assertEqual(len(prepared["columns"]), 7)
+        self.assertIn("CVE Variabile", [column["label"] for column in prepared["columns"]])
+        cve = next(result for result in prepared["calc"]["provider_results"] if result["provider"] == "CVE")
+        self.assertEqual(cve["offer_var"], "CVE 1Casa Smart Luce")
+        self.assertEqual(cve["offer_fix"], "")
 
     def test_prepare_comparison_uses_selected_eon_fixed_gas_offer(self):
         data = service_data(
@@ -470,6 +549,8 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertEqual(form.fields["commodity"].choices[0], ("", "Seleziona fornitura"))
         self.assertEqual(form.fields["bill_tariff_type"].choices[0], ("", "Seleziona tariffa"))
         self.assertEqual(form.fields["providers"].choices[0], ("ILLUMIA", "Illumia"))
+        self.assertIn(("CVE", "CVE"), form.fields["providers"].choices)
+        self.assertFalse(form.fields["cve_over70"].required)
         self.assertIsNone(form.fields["tariff_selection_mode"].initial)
         self.assertIsNone(form.fields["bill_start"].initial)
         self.assertIsNone(form.fields["bill_end"].initial)
@@ -598,6 +679,8 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, 'type="date"')
         self.assertContains(response, "Nuova bolletta")
         self.assertContains(response, "Fornitori confronto")
+        self.assertContains(response, "Tariffa CVE Over 70")
+        self.assertContains(response, "CVE - Offerta variabile")
         self.assertContains(response, "Importa bolletta PDF")
 
     def test_invalid_form_renders_field_errors(self):
@@ -714,6 +797,18 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(response.context["prepared"]["columns"][0]["label"], "Bolletta")
         self.assertEqual(len(response.context["prepared"]["columns"]), 5)
         self.assertEqual(self.client.session["last_confronto"]["providers"], "ILLUMIA,EON")
+
+    def test_calculate_can_compare_cve_with_annual_band(self):
+        self.login()
+        response = self.client.post("/", valid_payload(provider="CVE", providers=["CVE"], tax_annual_consumption="500"))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("Fornitori confronto:</strong> CVE", html)
+        self.assertIn("CVE Over 70:</strong> No", html)
+        self.assertIn("CVE 1Casa Small Luce", html)
+        self.assertIn("CVE Variabile", html)
+        self.assertIn("CVE Fissa", html)
+        self.assertEqual(self.client.session["last_confronto"]["providers"], "CVE")
 
     def test_change_bill_resets_bill_values_and_download_session(self):
         self.login()

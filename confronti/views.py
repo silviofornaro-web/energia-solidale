@@ -82,6 +82,9 @@ def confronto(request):
                     "offer_fix_choice_illumia": request.POST.get("offer_fix_choice_illumia") or "",
                     "offer_var_choice_eon": request.POST.get("offer_var_choice_eon") or "",
                     "offer_fix_choice_eon": request.POST.get("offer_fix_choice_eon") or "",
+                    "offer_var_choice_cve": request.POST.get("offer_var_choice_cve") or "",
+                    "offer_fix_choice_cve": request.POST.get("offer_fix_choice_cve") or "",
+                    "cve_over70": bool(request.POST.get("cve_over70")),
                 }
             )
         else:
