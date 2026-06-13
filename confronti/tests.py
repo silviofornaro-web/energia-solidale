@@ -445,6 +445,22 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertEqual(period["calc"]["tariff_selection_mode_label"], "Tariffe del periodo bolletta")
         self.assertEqual(period["calc"]["tariff_target_month"], "2026-03")
 
+    def test_prepare_comparison_can_compare_illumia_eon_and_cve_together(self):
+        prepared = services.prepare_comparison(
+            service_data(
+                providers=["ILLUMIA", "EON", "CVE"],
+                offer_var_choice_eon="E.ON Flex Luce Casa",
+                offer_fix_choice_eon="E.ON Luce Tua",
+                tax_annual_consumption="1200",
+            )
+        )
+        self.assertEqual(prepared["calc"]["providers_label"], "Illumia + E.ON + CVE")
+        self.assertEqual(len(prepared["columns"]), 7)
+        self.assertIn("CVE Variabile", [column["label"] for column in prepared["columns"]])
+        cve = next(result for result in prepared["calc"]["provider_results"] if result["provider"] == "CVE")
+        self.assertEqual(cve["offer_var"], "CVE 1Casa Smart Luce")
+        self.assertEqual(cve["offer_fix"], "")
+
     def test_prepare_comparison_uses_selected_eon_fixed_gas_offer(self):
         data = service_data(
             provider="EON",
@@ -956,7 +972,6 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["telefono_cliente"], "3331234567")
         self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["pod_pdr"], "")
         self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["tariff_selection_mode"], "LATEST")
-
     def test_change_bill_resets_bill_values_and_download_session(self):
         self.login()
         self.client.post("/", valid_payload())
