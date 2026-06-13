@@ -1,10 +1,12 @@
 from datetime import date
 from io import BytesIO
+from io import StringIO
 from unittest.mock import patch
 
 from django import forms
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase
 from openpyxl import load_workbook
 
@@ -695,6 +697,27 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertEqual(form.cleaned_data["offer_var_choice_cve"], "")
         self.assertEqual(form.cleaned_data["offer_fix_choice_cve"], "")
         self.assertFalse(form.cleaned_data["cve_over70"])
+
+
+class InviteCommandTests(TestCase):
+    def test_crea_invito_creates_single_code_with_label(self):
+        output = StringIO()
+        call_command("crea_invito", label="Cliente Mario", stdout=output)
+
+        invites = list(InviteCode.objects.all())
+        self.assertEqual(len(invites), 1)
+        self.assertEqual(invites[0].label, "Cliente Mario")
+        self.assertIn(invites[0].code, output.getvalue())
+
+    def test_crea_invito_can_create_multiple_codes(self):
+        output = StringIO()
+        call_command("crea_invito", label="Campagna", count=3, stdout=output)
+
+        invites = list(InviteCode.objects.order_by("created_at"))
+        self.assertEqual(len(invites), 3)
+        self.assertEqual([invite.label for invite in invites], ["Campagna 1", "Campagna 2", "Campagna 3"])
+        lines = [line.strip() for line in output.getvalue().splitlines() if line.strip()]
+        self.assertEqual(len(lines), 3)
 
 
 class ConfrontoViewTests(TestCase):
