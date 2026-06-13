@@ -1,0 +1,30 @@
+{% extends "confronti/base.html" %}
+
+{% block title %}Crea credenziali - Energia Solidale{% endblock %}
+
+{% block content %}
+<section class="panel narrow">
+    <h1>Crea le tue credenziali</h1>
+    <p class="panel-lead">
+        Registrati con un codice invito per accedere all'area clienti e confrontare la tua bolletta solo con le tariffe Illumia.
+    </p>
+    {{ form.non_field_errors }}
+    <form method="post" class="form-grid one">
+        {% csrf_token %}
+        {% if next %}
+            <input type="hidden" name="next" value="{{ next }}">
+        {% endif %}
+        <label>{{ form.invite_code.label }}{{ form.invite_code }}{{ form.invite_code.errors }}</label>
+        <label>{{ form.first_name.label }}{{ form.first_name }}{{ form.first_name.errors }}</label>
+        <label>{{ form.last_name.label }}{{ form.last_name }}{{ form.last_name.errors }}</label>
+        <label>{{ form.email.label }}{{ form.email }}{{ form.email.errors }}</label>
+        <label>{{ form.password1.label }}{{ form.password1 }}{{ form.password1.errors }}</label>
+        <label>{{ form.password2.label }}{{ form.password2 }}{{ form.password2.errors }}</label>
+        <button type="submit">Crea account</button>
+    </form>
+    <p class="auth-links">
+        Hai gia un account?
+        <a href="{% url 'login' %}{% if next %}?next={{ next|urlencode }}{% endif %}">Accedi</a>
+    </p>
+</section>
+{% endblock %}

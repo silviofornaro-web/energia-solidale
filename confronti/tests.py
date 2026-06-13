@@ -2,6 +2,7 @@ from datetime import date
 from io import BytesIO
 from unittest.mock import patch
 
+from django import forms
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, SimpleTestCase, TestCase
@@ -9,6 +10,7 @@ from openpyxl import load_workbook
 
 from .bill_parser import ParsedBill, parse_bill_text
 from .forms import ConfrontoForm
+from .models import InviteCode
 from . import services
 
 
@@ -33,6 +35,9 @@ def valid_payload(**overrides):
         "offer_fix_choice_illumia": "",
         "offer_var_choice_eon": "",
         "offer_fix_choice_eon": "",
+        "offer_var_choice_cve": "",
+        "offer_fix_choice_cve": "",
+        "cve_over70": "",
         "bill_start": "2026-01",
         "bill_end": "2026-03",
         "consumo": "100",
@@ -344,6 +349,66 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertIn("2026-05", str(latest_gas))
         self.assertIn("2026-06", str(latest_luce))
 
+    def test_cve_offer_options_include_residential_variable_tariffs_only(self):
+        options = services.offer_options_payload()
+        self.assertIn("CVE 1Casa Small Luce", options["CVE|RESIDENZIALE|EE"]["VARIABILE"])
+        self.assertIn("CVE 1Casa Smart Luce", options["CVE|RESIDENZIALE|EE"]["VARIABILE"])
+        self.assertIn("CVE 1Casa Big Gas", options["CVE|RESIDENZIALE|GAS"]["VARIABILE"])
+        self.assertIn("CVE 1Casa Over 70 Gas", options["CVE|RESIDENZIALE|GAS"]["VARIABILE"])
+        self.assertEqual(options["CVE|RESIDENZIALE|EE"]["FISSA"], [])
+        self.assertEqual(options["CVE|RESIDENZIALE|GAS"]["FISSA"], [])
+
+    def test_cve_annual_consumption_selects_small_smart_big_and_over70(self):
+        ee_small = services.prepare_comparison(
+            service_data(provider="CVE", providers=["CVE"], tax_annual_consumption="500")
+        )
+        ee_smart = services.prepare_comparison(
+            service_data(provider="CVE", providers=["CVE"], tax_annual_consumption="1200")
+        )
+        ee_big = services.prepare_comparison(
+            service_data(provider="CVE", providers=["CVE"], tax_annual_consumption="5000")
+        )
+        ee_over70 = services.prepare_comparison(
+            service_data(provider="CVE", providers=["CVE"], tax_annual_consumption="1200", cve_over70="on")
+        )
+        self.assertEqual(ee_small["calc"]["offer_var"], "CVE 1Casa Small Luce")
+        self.assertEqual(ee_smart["calc"]["offer_var"], "CVE 1Casa Smart Luce")
+        self.assertEqual(ee_big["calc"]["offer_var"], "CVE 1Casa Big Luce")
+        self.assertEqual(ee_over70["calc"]["offer_var"], "CVE 1Casa Over 70 Luce")
+        self.assertEqual(ee_over70["calc"]["offer_fix"], "")
+
+        gas_small = services.prepare_comparison(
+            service_data(provider="CVE", providers=["CVE"], commodity="GAS", tax_annual_consumption="300", consumo="50")
+        )
+        gas_smart = services.prepare_comparison(
+            service_data(provider="CVE", providers=["CVE"], commodity="GAS", tax_annual_consumption="800", consumo="50")
+        )
+        gas_big = services.prepare_comparison(
+            service_data(provider="CVE", providers=["CVE"], commodity="GAS", tax_annual_consumption="2000", consumo="50")
+        )
+        gas_over70 = services.prepare_comparison(
+            service_data(
+                provider="CVE",
+                providers=["CVE"],
+                commodity="GAS",
+                tax_annual_consumption="800",
+                consumo="50",
+                cve_over70="on",
+            )
+        )
+        self.assertEqual(gas_small["calc"]["offer_var"], "CVE 1Casa Small Gas")
+        self.assertEqual(gas_smart["calc"]["offer_var"], "CVE 1Casa Smart Gas")
+        self.assertEqual(gas_big["calc"]["offer_var"], "CVE 1Casa Big Gas")
+        self.assertEqual(gas_over70["calc"]["offer_var"], "CVE 1Casa Over 70 Gas")
+
+    def test_cve_period_tariffe_requires_exact_month_while_latest_uses_available_file(self):
+        latest = services.load_tariffe_file_for_segment("RESIDENZIALE", "CVE", "LATEST", "2026-06", commodity="EE")
+        period_march = services.load_tariffe_file_for_segment("RESIDENZIALE", "CVE", "PERIOD", "2026-03", commodity="EE")
+        period_june = services.load_tariffe_file_for_segment("RESIDENZIALE", "CVE", "PERIOD", "2026-06", commodity="EE")
+        self.assertIn("cve_tariffe_2026-03.xlsx", str(latest))
+        self.assertIn("cve_tariffe_2026-03.xlsx", str(period_march))
+        self.assertIsNone(period_june)
+
     def test_missing_microbusiness_tariffe_falls_back_to_business(self):
         latest = services.load_tariffe_file_for_segment("MICROBUSINESS", "ILLUMIA", "LATEST", "2026-06")
         self.assertIn("/business/", str(latest))
@@ -470,6 +535,8 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertEqual(form.fields["commodity"].choices[0], ("", "Seleziona fornitura"))
         self.assertEqual(form.fields["bill_tariff_type"].choices[0], ("", "Seleziona tariffa"))
         self.assertEqual(form.fields["providers"].choices[0], ("ILLUMIA", "Illumia"))
+        self.assertIn(("CVE", "CVE"), form.fields["providers"].choices)
+        self.assertFalse(form.fields["cve_over70"].required)
         self.assertIsNone(form.fields["tariff_selection_mode"].initial)
         self.assertIsNone(form.fields["bill_start"].initial)
         self.assertIsNone(form.fields["bill_end"].initial)
@@ -571,6 +638,48 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("Il mese finale non può essere precedente al mese iniziale.", form.non_field_errors())
 
+    def test_customer_mode_allows_blank_offer_expiry_and_keeps_contact_fields(self):
+        form = ConfrontoForm(
+            valid_payload(
+                bill_offer_expiry="",
+                email_cliente="mario@example.com",
+                telefono_cliente="3331234567",
+            ),
+            customer_mode=True,
+        )
+        self.assertFalse(isinstance(form.fields["email_cliente"].widget, forms.HiddenInput))
+        self.assertFalse(isinstance(form.fields["telefono_cliente"].widget, forms.HiddenInput))
+        self.assertFalse(form.fields["bill_offer_expiry"].required)
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+        self.assertIsNone(form.cleaned_data["bill_offer_expiry"])
+        self.assertEqual(form.cleaned_data["email_cliente"], "mario@example.com")
+        self.assertEqual(form.cleaned_data["telefono_cliente"], "3331234567")
+
+    def test_customer_mode_forces_illumia_even_if_provider_is_tampered(self):
+        form = ConfrontoForm(
+            valid_payload(
+                pod_pdr="IT001E99999999",
+                providers=["CVE"],
+                tariff_selection_mode="PERIOD",
+                offer_var_choice_eon="Qualsiasi offerta",
+                offer_fix_choice_eon="Qualsiasi offerta",
+                offer_var_choice_cve="CVE 1Casa Smart Luce",
+                offer_fix_choice_cve="Qualsiasi offerta",
+                cve_over70="on",
+            ),
+            customer_mode=True,
+        )
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+        self.assertEqual(form.cleaned_data["pod_pdr"], "")
+        self.assertEqual(form.cleaned_data["providers"], ["ILLUMIA"])
+        self.assertEqual(form.cleaned_data["provider"], "ILLUMIA")
+        self.assertEqual(form.cleaned_data["tariff_selection_mode"], "LATEST")
+        self.assertEqual(form.cleaned_data["offer_var_choice_eon"], "")
+        self.assertEqual(form.cleaned_data["offer_fix_choice_eon"], "")
+        self.assertEqual(form.cleaned_data["offer_var_choice_cve"], "")
+        self.assertEqual(form.cleaned_data["offer_fix_choice_cve"], "")
+        self.assertFalse(form.cleaned_data["cve_over70"])
+
 
 class ConfrontoViewTests(TestCase):
     def setUp(self):
@@ -585,6 +694,69 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/accounts/login/", response["Location"])
 
+    def test_customer_area_requires_login(self):
+        response = self.client.get("/area-clienti/confronto-illumia/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/accounts/login/", response["Location"])
+
+    def test_registration_creates_customer_and_redirects_to_reserved_area(self):
+        invite = InviteCode.objects.create(code="INVITO1234", label="Cliente Luca")
+        response = self.client.post(
+            "/accounts/register/",
+            {
+                "invite_code": invite.code,
+                "first_name": "Luca",
+                "last_name": "Bianchi",
+                "email": "luca@example.com",
+                "password1": "PasswordSicura123!",
+                "password2": "PasswordSicura123!",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/area-clienti/confronto-illumia/")
+        user = get_user_model().objects.get(username="luca@example.com")
+        self.assertEqual(user.email, "luca@example.com")
+        self.assertEqual(int(self.client.session["_auth_user_id"]), user.pk)
+        invite.refresh_from_db()
+        self.assertFalse(invite.is_active)
+        self.assertEqual(invite.used_by, user)
+        self.assertIsNotNone(invite.used_at)
+
+    def test_registration_requires_valid_invite_code(self):
+        response = self.client.post(
+            "/accounts/register/",
+            {
+                "invite_code": "NONVALIDO",
+                "first_name": "Luca",
+                "last_name": "Bianchi",
+                "email": "luca@example.com",
+                "password1": "PasswordSicura123!",
+                "password2": "PasswordSicura123!",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Codice invito non valido.")
+        self.assertFalse(get_user_model().objects.filter(username="luca@example.com").exists())
+
+    def test_registration_rejects_already_used_invite_code(self):
+        used_invite = InviteCode.objects.create(code="USATO1234", label="Invito usato")
+        first_user = get_user_model().objects.create_user(username="usato@example.com", password="secret")
+        used_invite.mark_used(first_user)
+        response = self.client.post(
+            "/accounts/register/",
+            {
+                "invite_code": used_invite.code,
+                "first_name": "Nuovo",
+                "last_name": "Cliente",
+                "email": "nuovo@example.com",
+                "password1": "PasswordSicura123!",
+                "password2": "PasswordSicura123!",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Questo codice invito e gia stato utilizzato.")
+        self.assertFalse(get_user_model().objects.filter(username="nuovo@example.com").exists())
+
     def test_form_renders_month_selectors_and_reset_button(self):
         self.login()
         response = self.client.get("/")
@@ -598,7 +770,27 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, 'type="date"')
         self.assertContains(response, "Nuova bolletta")
         self.assertContains(response, "Fornitori confronto")
+        self.assertContains(response, 'data-cve-over70-field hidden')
+        self.assertContains(response, "Tariffa CVE Over 70")
+        self.assertContains(response, 'activeProviders.includes("CVE")')
+        self.assertContains(response, "CVE - Offerta variabile")
         self.assertContains(response, "Importa bolletta PDF")
+
+    def test_customer_page_hides_provider_picker_and_shows_illumia_lock(self):
+        self.login()
+        response = self.client.get("/area-clienti/confronto-illumia/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Confronto bolletta con Illumia")
+        self.assertNotContains(response, "Build locale CAP-FISCALE 2026-06-06")
+        self.assertContains(response, "Email")
+        self.assertContains(response, "Telefono")
+        self.assertContains(response, "Fornitore confronto")
+        self.assertContains(response, "Illumia")
+        self.assertNotContains(response, "Codice POD/PDR")
+        self.assertNotContains(response, "Logica tariffe confronto")
+        self.assertNotContains(response, "E.ON - Offerta variabile")
+        self.assertNotContains(response, "CVE - Offerta variabile")
+        self.assertNotContains(response, "Fornitori confronto")
 
     def test_invalid_form_renders_field_errors(self):
         self.login()
@@ -715,6 +907,56 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(len(response.context["prepared"]["columns"]), 5)
         self.assertEqual(self.client.session["last_confronto"]["providers"], "ILLUMIA,EON")
 
+    def test_calculate_can_compare_cve_with_annual_band(self):
+        self.login()
+        response = self.client.post("/", valid_payload(provider="CVE", providers=["CVE"], tax_annual_consumption="500"))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("Fornitori confronto:</strong> CVE", html)
+        self.assertIn("CVE Over 70:</strong> No", html)
+        self.assertIn("CVE 1Casa Small Luce", html)
+        self.assertIn("CVE Variabile", html)
+        self.assertIn("CVE Fissa", html)
+        self.assertEqual(self.client.session["last_confronto"]["providers"], "CVE")
+
+    def test_customer_area_always_calculates_with_illumia_only(self):
+        self.login()
+        response = self.client.post(
+            "/area-clienti/confronto-illumia/",
+            valid_payload(
+                email_cliente="mario@example.com",
+                telefono_cliente="3331234567",
+                pod_pdr="IT001E99999999",
+                bill_offer_expiry="",
+                providers=["CVE"],
+                tariff_selection_mode="PERIOD",
+                offer_var_choice_eon="E.ON Flex Luce Casa",
+                offer_fix_choice_eon="E.ON Luce Tua",
+                offer_var_choice_cve="CVE 1Casa Over 70 Luce",
+                cve_over70="on",
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("Fornitori confronto:</strong> Illumia", html)
+        self.assertIn("Illumia Variabile", html)
+        self.assertIn('value="mario@example.com"', html)
+        self.assertIn('value="3331234567"', html)
+        self.assertIn("Scadenza offerta bolletta:</strong> N.D.", html)
+        self.assertNotIn("Build locale CAP-FISCALE 2026-06-06", html)
+        self.assertNotIn("Incidenza fiscale bolletta:</strong>", html)
+        self.assertNotIn("Cap fiscale applicato:</strong>", html)
+        self.assertNotIn("Incidenza teorica senza cap:</strong>", html)
+        self.assertNotIn("Codice POD/PDR", html)
+        self.assertNotIn("E.ON Variabile", html)
+        self.assertNotIn("CVE Variabile", html)
+        self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["provider"], "ILLUMIA")
+        self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["providers"], ["ILLUMIA"])
+        self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["email_cliente"], "mario@example.com")
+        self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["telefono_cliente"], "3331234567")
+        self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["pod_pdr"], "")
+        self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["tariff_selection_mode"], "LATEST")
+
     def test_change_bill_resets_bill_values_and_download_session(self):
         self.login()
         self.client.post("/", valid_payload())
@@ -769,6 +1011,11 @@ class ConfrontoViewTests(TestCase):
     def test_download_requires_a_previous_comparison(self):
         self.login()
         response = self.client.get("/scarica-excel/")
+        self.assertEqual(response.status_code, 400)
+
+    def test_customer_download_requires_a_previous_comparison(self):
+        self.login()
+        response = self.client.get("/area-clienti/scarica-excel/")
         self.assertEqual(response.status_code, 400)
 
     def test_excel_download_contains_expected_labels_values_and_formulas(self):

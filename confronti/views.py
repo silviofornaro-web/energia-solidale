@@ -14,6 +14,9 @@ from .services import build_excel_bytes, offer_options_payload, prepare_comparis
 
 logger = logging.getLogger(__name__)
 LAST_UPLOADED_BILL_NAME_KEY = "last_uploaded_bill_name"
+LAST_UPLOADED_BILL_NAME_CLIENT_KEY = "last_uploaded_bill_name_cliente_illumia"
+LAST_COMPARISON_KEY = "last_confronto"
+LAST_COMPARISON_CLIENT_KEY = "last_confronto_cliente_illumia"
 APP_BUILD_LABEL = ""
 if not os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
     APP_BUILD_LABEL = f"Build locale CAP-FISCALE 2026-06-06 · {settings.BASE_DIR}"
@@ -23,80 +26,143 @@ def _display_upload_name(raw_name):
     return (raw_name or "").replace("\\", "/").split("/")[-1].strip()
 
 
-@login_required
-def confronto(request):
+def _mode_config(customer_mode=False):
+    if customer_mode:
+        return {
+            "comparison_session_key": LAST_COMPARISON_CLIENT_KEY,
+            "upload_name_session_key": LAST_UPLOADED_BILL_NAME_CLIENT_KEY,
+            "page_title": "Confronto bolletta con Illumia",
+            "page_intro": (
+                "Area clienti riservata. Dopo l'accesso puoi confrontare la tua bolletta "
+                "autonomamente solo con le tariffe Illumia."
+            ),
+            "download_url_name": "scarica_excel_cliente_illumia",
+        }
+    return {
+        "comparison_session_key": LAST_COMPARISON_KEY,
+        "upload_name_session_key": LAST_UPLOADED_BILL_NAME_KEY,
+        "page_title": "Confronto bollette",
+        "page_intro": "",
+        "download_url_name": "scarica_excel",
+    }
+
+
+def _force_customer_mode_data(data):
+    payload = dict(data)
+    payload["pod_pdr"] = ""
+    payload["providers"] = ["ILLUMIA"]
+    payload["provider"] = "ILLUMIA"
+    payload["tariff_selection_mode"] = "LATEST"
+    payload["offer_var_choice_eon"] = ""
+    payload["offer_fix_choice_eon"] = ""
+    payload["offer_var_choice_cve"] = ""
+    payload["offer_fix_choice_cve"] = ""
+    payload["cve_over70"] = False
+    return payload
+
+
+def _comparison_form(*args, customer_mode=False, **kwargs):
+    return ConfrontoForm(*args, customer_mode=customer_mode, **kwargs)
+
+
+def _confronto_page(request, *, customer_mode=False):
+    mode = _mode_config(customer_mode)
     prepared = None
     rows = None
     extraction_warnings = []
     extraction_count = 0
-    uploaded_bill_name = request.session.get(LAST_UPLOADED_BILL_NAME_KEY, "")
+    uploaded_bill_name = request.session.get(mode["upload_name_session_key"], "")
     upload_form = BillUploadForm()
     if request.method == "POST":
         action = request.POST.get("action")
         if action == "extract_bill":
-            request.session.pop("last_confronto", None)
+            request.session.pop(mode["comparison_session_key"], None)
             upload_form = BillUploadForm(request.POST, request.FILES)
             uploaded_file = request.FILES.get("bill_pdf")
             if uploaded_file:
                 uploaded_bill_name = _display_upload_name(uploaded_file.name)
-                request.session[LAST_UPLOADED_BILL_NAME_KEY] = uploaded_bill_name
+                request.session[mode["upload_name_session_key"]] = uploaded_bill_name
             else:
                 uploaded_bill_name = ""
-                request.session.pop(LAST_UPLOADED_BILL_NAME_KEY, None)
+                request.session.pop(mode["upload_name_session_key"], None)
             if upload_form.is_valid():
                 try:
                     parsed = parse_uploaded_bill(upload_form.cleaned_data["bill_pdf"])
                 except Exception:
                     logger.exception("Impossibile leggere il PDF della bolletta.")
-                    form = ConfrontoForm()
+                    form = _comparison_form(customer_mode=customer_mode)
                     extraction_warnings = [
                         "Non sono riuscito a leggere questo PDF. Inserisci manualmente i valori della bolletta."
                     ]
                 else:
-                    form = ConfrontoForm(initial=parsed.values)
+                    initial_data = parsed.values
+                    if customer_mode:
+                        initial_data = _force_customer_mode_data(initial_data)
+                    form = _comparison_form(initial=initial_data, customer_mode=customer_mode)
                     extraction_warnings = parsed.warnings
                     extraction_count = len(parsed.values)
                     upload_form = BillUploadForm()
             else:
-                form = ConfrontoForm()
+                form = _comparison_form(customer_mode=customer_mode)
         elif action == "reset_bill":
-            request.session.pop("last_confronto", None)
-            request.session.pop(LAST_UPLOADED_BILL_NAME_KEY, None)
+            request.session.pop(mode["comparison_session_key"], None)
+            request.session.pop(mode["upload_name_session_key"], None)
             uploaded_bill_name = ""
-            providers = request.POST.getlist("providers") or [request.POST.get("provider") or ""]
-            form = ConfrontoForm(
-                initial={
-                    "nome_cliente": request.POST.get("nome_cliente") or "",
-                    "pod_pdr": request.POST.get("pod_pdr") or "",
-                    "segmento": request.POST.get("segmento") or "",
-                    "commodity": request.POST.get("commodity") or "",
-                    "bill_tariff_type": request.POST.get("bill_tariff_type") or "",
-                    "tariff_selection_mode": request.POST.get("tariff_selection_mode") or "",
-                    "providers": [provider for provider in providers if provider],
-                    "tax_primary_home": request.POST.get("tax_primary_home") or "SI",
-                    "tax_power_kw": request.POST.get("tax_power_kw") or "0",
-                    "tax_annual_consumption": "",
-                    "tax_region": request.POST.get("tax_region") or "Veneto",
-                    "servizi_accessori_iva": "22%",
-                    "offer_var_choice_illumia": request.POST.get("offer_var_choice_illumia") or "",
-                    "offer_fix_choice_illumia": request.POST.get("offer_fix_choice_illumia") or "",
-                    "offer_var_choice_eon": request.POST.get("offer_var_choice_eon") or "",
-                    "offer_fix_choice_eon": request.POST.get("offer_fix_choice_eon") or "",
-                }
-            )
+            providers = ["ILLUMIA"] if customer_mode else (request.POST.getlist("providers") or [request.POST.get("provider") or ""])
+            initial_data = {
+                "nome_cliente": request.POST.get("nome_cliente") or "",
+                "email_cliente": request.POST.get("email_cliente") or "",
+                "telefono_cliente": request.POST.get("telefono_cliente") or "",
+                "pod_pdr": request.POST.get("pod_pdr") or "",
+                "segmento": request.POST.get("segmento") or "",
+                "commodity": request.POST.get("commodity") or "",
+                "bill_tariff_type": request.POST.get("bill_tariff_type") or "",
+                "tariff_selection_mode": request.POST.get("tariff_selection_mode") or "",
+                "providers": [provider for provider in providers if provider],
+                "tax_primary_home": request.POST.get("tax_primary_home") or "SI",
+                "tax_power_kw": request.POST.get("tax_power_kw") or "0",
+                "tax_annual_consumption": "",
+                "tax_region": request.POST.get("tax_region") or "Veneto",
+                "servizi_accessori_iva": "22%",
+                "offer_var_choice_illumia": request.POST.get("offer_var_choice_illumia") or "",
+                "offer_fix_choice_illumia": request.POST.get("offer_fix_choice_illumia") or "",
+                "offer_var_choice_eon": request.POST.get("offer_var_choice_eon") or "",
+                "offer_fix_choice_eon": request.POST.get("offer_fix_choice_eon") or "",
+                "offer_var_choice_cve": request.POST.get("offer_var_choice_cve") or "",
+                "offer_fix_choice_cve": request.POST.get("offer_fix_choice_cve") or "",
+                "cve_over70": bool(request.POST.get("cve_over70")),
+            }
+            if customer_mode:
+                initial_data = _force_customer_mode_data(initial_data)
+            form = _comparison_form(initial=initial_data, customer_mode=customer_mode)
         else:
-            form = ConfrontoForm(request.POST)
+            form = _comparison_form(request.POST, customer_mode=customer_mode)
             if form.is_valid():
                 data = form.service_data()
+                if customer_mode:
+                    data = _force_customer_mode_data(data)
                 data["comparison_datetime"] = timezone.localtime().isoformat(timespec="seconds")
                 prepared = prepare_comparison(data)
                 rows = prepared["rows"]
                 session_data = form.session_data()
+                if customer_mode:
+                    session_data = _force_customer_mode_data(session_data)
                 session_data["comparison_datetime"] = data["comparison_datetime"]
-                request.session["last_confronto"] = session_data
-                form = ConfrontoForm(initial=data)
+                request.session[mode["comparison_session_key"]] = session_data
+                form = _comparison_form(initial=data, customer_mode=customer_mode)
     else:
-        form = ConfrontoForm()
+        initial = (
+            {
+                "providers": ["ILLUMIA"],
+                "tariff_selection_mode": "LATEST",
+                "pod_pdr": "",
+                "email_cliente": "",
+                "telefono_cliente": "",
+            }
+            if customer_mode
+            else None
+        )
+        form = _comparison_form(initial=initial, customer_mode=customer_mode)
 
     return render(
         request,
@@ -111,16 +177,22 @@ def confronto(request):
             "uploaded_bill_name": uploaded_bill_name,
             "extraction_warnings": extraction_warnings,
             "extraction_count": extraction_count,
+            "customer_mode": customer_mode,
+            "page_title": mode["page_title"],
+            "page_intro": mode["page_intro"],
+            "download_url_name": mode["download_url_name"],
         },
     )
 
 
-@login_required
-def scarica_excel(request):
-    raw = request.session.get("last_confronto")
+def _scarica_excel(request, *, customer_mode=False):
+    mode = _mode_config(customer_mode)
+    raw = request.session.get(mode["comparison_session_key"])
     if not raw:
         return HttpResponse("Nessun confronto pronto. Torna alla pagina principale e calcola il confronto.", status=400)
     data = session_to_service_data(raw)
+    if customer_mode:
+        data = _force_customer_mode_data(data)
     prepared = prepare_comparison(data)
     content = build_excel_bytes(data, prepared)
     provider_name = "_".join(provider_label(provider).lower().replace(".", "") for provider in data.get("providers", []))
@@ -135,3 +207,23 @@ def scarica_excel(request):
     response["Content-Disposition"] = f'attachment; filename="{nome}"'
     response["Content-Length"] = str(len(content))
     return response
+
+
+@login_required
+def confronto(request):
+    return _confronto_page(request)
+
+
+@login_required
+def confronto_cliente_illumia(request):
+    return _confronto_page(request, customer_mode=True)
+
+
+@login_required
+def scarica_excel(request):
+    return _scarica_excel(request)
+
+
+@login_required
+def scarica_excel_cliente_illumia(request):
+    return _scarica_excel(request, customer_mode=True)

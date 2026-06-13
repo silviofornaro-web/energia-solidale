@@ -19,6 +19,7 @@ INDICI_XLSX = BASE_DIR / "indici_pun_psv_2025_2026.xlsx"
 PROVIDERS = {
     "ILLUMIA": "Illumia",
     "EON": "E.ON",
+    "CVE": "CVE",
 }
 SEGMENTS = ("RESIDENZIALE", "MICROBUSINESS", "BUSINESS")
 EE_EXCISE_RATE = 0.0227
@@ -105,6 +106,8 @@ def normalize_provider(value) -> str:
     cleaned = clean_text(value or "ILLUMIA").upper().replace(".", "").replace("-", "").replace(" ", "")
     if cleaned == "EON":
         return "EON"
+    if cleaned in {"CVE", "CENTROVENETOENERGIE", "CENTROVENETO"}:
+        return "CVE"
     return "ILLUMIA"
 
 
@@ -134,6 +137,12 @@ def provider_list_label(providers) -> str:
 
 def provider_label(value) -> str:
     return PROVIDERS.get(normalize_provider(value), "Illumia")
+
+
+def bool_from_data(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    return clean_text(value).upper() in {"1", "TRUE", "SI", "SÌ", "YES", "ON"}
 
 
 def normalize_bill_tariff_type(value) -> str:
@@ -383,6 +392,7 @@ def tariff_month_key(path: Path) -> str:
     return ""
 
 
+
 def tariff_matches_segment(path: Path, segmento: str) -> bool:
     segment_norm = clean_text(segmento).upper()
     name = path.name.lower()
@@ -405,11 +415,13 @@ def tariff_segment_fallbacks(segmento: str) -> tuple[str, ...]:
 
 
 def _tariff_file_candidates_for_segment_exact(segmento: str, provider: str = "ILLUMIA"):
-    if normalize_provider(provider) == "EON":
+    provider_norm = normalize_provider(provider)
+    if provider_norm in {"EON", "CVE"}:
         if not EON_TARIFFE_DIR.exists():
             return []
+        prefix = provider_norm.lower()
         candidates = [
-            p for p in EON_TARIFFE_DIR.glob("eon_tariffe_*.xlsx") if p.is_file() and not p.name.startswith("~$")
+            p for p in EON_TARIFFE_DIR.glob(f"{prefix}_tariffe_*.xlsx") if p.is_file() and not p.name.startswith("~$")
         ]
     else:
         if not TARIFFE_BASE.exists():
@@ -583,6 +595,35 @@ def filter_rows_by_context_with_fallback(rows, provider, segmento, commodity: st
         if rows_have_tariff_options(business_rows, commodity):
             return business_rows, "BUSINESS"
     return primary_rows, segment_norm
+
+
+def cve_row_matches_annual_context(row, annual_consumption: float, over70: bool) -> bool:
+    requires_over70 = bool_from_data(row.get("requires_over70"))
+    if over70:
+        return requires_over70
+    if requires_over70:
+        return False
+    annual = max(0.0, float(annual_consumption or 0.0))
+    annual_min = clean_text(row.get("annual_min"))
+    annual_max = clean_text(row.get("annual_max"))
+    min_value = parse_number(annual_min) if annual_min else None
+    max_value = parse_number(annual_max) if annual_max else None
+    if min_value is not None and annual <= min_value:
+        return False
+    if max_value is not None and annual > max_value:
+        return False
+    return True
+
+
+def filter_cve_rows_by_annual_context(rows, commodity, annual_consumption, over70=False):
+    commodity_norm = clean_text(commodity).upper()
+    annual = max(0.0, float(annual_consumption or 0.0))
+    return [
+        row
+        for row in rows
+        if clean_text(row.get("commodity")).upper() == commodity_norm
+        and cve_row_matches_annual_context(row, annual, bool_from_data(over70))
+    ]
 
 
 def filter_rows_by_offer(rows, commodity, offer_type, offer_name):
@@ -923,6 +964,10 @@ def calculate_provider_result(data, base_calc, provider):
         tariffe_rows, effective_segment = filter_rows_by_context_with_fallback(
             raw_tariffe_rows, provider_norm, effective_segment, commodity
         )
+        if provider_norm == "CVE":
+            tariffe_rows = filter_cve_rows_by_annual_context(
+                tariffe_rows, commodity, data.get("tax_annual_consumption", 0.0), data.get("cve_over70")
+            )
     else:
         tariffe_rows = []
     offer_valid_from, offer_valid_to = get_file_valid_range(offer_file) if offer_file else (None, None)
@@ -1140,6 +1185,9 @@ def prepare_comparison(data):
         "pun": pun,
         "psv": psv,
         "servizi_accessori_iva_label": normalize_accessory_services_vat_label(data.get("servizi_accessori_iva")),
+        "cve_over70": bool_from_data(data.get("cve_over70")),
+        "cve_over70_label": "Si" if bool_from_data(data.get("cve_over70")) else "No",
+        "cve_selected": "CVE" in providers,
     }
     provider_results = [calculate_provider_result(data, calc, provider) for provider in providers]
     calc["provider_results"] = provider_results
@@ -1325,6 +1373,8 @@ def write_export_metadata(ws, prepared, start_col="F"):
     ws[f"{start_col}12"] = f"Codice POD/PDR: {calc.get('pod_pdr') or 'N.D.'}"
     ws[f"{start_col}13"] = f"Fornitura: {'Gas' if calc.get('commodity') == 'GAS' else 'Luce'}"
     ws[f"{start_col}14"] = f"Periodo bolletta: {calc.get('period_label', 'N.D.')}"
+    if calc.get("cve_selected"):
+        ws[f"{start_col}15"] = f"CVE Over 70: {calc.get('cve_over70_label', 'No')}"
 
 
 def _excel_decimal(value: float) -> str:

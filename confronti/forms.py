@@ -2,8 +2,12 @@ from calendar import monthrange
 from datetime import date
 
 from django import forms
+from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import UserCreationForm
 from django.core.validators import FileExtensionValidator
+from django.db import transaction
 
+from .models import InviteCode
 from . import services
 
 
@@ -34,10 +38,67 @@ class BillUploadForm(forms.Form):
         return bill_pdf
 
 
+class ClientRegistrationForm(UserCreationForm):
+    first_name = forms.CharField(label="Nome", max_length=150)
+    last_name = forms.CharField(label="Cognome", max_length=150, required=False)
+    email = forms.EmailField(label="Email")
+    invite_code = forms.CharField(label="Codice invito", max_length=24)
+
+    class Meta(UserCreationForm.Meta):
+        model = get_user_model()
+        fields = ("first_name", "last_name", "email")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["password1"].label = "Password"
+        self.fields["password2"].label = "Conferma password"
+
+    def clean_email(self):
+        email = self.cleaned_data["email"].strip().lower()
+        User = get_user_model()
+        if User._default_manager.filter(username__iexact=email).exists():
+            raise forms.ValidationError("Esiste gia un account associato a questa email.")
+        return email
+
+    def clean_invite_code(self):
+        raw_code = self.cleaned_data["invite_code"]
+        code = InviteCode.normalize_code(raw_code)
+        if not code:
+            raise forms.ValidationError("Inserisci un codice invito valido.")
+        try:
+            invite = InviteCode.objects.get(code=code)
+        except InviteCode.DoesNotExist:
+            raise forms.ValidationError("Codice invito non valido.")
+        if invite.used_at or invite.used_by_id:
+            raise forms.ValidationError("Questo codice invito e gia stato utilizzato.")
+        if not invite.is_active:
+            raise forms.ValidationError("Questo codice invito non e attivo.")
+        self._invite_code = invite
+        return code
+
+    def save(self, commit=True):
+        invite = getattr(self, "_invite_code", None)
+        if invite is None:
+            raise ValueError("Invite code validation did not run.")
+        with transaction.atomic():
+            locked_invite = InviteCode.objects.select_for_update().get(pk=invite.pk)
+            if not locked_invite.is_available:
+                raise ValueError("Questo codice invito non e piu disponibile.")
+            user = super().save(commit=False)
+            user.username = self.cleaned_data["email"].strip().lower()
+            user.email = user.username
+            user.first_name = self.cleaned_data["first_name"].strip()
+            user.last_name = self.cleaned_data["last_name"].strip()
+            if commit:
+                user.save()
+                locked_invite.mark_used(user)
+            return user
+
+
 class ConfrontoForm(forms.Form):
     SEGMENTI = [("RESIDENZIALE", "Residenziale"), ("MICROBUSINESS", "Microbusiness"), ("BUSINESS", "Business")]
     COMMODITIES = [("GAS", "Gas"), ("EE", "Luce")]
-    PROVIDERS = [("ILLUMIA", "Illumia"), ("EON", "E.ON")]
+    PROVIDERS = [("ILLUMIA", "Illumia"), ("EON", "E.ON"), ("CVE", "CVE")]
     BILL_TARIFF_TYPES = [("VARIABILE", "Variabile"), ("FISSA", "Fissa")]
     TARIFF_SELECTION_MODES = [
         ("LATEST", "Ultime tariffe disponibili"),
@@ -52,6 +113,8 @@ class ConfrontoForm(forms.Form):
     MONTH_INPUT_FORMATS = ["%Y-%m", "%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"]
 
     nome_cliente = forms.CharField(label="Nome e Cognome", max_length=120)
+    email_cliente = forms.EmailField(label="Email", required=False)
+    telefono_cliente = forms.CharField(label="Telefono", max_length=40, required=False)
     pod_pdr = forms.CharField(label="Codice POD/PDR", max_length=24, required=False)
     segmento = forms.ChoiceField(label="Segmento", choices=SEGMENT_CHOICES)
     commodity = forms.ChoiceField(label="Fornitura", choices=COMMODITY_CHOICES)
@@ -95,6 +158,9 @@ class ConfrontoForm(forms.Form):
     offer_fix_choice_illumia = forms.ChoiceField(label="Illumia - Offerta fissa", required=False)
     offer_var_choice_eon = forms.ChoiceField(label="E.ON - Offerta variabile", required=False)
     offer_fix_choice_eon = forms.ChoiceField(label="E.ON - Offerta fissa", required=False)
+    cve_over70 = forms.BooleanField(label="Tariffa CVE Over 70", required=False)
+    offer_var_choice_cve = forms.ChoiceField(label="CVE - Offerta variabile", required=False)
+    offer_fix_choice_cve = forms.ChoiceField(label="CVE - Offerta fissa", required=False)
     bill_start = forms.DateField(
         label="Dal mese",
         input_formats=MONTH_INPUT_FORMATS,
@@ -155,13 +221,34 @@ class ConfrontoForm(forms.Form):
     b_accise_iva = ItalianDecimalField(label="Accise + IVA", decimal_places=4, max_digits=12, initial=0)
 
     def __init__(self, *args, **kwargs):
+        self.customer_mode = bool(kwargs.pop("customer_mode", False))
         super().__init__(*args, **kwargs)
+        if self.customer_mode:
+            self.fields["bill_offer_expiry"].required = False
+            self.fields["pod_pdr"] = forms.CharField(required=False, initial="", widget=forms.HiddenInput())
+            self.fields["providers"] = forms.CharField(required=False, initial="ILLUMIA", widget=forms.HiddenInput())
+            self.fields["tariff_selection_mode"] = forms.CharField(
+                required=False,
+                initial="LATEST",
+                widget=forms.HiddenInput(),
+            )
+            self.fields["offer_var_choice_eon"] = forms.CharField(required=False, widget=forms.HiddenInput())
+            self.fields["offer_fix_choice_eon"] = forms.CharField(required=False, widget=forms.HiddenInput())
+            self.fields["offer_var_choice_cve"] = forms.CharField(required=False, widget=forms.HiddenInput())
+            self.fields["offer_fix_choice_cve"] = forms.CharField(required=False, widget=forms.HiddenInput())
+            self.fields["cve_over70"].widget = forms.HiddenInput()
+        else:
+            self.fields["email_cliente"].widget = forms.HiddenInput()
+            self.fields["telefono_cliente"].widget = forms.HiddenInput()
         segmento = self._current_value("segmento")
         commodity = self._current_value("commodity")
         self.fields["offer_var_choice_illumia"].choices = self._offer_choices("ILLUMIA", segmento, commodity, "VARIABILE")
         self.fields["offer_fix_choice_illumia"].choices = self._offer_choices("ILLUMIA", segmento, commodity, "FISSA")
-        self.fields["offer_var_choice_eon"].choices = self._offer_choices("EON", segmento, commodity, "VARIABILE")
-        self.fields["offer_fix_choice_eon"].choices = self._offer_choices("EON", segmento, commodity, "FISSA")
+        if not self.customer_mode:
+            self.fields["offer_var_choice_eon"].choices = self._offer_choices("EON", segmento, commodity, "VARIABILE")
+            self.fields["offer_fix_choice_eon"].choices = self._offer_choices("EON", segmento, commodity, "FISSA")
+            self.fields["offer_var_choice_cve"].choices = self._offer_choices("CVE", segmento, commodity, "VARIABILE")
+            self.fields["offer_fix_choice_cve"].choices = self._offer_choices("CVE", segmento, commodity, "FISSA")
         self._apply_commodity_rules(commodity)
 
     def _current_value(self, field_name):
@@ -203,9 +290,19 @@ class ConfrontoForm(forms.Form):
         if cleaned.get("bill_start") and cleaned.get("bill_end") and cleaned["bill_end"] < cleaned["bill_start"]:
             raise forms.ValidationError("Il mese finale non può essere precedente al mese iniziale.")
         commodity = cleaned.get("commodity")
-        providers = [services.normalize_provider(provider) for provider in cleaned.get("providers", [])]
+        if self.customer_mode:
+            cleaned["pod_pdr"] = ""
+            providers = ["ILLUMIA"]
+            cleaned["tariff_selection_mode"] = "LATEST"
+            cleaned["offer_var_choice_eon"] = ""
+            cleaned["offer_fix_choice_eon"] = ""
+            cleaned["offer_var_choice_cve"] = ""
+            cleaned["offer_fix_choice_cve"] = ""
+            cleaned["cve_over70"] = False
+        else:
+            providers = [services.normalize_provider(provider) for provider in cleaned.get("providers", [])]
         cleaned["providers"] = providers
-        cleaned["provider"] = providers[0] if providers else ""
+        cleaned["provider"] = providers[0] if providers else "ILLUMIA"
         cleaned["tariff_selection_mode"] = services.normalize_tariff_selection_mode(
             cleaned.get("tariff_selection_mode")
         )
@@ -268,4 +365,7 @@ def session_to_service_data(raw):
     data["offer_fix_choice_illumia"] = data.get("offer_fix_choice_illumia", data.get("offer_fix_choice", ""))
     data["offer_var_choice_eon"] = data.get("offer_var_choice_eon", "")
     data["offer_fix_choice_eon"] = data.get("offer_fix_choice_eon", "")
+    data["offer_var_choice_cve"] = data.get("offer_var_choice_cve", "")
+    data["offer_fix_choice_cve"] = data.get("offer_fix_choice_cve", "")
+    data["cve_over70"] = services.bool_from_data(data.get("cve_over70"))
     return data

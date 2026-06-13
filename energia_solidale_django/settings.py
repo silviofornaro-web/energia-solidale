@@ -118,5 +118,5 @@ if not DEBUG:
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LOGIN_URL = "login"
-LOGIN_REDIRECT_URL = "confronto"
+LOGIN_REDIRECT_URL = "confronto_cliente_illumia"
 LOGOUT_REDIRECT_URL = "login"

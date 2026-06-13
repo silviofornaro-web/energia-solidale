@@ -5,11 +5,17 @@
 {% block content %}
 <section class="panel narrow">
     <h1>Accedi</h1>
+    <p class="panel-lead">
+        Accedi all'area clienti per usare il confronto bollette con le tariffe Illumia.
+    </p>
     {% if form.errors %}
         <p class="error">Credenziali non valide.</p>
     {% endif %}
     <form method="post" class="form-grid one">
         {% csrf_token %}
+        {% if next %}
+            <input type="hidden" name="next" value="{{ next }}">
+        {% endif %}
         <label>
             Email o username
             {{ form.username }}
@@ -20,5 +26,9 @@
         </label>
         <button type="submit">Accedi</button>
     </form>
+    <p class="auth-links">
+        Hai ricevuto un codice invito ma non hai ancora credenziali?
+        <a href="{% url 'register' %}{% if next %}?next={{ next|urlencode }}{% endif %}">Crea il tuo account</a>
+    </p>
 </section>
 {% endblock %}

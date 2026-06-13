@@ -54,6 +54,13 @@ h2 span {
     font-weight: 400;
 }
 
+.panel-lead {
+    color: #475569;
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 0 0 18px;
+}
+
 .panel {
     background: white;
     border: 1px solid #d8e1ea;
@@ -137,6 +144,27 @@ label {
     gap: 6px;
     font-weight: 700;
     font-size: 14px;
+}
+
+.provider-lock {
+    display: grid;
+    gap: 6px;
+}
+
+.provider-lock strong {
+    font-size: 14px;
+}
+
+.provider-lock-value {
+    align-items: center;
+    background: #eef6fb;
+    border: 1px solid #cfe0ee;
+    border-radius: 6px;
+    color: #1f5f7a;
+    display: flex;
+    font-weight: 700;
+    min-height: 42px;
+    padding: 8px 10px;
 }
 
 .provider-picker {
@@ -359,6 +387,18 @@ th {
     margin: 0;
     padding: 0;
     font-size: 13px;
+}
+
+.auth-links {
+    color: #475569;
+    font-size: 14px;
+    margin: 16px 0 0;
+}
+
+.auth-links a {
+    color: #1597d3;
+    font-weight: 700;
+    text-decoration: none;
 }
 
 footer {

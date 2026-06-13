@@ -1,8 +1,13 @@
 {% extends "confronti/base.html" %}
 
+{% block title %}{{ page_title }} - Energia Solidale{% endblock %}
+
 {% block content %}
-<h1>Confronto bollette</h1>
-{% if app_build_label %}
+<h1>{{ page_title }}</h1>
+{% if page_intro %}
+<p class="panel-lead">{{ page_intro }}</p>
+{% endif %}
+{% if app_build_label and not customer_mode %}
 <div class="build-banner">{{ app_build_label }}</div>
 {% endif %}
 
@@ -42,20 +47,36 @@
 
     <div class="form-grid top">
         <label>{{ form.nome_cliente.label }}{{ form.nome_cliente }}{{ form.nome_cliente.errors }}</label>
+        {% if customer_mode %}
+        <label>{{ form.email_cliente.label }}{{ form.email_cliente }}{{ form.email_cliente.errors }}</label>
+        <label>{{ form.telefono_cliente.label }}{{ form.telefono_cliente }}{{ form.telefono_cliente.errors }}</label>
+        {% endif %}
+        {% if not customer_mode %}
         <label>{{ form.pod_pdr.label }}{{ form.pod_pdr }}{{ form.pod_pdr.errors }}</label>
+        {% endif %}
         <label>{{ form.segmento.label }}{{ form.segmento }}{{ form.segmento.errors }}</label>
         <label>{{ form.commodity.label }}{{ form.commodity }}{{ form.commodity.errors }}</label>
         <label>{{ form.bill_tariff_type.label }}{{ form.bill_tariff_type }}{{ form.bill_tariff_type.errors }}</label>
+        {% if customer_mode %}
+        <div class="provider-lock">
+            <strong>Fornitore confronto</strong>
+            <div class="provider-lock-value">Illumia</div>
+        </div>
+        {% else %}
         <fieldset class="provider-picker">
             <legend>{{ form.providers.label }}</legend>
             {{ form.providers }}
             {{ form.providers.errors }}
         </fieldset>
+        <label class="checkbox-field" data-cve-over70-field hidden>{{ form.cve_over70 }} {{ form.cve_over70.label }}{{ form.cve_over70.errors }}</label>
+        {% endif %}
+        {% if not customer_mode %}
         <fieldset class="provider-picker">
             <legend>{{ form.tariff_selection_mode.label }}</legend>
             {{ form.tariff_selection_mode }}
             {{ form.tariff_selection_mode.errors }}
         </fieldset>
+        {% endif %}
     </div>
 
     <h2>Offerte confronto</h2>
@@ -65,11 +86,18 @@
             <label>{{ form.offer_var_choice_illumia.label }}{{ form.offer_var_choice_illumia }}{{ form.offer_var_choice_illumia.errors }}</label>
             <label>{{ form.offer_fix_choice_illumia.label }}{{ form.offer_fix_choice_illumia }}{{ form.offer_fix_choice_illumia.errors }}</label>
         </div>
+        {% if not customer_mode %}
         <div class="offer-provider" data-provider-panel="EON">
             <h3>E.ON</h3>
             <label>{{ form.offer_var_choice_eon.label }}{{ form.offer_var_choice_eon }}{{ form.offer_var_choice_eon.errors }}</label>
             <label>{{ form.offer_fix_choice_eon.label }}{{ form.offer_fix_choice_eon }}{{ form.offer_fix_choice_eon.errors }}</label>
         </div>
+        <div class="offer-provider" data-provider-panel="CVE">
+            <h3>CVE</h3>
+            <label>{{ form.offer_var_choice_cve.label }}{{ form.offer_var_choice_cve }}{{ form.offer_var_choice_cve.errors }}</label>
+            <label>{{ form.offer_fix_choice_cve.label }}{{ form.offer_fix_choice_cve }}{{ form.offer_fix_choice_cve.errors }}</label>
+        </div>
+        {% endif %}
     </div>
 
     <h2>Periodicità</h2>
@@ -134,7 +162,9 @@
 
     <div class="meta">
         <div><strong>Cliente:</strong> {{ prepared.calc.nome_cliente }}</div>
+        {% if not customer_mode %}
         <div><strong>Codice POD/PDR:</strong> {{ prepared.calc.pod_pdr|default:"N.D." }}</div>
+        {% endif %}
         <div><strong>Confronto eseguito:</strong> {{ prepared.calc.comparison_datetime_label }}</div>
         <div><strong>Tipo tariffa bolletta:</strong> {{ prepared.calc.bill_tariff_type_label }}</div>
         <div><strong>Consumo annuo stimato:</strong> {{ prepared.calc.tax_annual_consumption_label }}</div>
@@ -144,6 +174,7 @@
         <div><strong>Indice usato:</strong> {{ prepared.calc.indice.mese|default:"N.D." }}</div>
         <div><strong>Fornitori confronto:</strong> {{ prepared.calc.providers_label }}</div>
         <div><strong>Logica tariffe:</strong> {{ prepared.calc.tariff_selection_mode_label }}</div>
+        {% if prepared.calc.cve_selected %}<div><strong>CVE Over 70:</strong> {{ prepared.calc.cve_over70_label }}</div>{% endif %}
         {% for provider in prepared.calc.provider_results %}
             <div><strong>{{ provider.provider_label }} variabile:</strong> {{ provider.offer_var|default:"N.D." }}</div>
             <div><strong>{{ provider.provider_label }} fissa:</strong> {{ provider.offer_fix|default:"N.D." }}</div>
@@ -171,7 +202,7 @@
         </tbody>
     </table>
 
-    {% if prepared.values.bill_tax_ratio is not None %}
+    {% if prepared.values.bill_tax_ratio is not None and not customer_mode %}
     <div class="tax-cap-summary">
         <div class="tax-cap-card tax-cap-card-bill">
             <div class="tax-cap-title">Riferimento bolletta</div>
@@ -190,17 +221,20 @@
     </div>
     {% endif %}
 
-    <a class="download" href="{% url 'scarica_excel' %}" download data-download-excel>Scarica Excel</a>
+    <a class="download" href="{% url download_url_name %}" download data-download-excel>Scarica Excel</a>
 </section>
 {% endif %}
 {{ offer_options|json_script:"offer-options-data" }}
 <script>
 (() => {
+    const customerMode = {{ customer_mode|yesno:"true,false" }};
     const billInput = document.getElementById("id_bill_pdf");
     const billName = document.querySelector("[data-upload-file-name]");
     const providerChecks = Array.from(document.querySelectorAll("input[name='providers']"));
     const segmento = document.getElementById("id_segmento");
     const commodity = document.getElementById("id_commodity");
+    const cveOver70Field = document.querySelector("[data-cve-over70-field]");
+    const cveOver70Input = document.getElementById("id_cve_over70");
     const offerControls = {
         ILLUMIA: {
             variable: document.getElementById("id_offer_var_choice_illumia"),
@@ -209,6 +243,10 @@
         EON: {
             variable: document.getElementById("id_offer_var_choice_eon"),
             fixed: document.getElementById("id_offer_fix_choice_eon"),
+        },
+        CVE: {
+            variable: document.getElementById("id_offer_var_choice_cve"),
+            fixed: document.getElementById("id_offer_fix_choice_cve"),
         },
     };
     const taxPowerKw = document.getElementById("id_tax_power_kw");
@@ -243,7 +281,12 @@
         billName.classList.toggle("is-empty", !normalized);
     };
 
-    const selectedProviders = () => providerChecks.filter((box) => box.checked).map((box) => box.value);
+    const selectedProviders = () => {
+        if (customerMode) {
+            return ["ILLUMIA"];
+        }
+        return providerChecks.filter((box) => box.checked).map((box) => box.value);
+    };
 
     if (billInput) {
         billInput.addEventListener("change", () => {
@@ -253,6 +296,9 @@
     }
 
     const populate = (provider, select, type) => {
+        if (!select || !segmento || !commodity) {
+            return;
+        }
         const selected = select.value;
         const key = `${provider}|${segmento.value}|${commodity.value}`;
         const names = (offerOptions[key] && offerOptions[key][type]) || [];
@@ -275,6 +321,14 @@
     const refreshOffers = () => {
         if (!segmento || !commodity) return;
         const activeProviders = selectedProviders();
+        const cveActive = activeProviders.includes("CVE");
+        if (cveOver70Field && cveOver70Input) {
+            cveOver70Field.hidden = !cveActive;
+            cveOver70Input.disabled = !cveActive;
+            if (!cveActive) {
+                cveOver70Input.checked = false;
+            }
+        }
         Object.entries(offerControls).forEach(([provider, controls]) => {
             const active = activeProviders.includes(provider);
             const panel = document.querySelector(`[data-provider-panel="${provider}"]`);
