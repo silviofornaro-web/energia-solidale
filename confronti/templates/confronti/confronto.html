@@ -51,7 +51,7 @@
             {{ form.providers }}
             {{ form.providers.errors }}
         </fieldset>
-        <label class="checkbox-field">{{ form.cve_over70 }} {{ form.cve_over70.label }}{{ form.cve_over70.errors }}</label>
+        <label class="checkbox-field" data-cve-over70-field hidden>{{ form.cve_over70 }} {{ form.cve_over70.label }}{{ form.cve_over70.errors }}</label>
         <fieldset class="provider-picker">
             <legend>{{ form.tariff_selection_mode.label }}</legend>
             {{ form.tariff_selection_mode }}
@@ -208,6 +208,8 @@
     const providerChecks = Array.from(document.querySelectorAll("input[name='providers']"));
     const segmento = document.getElementById("id_segmento");
     const commodity = document.getElementById("id_commodity");
+    const cveOver70Field = document.querySelector("[data-cve-over70-field]");
+    const cveOver70Input = document.getElementById("id_cve_over70");
     const offerControls = {
         ILLUMIA: {
             variable: document.getElementById("id_offer_var_choice_illumia"),
@@ -286,6 +288,14 @@
     const refreshOffers = () => {
         if (!segmento || !commodity) return;
         const activeProviders = selectedProviders();
+        const cveActive = activeProviders.includes("CVE");
+        if (cveOver70Field && cveOver70Input) {
+            cveOver70Field.hidden = !cveActive;
+            cveOver70Input.disabled = !cveActive;
+            if (!cveActive) {
+                cveOver70Input.checked = false;
+            }
+        }
         Object.entries(offerControls).forEach(([provider, controls]) => {
             const active = activeProviders.includes(provider);
             const panel = document.querySelector(`[data-provider-panel="${provider}"]`);

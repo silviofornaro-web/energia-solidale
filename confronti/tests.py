@@ -679,7 +679,9 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, 'type="date"')
         self.assertContains(response, "Nuova bolletta")
         self.assertContains(response, "Fornitori confronto")
+        self.assertContains(response, 'data-cve-over70-field hidden')
         self.assertContains(response, "Tariffa CVE Over 70")
+        self.assertContains(response, 'activeProviders.includes("CVE")')
         self.assertContains(response, "CVE - Offerta variabile")
         self.assertContains(response, "Importa bolletta PDF")
 
