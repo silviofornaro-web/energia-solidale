@@ -9,6 +9,12 @@ source .venv-django/bin/activate
 python manage.py runserver 127.0.0.1:8000
 ```
 
+Oppure puoi usare il launcher locale:
+
+```bash
+./avvia_django_locale.command
+```
+
 Poi apri:
 
 ```text
