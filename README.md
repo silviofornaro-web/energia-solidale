@@ -53,7 +53,3 @@ Su Render il superutente iniziale viene creato con le variabili ambiente:
 - `DJANGO_SUPERUSER_USERNAME`
 - `DJANGO_SUPERUSER_EMAIL`
 - `DJANGO_SUPERUSER_PASSWORD`
-
-## Nota sui file legacy
-
-I file Streamlit storici, se presenti, non sono usati dalla web app Django pubblicata su Render.

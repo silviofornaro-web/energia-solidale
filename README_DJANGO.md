@@ -1,6 +1,6 @@
 # Energia Solidale - Versione Django
 
-Questa versione affianca l'app Streamlit e usa Django per una web app più stabile:
+Questa applicazione usa Django per offrire una web app stabile per confronto bollette:
 
 - login utenti tramite Django
 - form bolletta senza rerun continui
@@ -63,10 +63,8 @@ Per aggiungere un dominio personalizzato come `app.energiasolidale.org`, aggiung
 
 ## Note
 
-I file usati sono gli stessi della versione Streamlit:
+I file dati usati dall'app sono:
 
 - `tariffe/`
 - `indici_pun_psv_2025_2026.xlsx`
 - `esempio_confronto_corretto.xlsx`
-
-La versione Streamlit resta disponibile e non viene rimossa.

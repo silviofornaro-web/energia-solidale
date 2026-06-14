@@ -9,8 +9,6 @@ venv 2/
 .venv-django/
 db.sqlite3
 
-.streamlit/secrets.toml
-
 ~$*.xlsx
 confronto_illumia_*.xlsx
 static/downloads/*.xlsx
