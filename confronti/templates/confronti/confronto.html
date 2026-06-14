@@ -51,9 +51,85 @@
         <a href="{{ customer_dashboard_local_url }}" class="action-link">Apri dashboard cliente</a>
         <a href="{{ customer_register_url }}" class="action-link action-link-secondary" target="_blank" rel="noopener">Apri registrazione cliente</a>
     </div>
+    <form method="post" class="status-tools-form">
+        {% csrf_token %}
+        <div class="form-actions">
+            <button type="submit" name="action" value="show_customer_status" class="status-action">Stato clienti</button>
+        </div>
+    </form>
+    {% if customer_status %}
+    <div class="status-result">
+        <div class="status-cards">
+            <div class="status-card">
+                <strong>Clienti registrati</strong>
+                <span>{{ customer_status.user_count }}</span>
+            </div>
+            <div class="status-card">
+                <strong>Codici disponibili</strong>
+                <span>{{ customer_status.available_count }}</span>
+            </div>
+            <div class="status-card">
+                <strong>Codici usati</strong>
+                <span>{{ customer_status.used_count }}</span>
+            </div>
+        </div>
+        <div class="status-grid">
+            <section class="status-group">
+                <h3>Clienti registrati</h3>
+                {% if customer_status.users %}
+                <ul class="status-list">
+                    {% for customer_user in customer_status.users %}
+                    <li>
+                        <strong>{{ customer_user.email }}</strong>
+                        <span>{{ customer_user.first_name }} {{ customer_user.last_name|default:"" }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="status-empty">Nessun cliente registrato.</p>
+                {% endif %}
+            </section>
+            <section class="status-group">
+                <h3>Codici disponibili</h3>
+                {% if customer_status.available_invites %}
+                <ul class="status-list">
+                    {% for invite in customer_status.available_invites %}
+                    <li>
+                        <strong>{{ invite.code }}</strong>
+                        <span>{{ invite.label|default:"N.D." }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="status-empty">Nessun codice disponibile.</p>
+                {% endif %}
+            </section>
+            <section class="status-group">
+                <h3>Codici usati</h3>
+                {% if customer_status.used_invites %}
+                <ul class="status-list">
+                    {% for invite in customer_status.used_invites %}
+                    <li>
+                        <strong>{{ invite.code }}</strong>
+                        <span>{{ invite.used_by.username|default:"N.D." }}{% if invite.used_at %} · {{ invite.used_at|date:"d/m/Y H:i" }}{% endif %}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="status-empty">Nessun codice usato.</p>
+                {% endif %}
+            </section>
+        </div>
+    </div>
+    {% endif %}
     <form method="post" class="invite-tools-form">
         {% csrf_token %}
         {{ customer_invite_form.non_field_errors }}
+        <div class="whatsapp-reminder">
+            <strong>Prima di generare il codice</strong>
+            <p>Riapri WhatsApp Web con il numero {{ whatsapp_sender_number }}. Il codice non verra creato finche non lo confermi qui sotto.</p>
+            <a href="{{ whatsapp_web_home_url }}" target="_blank" rel="noopener" class="action-link whatsapp-link">Apri/Riapri WhatsApp Web</a>
+        </div>
         <div class="form-grid form-grid-invite">
             <label>{{ customer_invite_form.customer_name.label }}{{ customer_invite_form.customer_name }}{{ customer_invite_form.customer_name.errors }}</label>
             <label>{{ customer_invite_form.customer_phone.label }}{{ customer_invite_form.customer_phone }}{{ customer_invite_form.customer_phone.errors }}</label>
@@ -61,6 +137,11 @@
         {% if customer_invite_form.customer_phone.help_text %}
         <p class="field-help">{{ customer_invite_form.customer_phone.help_text }}</p>
         {% endif %}
+        <label class="checkbox-field-inline">
+            {{ customer_invite_form.whatsapp_ready }}
+            <span>{{ customer_invite_form.whatsapp_ready.label }}</span>
+        </label>
+        {{ customer_invite_form.whatsapp_ready.errors }}
         <div class="form-actions">
             <button type="submit" name="action" value="send_customer_invite" class="whatsapp-action">Genera codice e apri WhatsApp Web</button>
         </div>

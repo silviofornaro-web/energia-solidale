@@ -2,6 +2,7 @@ import logging
 import os
 from urllib.parse import quote, urljoin
 
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.shortcuts import render
@@ -20,6 +21,7 @@ LAST_UPLOADED_BILL_NAME_CLIENT_KEY = "last_uploaded_bill_name_cliente_illumia"
 LAST_COMPARISON_KEY = "last_confronto"
 LAST_COMPARISON_CLIENT_KEY = "last_confronto_cliente_illumia"
 WHATSAPP_SENDER_NUMBER = os.environ.get("WHATSAPP_SENDER_NUMBER", "3271044102")
+WHATSAPP_WEB_HOME_URL = "https://web.whatsapp.com/"
 CUSTOMER_PORTAL_BASE_URL = (
     os.environ.get("CUSTOMER_PORTAL_BASE_URL")
     or (f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}" if os.environ.get("RENDER_EXTERNAL_HOSTNAME") else "")
@@ -106,6 +108,27 @@ def _customer_optional_section_open(form):
     return any(field_name in form.errors for field_name in ConfrontoForm.CUSTOMER_OPTIONAL_FIELDS)
 
 
+def _customer_status_snapshot():
+    User = get_user_model()
+    users = list(User.objects.filter(is_staff=False, is_superuser=False).order_by("-id"))
+    available_invites = list(
+        InviteCode.objects.filter(is_active=True, used_at__isnull=True, used_by__isnull=True).order_by("-created_at")
+    )
+    used_invites = list(
+        InviteCode.objects.exclude(used_at__isnull=True, used_by__isnull=True)
+        .select_related("used_by")
+        .order_by("-used_at", "-created_at")
+    )
+    return {
+        "users": users,
+        "available_invites": available_invites,
+        "used_invites": used_invites,
+        "user_count": len(users),
+        "available_count": len(available_invites),
+        "used_count": len(used_invites),
+    }
+
+
 def _confronto_page(request, *, customer_mode=False):
     mode = _mode_config(customer_mode)
     prepared = None
@@ -114,6 +137,7 @@ def _confronto_page(request, *, customer_mode=False):
     extraction_count = 0
     customer_invite_form = CustomerInviteForm()
     customer_invite_result = None
+    customer_status = None
     uploaded_bill_name = request.session.get(mode["upload_name_session_key"], "")
     upload_form = BillUploadForm()
     if request.method == "POST":
@@ -143,8 +167,12 @@ def _confronto_page(request, *, customer_mode=False):
                     initial={
                         "customer_name": customer_name,
                         "customer_phone": customer_phone_display,
+                        "whatsapp_ready": True,
                     }
                 )
+        elif action == "show_customer_status" and not customer_mode:
+            customer_status = _customer_status_snapshot()
+            form = _comparison_form(customer_mode=customer_mode)
         elif action == "extract_bill":
             request.session.pop(mode["comparison_session_key"], None)
             upload_form = BillUploadForm(request.POST, request.FILES)
@@ -255,7 +283,9 @@ def _confronto_page(request, *, customer_mode=False):
             "customer_register_url": _customer_registration_url(),
             "customer_invite_form": customer_invite_form,
             "customer_invite_result": customer_invite_result,
+            "customer_status": customer_status,
             "whatsapp_sender_number": WHATSAPP_SENDER_NUMBER,
+            "whatsapp_web_home_url": WHATSAPP_WEB_HOME_URL,
         },
     )
 

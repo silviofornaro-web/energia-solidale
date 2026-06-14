@@ -102,6 +102,10 @@ class CustomerInviteForm(forms.Form):
         max_length=30,
         help_text="Puoi inserirlo con o senza prefisso internazionale.",
     )
+    whatsapp_ready = forms.BooleanField(
+        label="Confermo di avere riaperto WhatsApp Web con il numero corretto prima di generare il codice",
+        required=False,
+    )
 
     def clean_customer_phone(self):
         raw_value = str(self.cleaned_data.get("customer_phone") or "").strip()
@@ -116,6 +120,12 @@ class CustomerInviteForm(forms.Form):
             raise forms.ValidationError("Inserisci un numero WhatsApp valido.")
         self.cleaned_data["customer_phone_display"] = f"+{digits}"
         return digits
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get("whatsapp_ready"):
+            self.add_error("whatsapp_ready", "Riapri WhatsApp Web e conferma prima di generare il codice.")
+        return cleaned
 
 
 class ConfrontoForm(forms.Form):

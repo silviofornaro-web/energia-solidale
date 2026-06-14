@@ -610,10 +610,21 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertEqual(form.cleaned_data["b_bonus_sociale"], 0)
 
     def test_customer_invite_form_normalizes_whatsapp_phone(self):
-        form = CustomerInviteForm({"customer_name": "Mario Rossi", "customer_phone": "333 123 4567"})
+        form = CustomerInviteForm(
+            {
+                "customer_name": "Mario Rossi",
+                "customer_phone": "333 123 4567",
+                "whatsapp_ready": "on",
+            }
+        )
         self.assertTrue(form.is_valid(), form.errors.as_data())
         self.assertEqual(form.cleaned_data["customer_phone"], "393331234567")
         self.assertEqual(form.cleaned_data["customer_phone_display"], "+393331234567")
+
+    def test_customer_invite_form_requires_whatsapp_confirmation(self):
+        form = CustomerInviteForm({"customer_name": "Mario Rossi", "customer_phone": "333 123 4567"})
+        self.assertFalse(form.is_valid())
+        self.assertIn("whatsapp_ready", form.errors)
 
     def test_italian_decimal_commas_are_accepted(self):
         form = ConfrontoForm(
@@ -851,6 +862,9 @@ class ConfrontoViewTests(TestCase):
         self.assertNotContains(response, "Build locale CAP-FISCALE 2026-06-06")
         self.assertContains(response, "Strumenti clienti")
         self.assertContains(response, "Apri dashboard cliente")
+        self.assertContains(response, "Apri/Riapri WhatsApp Web")
+        self.assertContains(response, "Il codice non verra creato finche non lo confermi")
+        self.assertContains(response, "Stato clienti")
         self.assertContains(response, "Genera codice e apri WhatsApp Web")
         self.assertContains(response, "3271044102")
         self.assertContains(response, "https://energia-solidale.onrender.com/accounts/register/")
@@ -889,6 +903,7 @@ class ConfrontoViewTests(TestCase):
         self.assertNotContains(response, "CVE - Offerta variabile")
         self.assertNotContains(response, "Fornitori confronto")
         self.assertNotContains(response, "Strumenti clienti")
+        self.assertNotContains(response, "Stato clienti")
         self.assertNotContains(response, "Genera codice e apri WhatsApp Web")
 
     def test_internal_dashboard_generates_whatsapp_web_invite(self):
@@ -899,6 +914,7 @@ class ConfrontoViewTests(TestCase):
                 "action": "send_customer_invite",
                 "customer_name": "Mario Rossi",
                 "customer_phone": "3331234567",
+                "whatsapp_ready": "on",
             },
         )
         self.assertEqual(response.status_code, 200)
@@ -909,6 +925,46 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, invite.code)
         self.assertContains(response, "https://web.whatsapp.com/send?phone=393331234567")
         self.assertContains(response, f"https://energia-solidale.onrender.com/accounts/register/?invite_code={invite.code}")
+
+    def test_internal_dashboard_does_not_generate_invite_without_whatsapp_confirmation(self):
+        self.login()
+        response = self.client.post(
+            "/",
+            {
+                "action": "send_customer_invite",
+                "customer_name": "Mario Rossi",
+                "customer_phone": "3331234567",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(InviteCode.objects.count(), 0)
+        self.assertContains(response, "Riapri WhatsApp Web e conferma prima di generare il codice.")
+
+    def test_internal_dashboard_can_show_customer_status(self):
+        self.login()
+        customer = get_user_model().objects.create_user(
+            username="cliente@example.com",
+            email="cliente@example.com",
+            password="secret",
+            first_name="Cliente",
+            last_name="Uno",
+        )
+        available_invite = InviteCode.objects.create(code="DISPONIB1", label="Disponibile")
+        used_invite = InviteCode.objects.create(code="USATO12345", label="Usato")
+        used_invite.mark_used(customer)
+
+        response = self.client.post("/", {"action": "show_customer_status"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Clienti registrati")
+        self.assertContains(response, "Codici disponibili")
+        self.assertContains(response, "Codici usati")
+        self.assertContains(response, "cliente@example.com")
+        self.assertContains(response, available_invite.code)
+        self.assertContains(response, used_invite.code)
+        self.assertEqual(response.context["customer_status"]["user_count"], 2)
+        self.assertEqual(response.context["customer_status"]["available_count"], 1)
+        self.assertEqual(response.context["customer_status"]["used_count"], 1)
 
     def test_registration_page_prefills_invite_code_from_query_string(self):
         response = self.client.get("/accounts/register/?invite_code=invito-1234")
