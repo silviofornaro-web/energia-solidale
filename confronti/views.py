@@ -1,14 +1,16 @@
 import logging
 import os
+from urllib.parse import quote, urljoin
 
-from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
 from django.shortcuts import render
+from django.urls import reverse
 from django.utils import timezone
 
 from .bill_parser import parse_uploaded_bill
-from .forms import BillUploadForm, ConfrontoForm, session_to_service_data
+from .forms import BillUploadForm, ConfrontoForm, CustomerInviteForm, session_to_service_data
+from .models import InviteCode
 from .services import build_excel_bytes, offer_options_payload, prepare_comparison, provider_label, safe_download_filename
 
 
@@ -17,13 +19,46 @@ LAST_UPLOADED_BILL_NAME_KEY = "last_uploaded_bill_name"
 LAST_UPLOADED_BILL_NAME_CLIENT_KEY = "last_uploaded_bill_name_cliente_illumia"
 LAST_COMPARISON_KEY = "last_confronto"
 LAST_COMPARISON_CLIENT_KEY = "last_confronto_cliente_illumia"
-APP_BUILD_LABEL = ""
-if not os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
-    APP_BUILD_LABEL = f"Build locale CAP-FISCALE 2026-06-06 · {settings.BASE_DIR}"
+WHATSAPP_SENDER_NUMBER = os.environ.get("WHATSAPP_SENDER_NUMBER", "3271044102")
+CUSTOMER_PORTAL_BASE_URL = (
+    os.environ.get("CUSTOMER_PORTAL_BASE_URL")
+    or (f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}" if os.environ.get("RENDER_EXTERNAL_HOSTNAME") else "")
+    or "https://energia-solidale.onrender.com"
+).rstrip("/")
 
 
 def _display_upload_name(raw_name):
     return (raw_name or "").replace("\\", "/").split("/")[-1].strip()
+
+
+def _public_customer_url(path):
+    return urljoin(f"{CUSTOMER_PORTAL_BASE_URL}/", path.lstrip("/"))
+
+
+def _customer_registration_url(invite_code=""):
+    base_url = _public_customer_url(reverse("register"))
+    normalized_code = InviteCode.normalize_code(invite_code)
+    if not normalized_code:
+        return base_url
+    return f"{base_url}?invite_code={normalized_code}"
+
+
+def _build_whatsapp_invite(customer_name, customer_phone, invite_code):
+    registration_url = _customer_registration_url(invite_code)
+    saluto = f"Ciao {customer_name}," if customer_name else "Ciao,"
+    message = (
+        f"{saluto} per creare il tuo accesso all'area clienti Energia Solidale apri questo link: "
+        f"{registration_url} "
+        f"e completa la registrazione. "
+        f"Il tuo codice invito e {invite_code}. "
+        "Dopo l'accesso potrai usare la dashboard cliente per confrontare la bolletta con Illumia."
+    )
+    whatsapp_url = f"https://web.whatsapp.com/send?phone={customer_phone}&text={quote(message)}"
+    return {
+        "message": message,
+        "registration_url": registration_url,
+        "whatsapp_url": whatsapp_url,
+    }
 
 
 def _mode_config(customer_mode=False):
@@ -65,17 +100,52 @@ def _comparison_form(*args, customer_mode=False, **kwargs):
     return ConfrontoForm(*args, customer_mode=customer_mode, **kwargs)
 
 
+def _customer_optional_section_open(form):
+    if not getattr(form, "customer_mode", False):
+        return False
+    return any(field_name in form.errors for field_name in ConfrontoForm.CUSTOMER_OPTIONAL_FIELDS)
+
+
 def _confronto_page(request, *, customer_mode=False):
     mode = _mode_config(customer_mode)
     prepared = None
     rows = None
     extraction_warnings = []
     extraction_count = 0
+    customer_invite_form = CustomerInviteForm()
+    customer_invite_result = None
     uploaded_bill_name = request.session.get(mode["upload_name_session_key"], "")
     upload_form = BillUploadForm()
     if request.method == "POST":
         action = request.POST.get("action")
-        if action == "extract_bill":
+        if action == "send_customer_invite" and not customer_mode:
+            customer_invite_form = CustomerInviteForm(request.POST)
+            form = _comparison_form(customer_mode=customer_mode)
+            if customer_invite_form.is_valid():
+                customer_name = customer_invite_form.cleaned_data.get("customer_name", "").strip()
+                customer_phone = customer_invite_form.cleaned_data["customer_phone"]
+                customer_phone_display = customer_invite_form.cleaned_data["customer_phone_display"]
+                invite_label = customer_name or f"Cliente {customer_phone_display}"
+                invite_note = (
+                    f"WhatsApp cliente: {customer_phone_display} | Creato da: {request.user.get_username() or 'utente'}"
+                )
+                invite = InviteCode.objects.create(label=invite_label, note=invite_note)
+                whatsapp_payload = _build_whatsapp_invite(customer_name, customer_phone, invite.code)
+                customer_invite_result = {
+                    "code": invite.code,
+                    "label": invite.label,
+                    "customer_phone_display": customer_phone_display,
+                    "registration_url": whatsapp_payload["registration_url"],
+                    "message": whatsapp_payload["message"],
+                    "whatsapp_url": whatsapp_payload["whatsapp_url"],
+                }
+                customer_invite_form = CustomerInviteForm(
+                    initial={
+                        "customer_name": customer_name,
+                        "customer_phone": customer_phone_display,
+                    }
+                )
+        elif action == "extract_bill":
             request.session.pop(mode["comparison_session_key"], None)
             upload_form = BillUploadForm(request.POST, request.FILES)
             uploaded_file = request.FILES.get("bill_pdf")
@@ -171,16 +241,21 @@ def _confronto_page(request, *, customer_mode=False):
             "form": form,
             "prepared": prepared,
             "rows": rows,
-            "app_build_label": APP_BUILD_LABEL,
             "offer_options": offer_options_payload(),
             "upload_form": upload_form,
             "uploaded_bill_name": uploaded_bill_name,
             "extraction_warnings": extraction_warnings,
             "extraction_count": extraction_count,
             "customer_mode": customer_mode,
+            "customer_optional_open": _customer_optional_section_open(form),
             "page_title": mode["page_title"],
             "page_intro": mode["page_intro"],
             "download_url_name": mode["download_url_name"],
+            "customer_dashboard_local_url": reverse("confronto_cliente_illumia"),
+            "customer_register_url": _customer_registration_url(),
+            "customer_invite_form": customer_invite_form,
+            "customer_invite_result": customer_invite_result,
+            "whatsapp_sender_number": WHATSAPP_SENDER_NUMBER,
         },
     )
 

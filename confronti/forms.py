@@ -95,6 +95,29 @@ class ClientRegistrationForm(UserCreationForm):
             return user
 
 
+class CustomerInviteForm(forms.Form):
+    customer_name = forms.CharField(label="Nome cliente", max_length=120, required=False)
+    customer_phone = forms.CharField(
+        label="Numero WhatsApp cliente",
+        max_length=30,
+        help_text="Puoi inserirlo con o senza prefisso internazionale.",
+    )
+
+    def clean_customer_phone(self):
+        raw_value = str(self.cleaned_data.get("customer_phone") or "").strip()
+        digits = "".join(ch for ch in raw_value if ch.isdigit())
+        if digits.startswith("00"):
+            digits = digits[2:]
+        if not digits:
+            raise forms.ValidationError("Inserisci il numero WhatsApp del cliente.")
+        if not digits.startswith("39"):
+            digits = f"39{digits}"
+        if len(digits) < 10 or len(digits) > 15:
+            raise forms.ValidationError("Inserisci un numero WhatsApp valido.")
+        self.cleaned_data["customer_phone_display"] = f"+{digits}"
+        return digits
+
+
 class ConfrontoForm(forms.Form):
     SEGMENTI = [("RESIDENZIALE", "Residenziale"), ("MICROBUSINESS", "Microbusiness"), ("BUSINESS", "Business")]
     COMMODITIES = [("GAS", "Gas"), ("EE", "Luce")]
@@ -111,6 +134,16 @@ class ConfrontoForm(forms.Form):
     BILL_TARIFF_TYPE_CHOICES = [("", "Seleziona tariffa")] + BILL_TARIFF_TYPES
     REGION_CHOICES = [(region, region) for region in services.GAS_REGIONAL_ADDITIONAL_MIN_RATES]
     MONTH_INPUT_FORMATS = ["%Y-%m", "%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"]
+    CUSTOMER_OPTIONAL_FIELDS = (
+        "bill_offer_expiry",
+        "b_bonus_sociale",
+        "b_arrotondamenti",
+        "b_servizi_accessori",
+        "servizi_accessori_iva",
+        "tax_region",
+        "b_quota_potenza",
+        "b_accise_iva",
+    )
 
     nome_cliente = forms.CharField(label="Nome e Cognome", max_length=120)
     email_cliente = forms.EmailField(label="Email", required=False)
@@ -225,6 +258,31 @@ class ConfrontoForm(forms.Form):
         super().__init__(*args, **kwargs)
         if self.customer_mode:
             self.fields["bill_offer_expiry"].required = False
+            self.fields["nome_cliente"].label = "Nome e cognome"
+            self.fields["segmento"].label = "Tipo cliente"
+            self.fields["bill_tariff_type"].label = "Tipo tariffa attuale"
+            self.fields["bill_start"].label = "Periodo bolletta da"
+            self.fields["bill_end"].label = "Periodo bolletta a"
+            self.fields["consumo"].label = "Consumo del periodo"
+            self.fields["tax_primary_home"].label = "Prima casa / residente"
+            self.fields["tax_power_kw"].label = "Potenza contatore (kW, solo luce)"
+            self.fields["tax_annual_consumption"].label = "Consumo annuo"
+            self.fields["tax_region"].label = "Regione (solo gas)"
+            self.fields["b_vendita_consumo"].label = "Spesa energia"
+            self.fields["b_rete_consumi"].label = "Spesa rete e oneri"
+            self.fields["b_vendita_fissa"].label = "Quota fissa fornitore"
+            self.fields["b_rete_fissa"].label = "Quota fissa rete e oneri"
+            self.fields["b_quota_potenza"].label = "Quota potenza (solo luce)"
+            self.fields["b_sconti"].label = "Sconti"
+            self.fields["b_ricalcoli"].label = "Ricalcoli"
+            self.fields["b_bonus_sociale"].label = "Bonus sociale"
+            self.fields["b_arrotondamenti"].label = "Arrotondamenti"
+            self.fields["b_servizi_accessori"].label = "Servizi extra"
+            self.fields["servizi_accessori_iva"].label = "IVA servizi extra"
+            self.fields["bill_offer_expiry"].label = "Scadenza offerta"
+            self.fields["b_accise_iva"].label = "Accise e IVA totali"
+            self.fields["offer_var_choice_illumia"].label = "Offerta variabile Illumia"
+            self.fields["offer_fix_choice_illumia"].label = "Offerta fissa Illumia"
             self.fields["pod_pdr"] = forms.CharField(required=False, initial="", widget=forms.HiddenInput())
             self.fields["providers"] = forms.CharField(required=False, initial="ILLUMIA", widget=forms.HiddenInput())
             self.fields["tariff_selection_mode"] = forms.CharField(

@@ -11,7 +11,7 @@ from django.test import Client, SimpleTestCase, TestCase
 from openpyxl import load_workbook
 
 from .bill_parser import ParsedBill, parse_bill_text
-from .forms import ConfrontoForm
+from .forms import ConfrontoForm, CustomerInviteForm
 from .models import InviteCode
 from . import services
 
@@ -609,6 +609,12 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertTrue(form.is_valid(), form.errors.as_data())
         self.assertEqual(form.cleaned_data["b_bonus_sociale"], 0)
 
+    def test_customer_invite_form_normalizes_whatsapp_phone(self):
+        form = CustomerInviteForm({"customer_name": "Mario Rossi", "customer_phone": "333 123 4567"})
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+        self.assertEqual(form.cleaned_data["customer_phone"], "393331234567")
+        self.assertEqual(form.cleaned_data["customer_phone_display"], "+393331234567")
+
     def test_italian_decimal_commas_are_accepted(self):
         form = ConfrontoForm(
             valid_payload(
@@ -719,6 +725,48 @@ class InviteCommandTests(TestCase):
         lines = [line.strip() for line in output.getvalue().splitlines() if line.strip()]
         self.assertEqual(len(lines), 3)
 
+    def test_stato_clienti_lists_customers_and_invite_status(self):
+        customer = get_user_model().objects.create_user(
+            username="cliente@example.com",
+            email="cliente@example.com",
+            password="secret",
+            first_name="Cliente",
+            last_name="Uno",
+        )
+        get_user_model().objects.create_superuser(
+            username="admin@example.com",
+            email="admin@example.com",
+            password="secret",
+        )
+        available = InviteCode.objects.create(code="DISPONIB1", label="Disponibile")
+        used = InviteCode.objects.create(code="USATO12345", label="Usato")
+        used.mark_used(customer)
+
+        output = StringIO()
+        call_command("stato_clienti", stdout=output)
+        rendered = output.getvalue()
+
+        self.assertIn("=== CLIENTI REGISTRATI ===", rendered)
+        self.assertIn("cliente@example.com", rendered)
+        self.assertNotIn("admin@example.com", rendered)
+        self.assertIn("Totale clienti registrati: 1", rendered)
+        self.assertIn("=== CODICI DISPONIBILI ===", rendered)
+        self.assertIn(available.code, rendered)
+        self.assertIn("Totale codici disponibili: 1", rendered)
+        self.assertIn("=== CODICI USATI ===", rendered)
+        self.assertIn(used.code, rendered)
+        self.assertIn("usato_da=cliente@example.com", rendered)
+        self.assertIn("Totale codici usati: 1", rendered)
+
+    def test_stato_clienti_handles_empty_state(self):
+        output = StringIO()
+        call_command("stato_clienti", stdout=output)
+        rendered = output.getvalue()
+
+        self.assertIn("Totale clienti registrati: 0", rendered)
+        self.assertIn("Totale codici disponibili: 0", rendered)
+        self.assertIn("Totale codici usati: 0", rendered)
+
 
 class ConfrontoViewTests(TestCase):
     def setUp(self):
@@ -800,7 +848,12 @@ class ConfrontoViewTests(TestCase):
         self.login()
         response = self.client.get("/")
         self.assertNotContains(response, 'type="month"')
-        self.assertContains(response, "Build locale CAP-FISCALE 2026-06-06")
+        self.assertNotContains(response, "Build locale CAP-FISCALE 2026-06-06")
+        self.assertContains(response, "Strumenti clienti")
+        self.assertContains(response, "Apri dashboard cliente")
+        self.assertContains(response, "Genera codice e apri WhatsApp Web")
+        self.assertContains(response, "3271044102")
+        self.assertContains(response, "https://energia-solidale.onrender.com/accounts/register/")
         self.assertContains(response, "Vendita fissa (totale bolletta)")
         self.assertContains(response, "Rete/oneri fissa (totale bolletta)")
         self.assertContains(response, 'data-month-field="bill_start"')
@@ -820,6 +873,11 @@ class ConfrontoViewTests(TestCase):
         response = self.client.get("/area-clienti/confronto-illumia/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Confronto bolletta con Illumia")
+        self.assertContains(response, "1. Carica la bolletta")
+        self.assertContains(response, "2. Controlla i dati letti")
+        self.assertContains(response, "3. Solo se manca in bolletta")
+        self.assertContains(response, "4. Calcola confronto")
+        self.assertContains(response, "Obbligatorio")
         self.assertNotContains(response, "Build locale CAP-FISCALE 2026-06-06")
         self.assertContains(response, "Email")
         self.assertContains(response, "Telefono")
@@ -830,6 +888,32 @@ class ConfrontoViewTests(TestCase):
         self.assertNotContains(response, "E.ON - Offerta variabile")
         self.assertNotContains(response, "CVE - Offerta variabile")
         self.assertNotContains(response, "Fornitori confronto")
+        self.assertNotContains(response, "Strumenti clienti")
+        self.assertNotContains(response, "Genera codice e apri WhatsApp Web")
+
+    def test_internal_dashboard_generates_whatsapp_web_invite(self):
+        self.login()
+        response = self.client.post(
+            "/",
+            {
+                "action": "send_customer_invite",
+                "customer_name": "Mario Rossi",
+                "customer_phone": "3331234567",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        invite = InviteCode.objects.get()
+        self.assertEqual(invite.label, "Mario Rossi")
+        self.assertIn("+393331234567", invite.note)
+        self.assertContains(response, "Codice creato:")
+        self.assertContains(response, invite.code)
+        self.assertContains(response, "https://web.whatsapp.com/send?phone=393331234567")
+        self.assertContains(response, f"https://energia-solidale.onrender.com/accounts/register/?invite_code={invite.code}")
+
+    def test_registration_page_prefills_invite_code_from_query_string(self):
+        response = self.client.get("/accounts/register/?invite_code=invito-1234")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["form"]["invite_code"].value(), "INVITO1234")
 
     def test_invalid_form_renders_field_errors(self):
         self.login()
@@ -982,6 +1066,7 @@ class ConfrontoViewTests(TestCase):
         self.assertIn('value="mario@example.com"', html)
         self.assertIn('value="3331234567"', html)
         self.assertIn("Scadenza offerta bolletta:</strong> N.D.", html)
+        self.assertIn("customer-optional-panel", html)
         self.assertNotIn("Build locale CAP-FISCALE 2026-06-06", html)
         self.assertNotIn("Incidenza fiscale bolletta:</strong>", html)
         self.assertNotIn("Cap fiscale applicato:</strong>", html)
@@ -995,6 +1080,16 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["telefono_cliente"], "3331234567")
         self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["pod_pdr"], "")
         self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["tariff_selection_mode"], "LATEST")
+
+    def test_customer_page_hides_technical_fields_inside_optional_panel(self):
+        self.login()
+        response = self.client.get("/area-clienti/confronto-illumia/")
+        html = response.content.decode()
+        self.assertIn("Servizi extra", html)
+        self.assertIn("Accise e IVA totali", html)
+        self.assertIn("Quota potenza (solo luce)", html)
+        self.assertIn("<details class=\"customer-optional-panel\"", html)
+        self.assertNotIn("<details class=\"customer-optional-panel\" open", html)
     def test_change_bill_resets_bill_values_and_download_session(self):
         self.login()
         self.client.post("/", valid_payload())

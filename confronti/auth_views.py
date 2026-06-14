@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 
 from .forms import ClientRegistrationForm
+from .models import InviteCode
 
 
 logger = logging.getLogger(__name__)
@@ -72,5 +73,7 @@ def register(request):
                 login(request, user)
                 return redirect(next_url)
     else:
-        form = ClientRegistrationForm()
+        invite_code = InviteCode.normalize_code(request.GET.get("invite_code"))
+        initial = {"invite_code": invite_code} if invite_code else None
+        form = ClientRegistrationForm(initial=initial)
     return render(request, "registration/register.html", {"form": form, "next": next_url})

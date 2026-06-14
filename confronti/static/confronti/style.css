@@ -33,17 +33,6 @@ h1 {
     font-size: 32px;
 }
 
-.build-banner {
-    background: #0f172a;
-    border-radius: 8px;
-    color: #f8fafc;
-    font-family: "Courier New", Courier, monospace;
-    font-size: 13px;
-    margin: 0 0 18px;
-    padding: 10px 12px;
-    word-break: break-all;
-}
-
 h2 {
     margin: 24px 0 12px;
     font-size: 20px;
@@ -67,6 +56,110 @@ h2 span {
     border-radius: 8px;
     padding: 20px;
     margin-bottom: 22px;
+}
+
+.admin-customer-tools {
+    background: linear-gradient(180deg, #f7fbff 0%, #ffffff 100%);
+    border-color: #cfe0ee;
+}
+
+.admin-action-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.action-link {
+    display: inline-block;
+    background: #1597d3;
+    border-radius: 6px;
+    color: white;
+    font-weight: 700;
+    padding: 11px 18px;
+    text-decoration: none;
+}
+
+.action-link-secondary {
+    background: #e8f1f7;
+    color: #1f5f7a;
+}
+
+.whatsapp-link,
+.whatsapp-action {
+    background: #1f9d55;
+}
+
+.invite-tools-form {
+    margin-top: 6px;
+}
+
+.form-grid-invite {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.9fr);
+}
+
+.field-help {
+    color: #64748b;
+    font-size: 13px;
+    margin: 10px 0 0;
+}
+
+.invite-result {
+    background: #eefbf3;
+    border: 1px solid #9dd9b1;
+    border-radius: 8px;
+    color: #166534;
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+    padding: 14px 16px;
+}
+
+.invite-result a {
+    color: inherit;
+}
+
+.customer-steps {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: 22px;
+}
+
+.customer-step-card {
+    align-items: start;
+    background: linear-gradient(180deg, #fff8ea 0%, #fff 100%);
+    border: 1px solid #f0d8a8;
+    border-radius: 10px;
+    display: grid;
+    gap: 10px;
+    grid-template-columns: auto 1fr;
+    padding: 14px 16px;
+}
+
+.customer-step-card strong {
+    display: block;
+    font-size: 15px;
+    margin-bottom: 4px;
+}
+
+.customer-step-card div div {
+    color: #6b7280;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.customer-step-number {
+    align-items: center;
+    background: #d97706;
+    border-radius: 999px;
+    color: #fff;
+    display: inline-flex;
+    font-size: 13px;
+    font-weight: 700;
+    height: 28px;
+    justify-content: center;
+    width: 28px;
 }
 
 .narrow {
@@ -137,6 +230,14 @@ h2 span {
 
 .form-grid.one {
     grid-template-columns: 1fr;
+}
+
+.form-grid-customer-basic {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.form-grid-customer-optional {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 label {
@@ -226,6 +327,10 @@ label {
     opacity: 0.58;
 }
 
+.customer-section-heading {
+    margin: 24px 0 12px;
+}
+
 input,
 select {
     width: 100%;
@@ -277,6 +382,13 @@ button.secondary {
     color: #1f5f7a;
 }
 
+.customer-primary-action {
+    background: #d97706;
+    box-shadow: 0 10px 24px rgba(217, 119, 6, 0.18);
+    font-size: 16px;
+    padding: 14px 22px;
+}
+
 .link-button {
     background: transparent;
     color: #1597d3;
@@ -305,6 +417,41 @@ button.secondary {
     font-weight: 700;
     margin-bottom: 16px;
     padding: 10px 12px;
+}
+
+.customer-optional-panel {
+    background: #fbfcfe;
+    border: 1px solid #d8e1ea;
+    border-radius: 10px;
+    margin-top: 22px;
+    padding: 0 18px 18px;
+}
+
+.customer-optional-panel summary {
+    color: #1f5f7a;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 700;
+    list-style: none;
+    padding: 18px 0 10px;
+}
+
+.customer-optional-panel summary::-webkit-details-marker {
+    display: none;
+}
+
+.customer-optional-panel summary::after {
+    color: #64748b;
+    content: "Mostra";
+    float: right;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.customer-optional-panel[open] summary::after {
+    content: "Nascondi";
 }
 
 .tax-cap-summary {
@@ -415,6 +562,10 @@ footer strong {
 @media (max-width: 760px) {
     .form-grid,
     .form-grid.top,
+    .form-grid-invite,
+    .form-grid-customer-basic,
+    .form-grid-customer-optional,
+    .customer-steps,
     .upload-panel,
     .meta {
         grid-template-columns: 1fr;

@@ -7,15 +7,94 @@
 {% if page_intro %}
 <p class="panel-lead">{{ page_intro }}</p>
 {% endif %}
-{% if app_build_label and not customer_mode %}
-<div class="build-banner">{{ app_build_label }}</div>
+{% if customer_mode %}
+<section class="customer-steps" aria-label="Passi del confronto">
+    <div class="customer-step-card">
+        <span class="customer-step-number">1</span>
+        <div>
+            <strong>Carica bolletta</strong>
+            <div>Importa il PDF della bolletta.</div>
+        </div>
+    </div>
+    <div class="customer-step-card">
+        <span class="customer-step-number">2</span>
+        <div>
+            <strong>Controlla i dati letti</strong>
+            <div>Verifica i valori riconosciuti dal PDF.</div>
+        </div>
+    </div>
+    <div class="customer-step-card">
+        <span class="customer-step-number">3</span>
+        <div>
+            <strong>Completa i campi mancanti</strong>
+            <div>Apri i dettagli solo se qualche voce manca.</div>
+        </div>
+    </div>
+    <div class="customer-step-card">
+        <span class="customer-step-number">4</span>
+        <div>
+            <strong>Calcola confronto</strong>
+            <div>Ottieni subito il risultato con Illumia.</div>
+        </div>
+    </div>
+</section>
+{% endif %}
+{% if not customer_mode %}
+<section class="panel admin-customer-tools">
+    <h2>Strumenti clienti</h2>
+    <p class="panel-lead">
+        Apri rapidamente la dashboard cliente oppure genera un codice invito da inviare con WhatsApp Web.
+        Il messaggio verra preparato per il cliente; per spedirlo dal numero {{ whatsapp_sender_number }},
+        WhatsApp Web deve essere aperto con quell'account.
+    </p>
+    <div class="admin-action-links">
+        <a href="{{ customer_dashboard_local_url }}" class="action-link">Apri dashboard cliente</a>
+        <a href="{{ customer_register_url }}" class="action-link action-link-secondary" target="_blank" rel="noopener">Apri registrazione cliente</a>
+    </div>
+    <form method="post" class="invite-tools-form">
+        {% csrf_token %}
+        {{ customer_invite_form.non_field_errors }}
+        <div class="form-grid form-grid-invite">
+            <label>{{ customer_invite_form.customer_name.label }}{{ customer_invite_form.customer_name }}{{ customer_invite_form.customer_name.errors }}</label>
+            <label>{{ customer_invite_form.customer_phone.label }}{{ customer_invite_form.customer_phone }}{{ customer_invite_form.customer_phone.errors }}</label>
+        </div>
+        {% if customer_invite_form.customer_phone.help_text %}
+        <p class="field-help">{{ customer_invite_form.customer_phone.help_text }}</p>
+        {% endif %}
+        <div class="form-actions">
+            <button type="submit" name="action" value="send_customer_invite" class="whatsapp-action">Genera codice e apri WhatsApp Web</button>
+        </div>
+    </form>
+    {% if customer_invite_result %}
+    <div class="invite-result">
+        <div><strong>Codice creato:</strong> {{ customer_invite_result.code }}</div>
+        <div><strong>Cliente:</strong> {{ customer_invite_result.label }}</div>
+        <div><strong>Numero WhatsApp:</strong> {{ customer_invite_result.customer_phone_display }}</div>
+        <div><strong>Link registrazione:</strong> <a href="{{ customer_invite_result.registration_url }}" target="_blank" rel="noopener">{{ customer_invite_result.registration_url }}</a></div>
+        <div class="form-actions">
+            <a href="{{ customer_invite_result.whatsapp_url }}" target="_blank" rel="noopener" class="action-link whatsapp-link">Apri WhatsApp Web</a>
+        </div>
+    </div>
+    <script>
+        window.setTimeout(function () {
+            window.open("{{ customer_invite_result.whatsapp_url|escapejs }}", "_blank", "noopener");
+        }, 50);
+    </script>
+    {% endif %}
+</section>
 {% endif %}
 
 <form method="post" enctype="multipart/form-data" class="panel upload-panel">
     {% csrf_token %}
     <div>
-        <h2>Importa bolletta PDF</h2>
-        <p>Compila automaticamente i dati leggibili. Puoi sempre correggerli prima del confronto.</p>
+        <h2>{% if customer_mode %}1. Carica la bolletta{% else %}Importa bolletta PDF{% endif %}</h2>
+        <p>
+            {% if customer_mode %}
+                Carica il PDF della bolletta: controllerai i dati letti e completerai solo quelli mancanti.
+            {% else %}
+                Compila automaticamente i dati leggibili. Puoi sempre correggerli prima del confronto.
+            {% endif %}
+        </p>
     </div>
     <label class="upload-file-picker">
         {{ upload_form.bill_pdf.label }}
@@ -45,41 +124,76 @@
         <div class="form-error-summary">Il confronto non è partito: controlla i campi evidenziati sotto.</div>
     {% endif %}
 
-    <div class="form-grid top">
+    {% if customer_mode %}
+    <h2>2. Controlla i dati letti</h2>
+    <p class="panel-lead">Compila i campi obbligatori. Se la bolletta e stata letta bene, spesso ti basta correggere solo i valori vuoti o non corretti.</p>
+
+    <h3 class="customer-section-heading">Obbligatorio</h3>
+    <div class="form-grid form-grid-customer-basic">
         <label>{{ form.nome_cliente.label }}{{ form.nome_cliente }}{{ form.nome_cliente.errors }}</label>
-        {% if customer_mode %}
         <label>{{ form.email_cliente.label }}{{ form.email_cliente }}{{ form.email_cliente.errors }}</label>
         <label>{{ form.telefono_cliente.label }}{{ form.telefono_cliente }}{{ form.telefono_cliente.errors }}</label>
-        {% endif %}
-        {% if not customer_mode %}
-        <label>{{ form.pod_pdr.label }}{{ form.pod_pdr }}{{ form.pod_pdr.errors }}</label>
-        {% endif %}
         <label>{{ form.segmento.label }}{{ form.segmento }}{{ form.segmento.errors }}</label>
         <label>{{ form.commodity.label }}{{ form.commodity }}{{ form.commodity.errors }}</label>
         <label>{{ form.bill_tariff_type.label }}{{ form.bill_tariff_type }}{{ form.bill_tariff_type.errors }}</label>
-        {% if customer_mode %}
         <div class="provider-lock">
             <strong>Fornitore confronto</strong>
             <div class="provider-lock-value">Illumia</div>
         </div>
-        {% else %}
+        <label class="month-picker" data-month-field="bill_start" data-required="true">
+            {{ form.bill_start.label }}
+            {{ form.bill_start }}
+            <span class="month-picker-controls">
+                <select data-month-part="month" aria-label="Mese inizio fatturazione" required></select>
+                <select data-month-part="year" aria-label="Anno inizio fatturazione" required></select>
+            </span>
+            {{ form.bill_start.errors }}
+        </label>
+        <label class="month-picker" data-month-field="bill_end">
+            {{ form.bill_end.label }}
+            {{ form.bill_end }}
+            <span class="month-picker-controls">
+                <select data-month-part="month" aria-label="Mese fine fatturazione"></select>
+                <select data-month-part="year" aria-label="Anno fine fatturazione"></select>
+            </span>
+            {{ form.bill_end.errors }}
+        </label>
+        <label>{{ form.consumo.label }}{{ form.consumo }}{{ form.consumo.errors }}</label>
+        <label>{{ form.tax_primary_home.label }}{{ form.tax_primary_home }}{{ form.tax_primary_home.errors }}</label>
+        <label>{{ form.tax_power_kw.label }}{{ form.tax_power_kw }}{{ form.tax_power_kw.errors }}</label>
+        <label>{{ form.tax_annual_consumption.label }}{{ form.tax_annual_consumption }}{{ form.tax_annual_consumption.errors }}</label>
+        <label>{{ form.b_vendita_consumo.label }}{{ form.b_vendita_consumo }}{{ form.b_vendita_consumo.errors }}</label>
+        <label>{{ form.b_rete_consumi.label }}{{ form.b_rete_consumi }}{{ form.b_rete_consumi.errors }}</label>
+        <label>{{ form.b_vendita_fissa.label }}{{ form.b_vendita_fissa }}{{ form.b_vendita_fissa.errors }}</label>
+        <label>{{ form.b_rete_fissa.label }}{{ form.b_rete_fissa }}{{ form.b_rete_fissa.errors }}</label>
+        <label>{{ form.b_sconti.label }}{{ form.b_sconti }}{{ form.b_sconti.errors }}</label>
+        <label>{{ form.b_ricalcoli.label }}{{ form.b_ricalcoli }}{{ form.b_ricalcoli.errors }}</label>
+    </div>
+
+    <h3 class="customer-section-heading">Scelta offerta Illumia</h3>
+    <p class="panel-lead">Puoi lasciare <strong>Automatica</strong> se non vuoi scegliere manualmente un'offerta specifica.</p>
+    {% else %}
+    <div class="form-grid top">
+        <label>{{ form.nome_cliente.label }}{{ form.nome_cliente }}{{ form.nome_cliente.errors }}</label>
+        <label>{{ form.pod_pdr.label }}{{ form.pod_pdr }}{{ form.pod_pdr.errors }}</label>
+        <label>{{ form.segmento.label }}{{ form.segmento }}{{ form.segmento.errors }}</label>
+        <label>{{ form.commodity.label }}{{ form.commodity }}{{ form.commodity.errors }}</label>
+        <label>{{ form.bill_tariff_type.label }}{{ form.bill_tariff_type }}{{ form.bill_tariff_type.errors }}</label>
         <fieldset class="provider-picker">
             <legend>{{ form.providers.label }}</legend>
             {{ form.providers }}
             {{ form.providers.errors }}
         </fieldset>
         <label class="checkbox-field" data-cve-over70-field hidden>{{ form.cve_over70 }} {{ form.cve_over70.label }}{{ form.cve_over70.errors }}</label>
-        {% endif %}
-        {% if not customer_mode %}
         <fieldset class="provider-picker">
             <legend>{{ form.tariff_selection_mode.label }}</legend>
             {{ form.tariff_selection_mode }}
             {{ form.tariff_selection_mode.errors }}
         </fieldset>
-        {% endif %}
     </div>
 
     <h2>Offerte confronto</h2>
+    {% endif %}
     <div class="form-grid">
         <div class="offer-provider" data-provider-panel="ILLUMIA">
             <h3>Illumia</h3>
@@ -100,6 +214,22 @@
         {% endif %}
     </div>
 
+    {% if customer_mode %}
+    <details class="customer-optional-panel" {% if customer_optional_open %}open{% endif %}>
+        <summary>3. Solo se manca in bolletta</summary>
+        <p class="panel-lead">Apri questa sezione solo se il PDF non ha letto tutti i dati o se vuoi correggere dettagli tecnici come accise, IVA, servizi extra o quota potenza.</p>
+        <div class="form-grid form-grid-customer-optional">
+            <label>{{ form.bill_offer_expiry.label }}{{ form.bill_offer_expiry }}{{ form.bill_offer_expiry.errors }}</label>
+            <label>{{ form.b_bonus_sociale.label }}{{ form.b_bonus_sociale }}{{ form.b_bonus_sociale.errors }}</label>
+            <label>{{ form.b_arrotondamenti.label }}{{ form.b_arrotondamenti }}{{ form.b_arrotondamenti.errors }}</label>
+            <label>{{ form.tax_region.label }}{{ form.tax_region }}{{ form.tax_region.errors }}</label>
+            <label>{{ form.b_quota_potenza.label }}{{ form.b_quota_potenza }}{{ form.b_quota_potenza.errors }}</label>
+            <label>{{ form.b_servizi_accessori.label }}{{ form.b_servizi_accessori }}{{ form.b_servizi_accessori.errors }}</label>
+            <label>{{ form.servizi_accessori_iva.label }}{{ form.servizi_accessori_iva }}{{ form.servizi_accessori_iva.errors }}</label>
+            <label>{{ form.b_accise_iva.label }}{{ form.b_accise_iva }}{{ form.b_accise_iva.errors }}</label>
+        </div>
+    </details>
+    {% else %}
     <h2>Periodicità</h2>
     <div class="form-grid">
         <label class="month-picker" data-month-field="bill_start" data-required="true">
@@ -147,9 +277,12 @@
         <label>{{ form.bill_offer_expiry.label }}{{ form.bill_offer_expiry }}{{ form.bill_offer_expiry.errors }}</label>
         <label>{{ form.b_accise_iva.label }}{{ form.b_accise_iva }}{{ form.b_accise_iva.errors }}</label>
     </div>
+    {% endif %}
 
     <div class="form-actions">
-        <button type="submit" name="action" value="calculate">Calcola confronto</button>
+        <button type="submit" name="action" value="calculate"{% if customer_mode %} class="customer-primary-action"{% endif %}>
+            {% if customer_mode %}4. Calcola confronto{% else %}Calcola confronto{% endif %}
+        </button>
         <button type="submit" name="action" value="reset_bill" class="secondary">Nuova bolletta</button>
     </div>
 </form>
