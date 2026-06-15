@@ -9,6 +9,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
+from .auth_views import ResilientLoginView
 from .bill_parser import parse_uploaded_bill
 from .forms import BillUploadForm, ConfrontoForm, CustomerInviteForm, session_to_service_data
 from .models import InviteCode
@@ -142,6 +143,18 @@ def _public_access_page(request):
             "register_url": reverse("register"),
         },
     )
+
+
+def _internal_login_page(request):
+    return ResilientLoginView.as_view(
+        template_name="registration/login.html",
+        extra_context={
+            "page_title": "Accesso Admin",
+            "page_heading": "Accedi alla dashboard interna",
+            "page_lead": "Area riservata amministratore di Energia Solidale.",
+            "hide_register_link": True,
+        },
+    )(request)
 
 
 def accesso_clienti(request):
@@ -337,7 +350,7 @@ def _scarica_excel(request, *, customer_mode=False):
 
 def confronto(request):
     if not request.user.is_authenticated:
-        return redirect("login")
+        return _internal_login_page(request)
     if not _is_internal_user(request.user):
         return redirect("confronto_cliente_illumia")
     return _confronto_page(request)

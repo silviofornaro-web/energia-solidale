@@ -1,12 +1,12 @@
 {% extends "confronti/base.html" %}
 
-{% block title %}Accedi - Energia Solidale{% endblock %}
+{% block title %}{{ page_title|default:"Accedi" }} - Energia Solidale{% endblock %}
 
 {% block content %}
 <section class="panel narrow">
-    <h1>Accedi</h1>
+    <h1>{{ page_heading|default:"Accedi" }}</h1>
     <p class="panel-lead">
-        Accedi all'area clienti per usare il confronto bollette con le tariffe Illumia.
+        {{ page_lead|default:"Accedi all'area clienti per usare il confronto bollette con le tariffe Illumia." }}
     </p>
     {% if form.errors %}
         <p class="error">Credenziali non valide.</p>
@@ -26,9 +26,11 @@
         </label>
         <button type="submit">Accedi</button>
     </form>
+    {% if not hide_register_link %}
     <p class="auth-links">
         Hai ricevuto un codice invito ma non hai ancora credenziali?
         <a href="{% url 'register' %}{% if next %}?next={{ next|urlencode }}{% endif %}">Crea il tuo account</a>
     </p>
+    {% endif %}
 </section>
 {% endblock %}

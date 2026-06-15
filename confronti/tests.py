@@ -804,10 +804,23 @@ class ConfrontoViewTests(TestCase):
     def login_customer(self):
         self.assertTrue(self.client.login(username="cliente-base@example.com", password="secret"))
 
-    def test_root_requires_login_for_anonymous_users(self):
+    def test_root_shows_internal_login_for_anonymous_users(self):
         response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Accedi alla dashboard interna")
+        self.assertContains(response, "Area riservata amministratore di Energia Solidale.")
+        self.assertNotContains(response, "Crea il tuo account")
+
+    def test_root_accepts_staff_login_without_redirecting_to_accounts_login(self):
+        response = self.client.post(
+            "/",
+            {
+                "username": "staff@example.com",
+                "password": "secret",
+            },
+        )
         self.assertEqual(response.status_code, 302)
-        self.assertIn("/accounts/login/", response["Location"])
+        self.assertEqual(response["Location"], "/")
 
     def test_customer_access_page_shows_public_access_choices_for_anonymous_users(self):
         response = self.client.get("/area-clienti/")
