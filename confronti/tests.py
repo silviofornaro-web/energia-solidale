@@ -88,6 +88,11 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertIn(".checkbox-field input", css)
         self.assertIn("height: 16px;", css)
 
+    def test_power_fields_have_hide_style(self):
+        css = (services.BASE_DIR / "confronti/static/confronti/style.css").read_text()
+        self.assertIn("[data-power-field][hidden]", css)
+        self.assertIn("display: none !important;", css)
+
     def test_billing_months_and_labels(self):
         self.assertEqual(services.billing_months_from_dates(date(2026, 1, 1), date(2026, 3, 31)), 3)
         self.assertEqual(services.billing_label_from_months(1), "MENSILE")
@@ -337,6 +342,20 @@ class ServiceUtilityTests(SimpleTestCase):
         rows = services.build_comparison_table_rows(services.build_comparison_values(data, calc))
         self.assertTrue(all(row["variabile"] == "N.D." for row in rows))
         self.assertTrue(all(row["fissa"] == "N.D." for row in rows))
+
+    def test_gas_comparison_table_hides_power_row(self):
+        data = service_data(commodity="GAS", tax_power_kw="0", b_quota_potenza="0")
+        calc = {
+            "billing_months": 1,
+            "v_cons": 45,
+            "v_fix": 6,
+            "f_cons": 42,
+            "f_fix": 7,
+            "offer_var": "Variabile",
+            "offer_fix": "Fissa",
+        }
+        rows = services.build_comparison_table_rows(services.build_comparison_values(data, calc))
+        self.assertNotIn("Quota Potenza", [row["voce"] for row in rows])
 
     def test_eon_offer_options_include_residential_and_business(self):
         options = services.offer_options_payload()
@@ -974,6 +993,9 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, 'type="date"')
         self.assertContains(response, "Nuova bolletta")
         self.assertContains(response, "Fornitori confronto")
+        self.assertContains(response, 'data-power-field')
+        self.assertContains(response, 'togglePowerFields')
+        self.assertContains(response, 'commodity.value === "EE"')
         self.assertContains(response, 'data-cve-over70-field hidden')
         self.assertContains(response, "Tariffa CVE Over 70")
         self.assertContains(response, 'activeProviders.includes("CVE")')
@@ -1143,6 +1165,7 @@ class ConfrontoViewTests(TestCase):
         self.assertIn("Incidenza fiscale bolletta:</strong> 8,47%", html)
         self.assertIn("Cap fiscale applicato:</strong> Si", html)
         self.assertIn("Incidenza teorica senza cap:</strong>", html)
+        self.assertNotIn("Quota Potenza", [row["voce"] for row in response.context["rows"]])
 
     def test_calculate_can_compare_selected_eon_offer(self):
         self.login()

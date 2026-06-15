@@ -416,6 +416,10 @@ label {
     font-size: 14px;
 }
 
+[data-power-field][hidden] {
+    display: none !important;
+}
+
 .provider-picker {
     border: 0;
     margin: 0;

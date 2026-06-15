@@ -813,6 +813,8 @@ def build_comparison_table_rows(values):
     ]
     out = []
     for key, label in rows_config:
+        if comm == "GAS" and key == "quota_potenza":
+            continue
         cells = [format_eur(comparison_value(values["bolletta"], key, comm))]
         for column in values["offer_columns"]:
             value = comparison_value(column["vals"], key, comm) if column["has_offer"] else "N.D."
