@@ -80,6 +80,14 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertEqual(services.parse_number("-€ 21,60"), -21.6)
         self.assertEqual(services.parse_number(""), 0.0)
 
+    def test_cve_over70_field_has_compact_checkbox_style(self):
+        css = (services.BASE_DIR / "confronti/static/confronti/style.css").read_text()
+        self.assertIn(".checkbox-field", css)
+        self.assertIn("width: fit-content;", css)
+        self.assertIn(".checkbox-field[hidden]", css)
+        self.assertIn(".checkbox-field input", css)
+        self.assertIn("height: 16px;", css)
+
     def test_billing_months_and_labels(self):
         self.assertEqual(services.billing_months_from_dates(date(2026, 1, 1), date(2026, 3, 31)), 3)
         self.assertEqual(services.billing_label_from_months(1), "MENSILE")

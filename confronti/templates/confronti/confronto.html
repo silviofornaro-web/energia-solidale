@@ -528,17 +528,22 @@
         }
     };
 
-    const refreshOffers = () => {
-        if (!segmento || !commodity) return;
-        const activeProviders = selectedProviders();
+    const refreshCveOver70 = (activeProviders) => {
         const cveActive = activeProviders.includes("CVE");
-        if (cveOver70Field && cveOver70Input) {
-            cveOver70Field.hidden = !cveActive;
-            cveOver70Input.disabled = !cveActive;
-            if (!cveActive) {
-                cveOver70Input.checked = false;
-            }
+        if (!cveOver70Field || !cveOver70Input) {
+            return;
         }
+        cveOver70Field.hidden = !cveActive;
+        cveOver70Input.disabled = !cveActive;
+        if (!cveActive) {
+            cveOver70Input.checked = false;
+        }
+    };
+
+    const refreshOffers = () => {
+        const activeProviders = selectedProviders();
+        refreshCveOver70(activeProviders);
+        if (!segmento || !commodity) return;
         Object.entries(offerControls).forEach(([provider, controls]) => {
             const active = activeProviders.includes(provider);
             const panel = document.querySelector(`[data-provider-panel="${provider}"]`);
