@@ -8,6 +8,9 @@
     <p class="panel-lead">
         Registrati con un codice invito per accedere all'area clienti e confrontare la tua bolletta solo con le tariffe Illumia.
     </p>
+    {% if registration_success %}
+        <div class="extraction-message">{{ registration_success }}</div>
+    {% endif %}
     {{ form.non_field_errors }}
     <form method="post" class="form-grid one">
         {% csrf_token %}

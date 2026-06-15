@@ -72,7 +72,9 @@ def register(request):
     except Exception:
         logger.exception("Registration database setup failed before rendering the signup page.")
     next_url = _safe_next_url(request)
-    if request.user.is_authenticated:
+    is_internal_user = _is_internal_user(request.user)
+    registration_success = ""
+    if request.user.is_authenticated and not is_internal_user:
         return redirect(next_url)
     if request.method == "POST":
         form = ClientRegistrationForm(request.POST)
@@ -82,10 +84,33 @@ def register(request):
             except ValueError:
                 form.add_error("invite_code", "Questo codice invito non e piu disponibile.")
             else:
+                if is_internal_user:
+                    registration_success = (
+                        f"Account cliente creato per {user.email}. "
+                        "La tua sessione admin e rimasta attiva."
+                    )
+                    form = ClientRegistrationForm()
+                    return render(
+                        request,
+                        "registration/register.html",
+                        {
+                            "form": form,
+                            "next": next_url,
+                            "registration_success": registration_success,
+                        },
+                    )
                 login(request, user)
                 return redirect(next_url)
     else:
         invite_code = InviteCode.normalize_code(request.GET.get("invite_code"))
         initial = {"invite_code": invite_code} if invite_code else None
         form = ClientRegistrationForm(initial=initial)
-    return render(request, "registration/register.html", {"form": form, "next": next_url})
+    return render(
+        request,
+        "registration/register.html",
+        {
+            "form": form,
+            "next": next_url,
+            "registration_success": registration_success,
+        },
+    )

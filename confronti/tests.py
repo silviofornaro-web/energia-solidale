@@ -837,6 +837,18 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/area-clienti/confronto-illumia/")
 
+    def test_authenticated_staff_can_open_registration_page(self):
+        self.login()
+        response = self.client.get("/accounts/register/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Crea le tue credenziali")
+
+    def test_authenticated_customer_is_redirected_from_registration_page(self):
+        self.login_customer()
+        response = self.client.get("/accounts/register/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/area-clienti/confronto-illumia/")
+
     def test_customer_area_requires_login(self):
         response = self.client.get("/area-clienti/confronto-illumia/")
         self.assertEqual(response.status_code, 302)
@@ -875,6 +887,28 @@ class ConfrontoViewTests(TestCase):
         self.assertFalse(invite.is_active)
         self.assertEqual(invite.used_by, user)
         self.assertIsNotNone(invite.used_at)
+
+    def test_staff_can_create_customer_from_registration_page_without_losing_admin_session(self):
+        self.login()
+        invite = InviteCode.objects.create(code="INVITO9999", label="Cliente Admin")
+        response = self.client.post(
+            "/accounts/register/",
+            {
+                "invite_code": invite.code,
+                "first_name": "Giulia",
+                "last_name": "Verdi",
+                "email": "giulia@example.com",
+                "password1": "PasswordSicura123!",
+                "password2": "PasswordSicura123!",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Account cliente creato per giulia@example.com")
+        created_user = get_user_model().objects.get(username="giulia@example.com")
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.staff_user.pk)
+        invite.refresh_from_db()
+        self.assertEqual(invite.used_by, created_user)
+        self.assertFalse(invite.is_active)
 
     def test_registration_requires_valid_invite_code(self):
         response = self.client.post(
