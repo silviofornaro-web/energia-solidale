@@ -17,6 +17,10 @@ _database_ready = False
 _database_ready_lock = Lock()
 
 
+def _is_internal_user(user):
+    return bool(user.is_authenticated and (user.is_staff or user.is_superuser))
+
+
 def ensure_login_database_ready():
     global _database_ready
     if _database_ready:
@@ -44,6 +48,14 @@ class ResilientLoginView(LoginView):
             logger.exception("Login failed because the database is not ready; running migrations once.")
             ensure_login_database_ready()
             return super().post(request, *args, **kwargs)
+
+    def get_success_url(self):
+        next_url = self.get_redirect_url()
+        if next_url:
+            return next_url
+        if _is_internal_user(self.request.user):
+            return reverse("confronto")
+        return reverse("confronto_cliente_illumia")
 
 
 def _safe_next_url(request, fallback_name="confronto_cliente_illumia"):

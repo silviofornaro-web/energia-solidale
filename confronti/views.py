@@ -5,7 +5,7 @@ from urllib.parse import quote, urljoin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
@@ -127,6 +127,10 @@ def _customer_status_snapshot():
         "available_count": len(available_invites),
         "used_count": len(used_invites),
     }
+
+
+def _is_internal_user(user):
+    return bool(user.is_authenticated and (user.is_staff or user.is_superuser))
 
 
 def _confronto_page(request, *, customer_mode=False):
@@ -314,8 +318,11 @@ def _scarica_excel(request, *, customer_mode=False):
     return response
 
 
-@login_required
 def confronto(request):
+    if not request.user.is_authenticated:
+        return redirect("register")
+    if not _is_internal_user(request.user):
+        return redirect("confronto_cliente_illumia")
     return _confronto_page(request)
 
 
@@ -326,6 +333,8 @@ def confronto_cliente_illumia(request):
 
 @login_required
 def scarica_excel(request):
+    if not _is_internal_user(request.user):
+        return redirect("confronto_cliente_illumia")
     return _scarica_excel(request)
 
 

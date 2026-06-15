@@ -781,21 +781,55 @@ class InviteCommandTests(TestCase):
 
 class ConfrontoViewTests(TestCase):
     def setUp(self):
-        self.user = get_user_model().objects.create_user(username="tester", password="secret")
+        User = get_user_model()
+        self.staff_user = User.objects.create_user(
+            username="staff@example.com",
+            email="staff@example.com",
+            password="secret",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.customer_user = User.objects.create_user(
+            username="cliente-base@example.com",
+            email="cliente-base@example.com",
+            password="secret",
+            first_name="Cliente",
+            last_name="Base",
+        )
         self.client = Client()
 
     def login(self):
-        self.assertTrue(self.client.login(username="tester", password="secret"))
+        self.assertTrue(self.client.login(username="staff@example.com", password="secret"))
 
-    def test_login_is_required(self):
+    def login_customer(self):
+        self.assertTrue(self.client.login(username="cliente-base@example.com", password="secret"))
+
+    def test_root_redirects_anonymous_users_to_registration(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 302)
-        self.assertIn("/accounts/login/", response["Location"])
+        self.assertEqual(response["Location"], "/accounts/register/")
+
+    def test_root_redirects_customer_users_to_customer_area(self):
+        self.login_customer()
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/area-clienti/confronto-illumia/")
 
     def test_customer_area_requires_login(self):
         response = self.client.get("/area-clienti/confronto-illumia/")
         self.assertEqual(response.status_code, 302)
         self.assertIn("/accounts/login/", response["Location"])
+
+    def test_staff_login_redirects_to_internal_dashboard_by_default(self):
+        response = self.client.post(
+            "/accounts/login/",
+            {
+                "username": "staff@example.com",
+                "password": "secret",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/")
 
     def test_registration_creates_customer_and_redirects_to_reserved_area(self):
         invite = InviteCode.objects.create(code="INVITO1234", label="Cliente Luca")
