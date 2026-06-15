@@ -133,6 +133,23 @@ def _is_internal_user(user):
     return bool(user.is_authenticated and (user.is_staff or user.is_superuser))
 
 
+def _public_access_page(request):
+    return render(
+        request,
+        "registration/access_choice.html",
+        {
+            "login_url": reverse("login"),
+            "register_url": reverse("register"),
+        },
+    )
+
+
+def accesso_clienti(request):
+    if request.user.is_authenticated:
+        return redirect("confronto_cliente_illumia")
+    return _public_access_page(request)
+
+
 def _confronto_page(request, *, customer_mode=False):
     mode = _mode_config(customer_mode)
     prepared = None
@@ -320,7 +337,7 @@ def _scarica_excel(request, *, customer_mode=False):
 
 def confronto(request):
     if not request.user.is_authenticated:
-        return redirect("register")
+        return redirect("login")
     if not _is_internal_user(request.user):
         return redirect("confronto_cliente_illumia")
     return _confronto_page(request)

@@ -63,6 +63,45 @@ h2 span {
     border-color: #cfe0ee;
 }
 
+.public-access-panel {
+    background: linear-gradient(180deg, #fffef5 0%, #ffffff 100%);
+    border-color: #eadfb0;
+}
+
+.public-access-lead {
+    max-width: 620px;
+}
+
+.public-access-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.public-access-card {
+    background: #fff;
+    border: 1px solid #d8e1ea;
+    border-radius: 10px;
+    display: grid;
+    gap: 12px;
+    padding: 18px;
+}
+
+.public-access-card h2 {
+    margin: 0;
+}
+
+.public-access-card p {
+    color: #475569;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.public-access-card-highlight {
+    border-color: #f0d8a8;
+    box-shadow: 0 14px 30px rgba(217, 119, 6, 0.08);
+}
+
 .admin-action-links {
     display: flex;
     flex-wrap: wrap;
@@ -675,6 +714,7 @@ footer strong {
     .form-grid-customer-basic,
     .form-grid-customer-optional,
     .customer-steps,
+    .public-access-grid,
     .status-cards,
     .status-grid,
     .upload-panel,

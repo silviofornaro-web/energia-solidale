@@ -1,0 +1,26 @@
+{% extends "confronti/base.html" %}
+
+{% block title %}Area Clienti - Energia Solidale{% endblock %}
+
+{% block content %}
+<section class="panel public-access-panel">
+    <h1>Area clienti Energia Solidale</h1>
+    <p class="panel-lead public-access-lead">
+        Per usare il confronto bolletta con Illumia scegli come vuoi entrare.
+    </p>
+
+    <div class="public-access-grid">
+        <section class="public-access-card">
+            <h2>Hai gia le credenziali?</h2>
+            <p>Entra con email e password per accedere subito alla dashboard clienti.</p>
+            <a href="{{ login_url }}" class="action-link">Accedi</a>
+        </section>
+
+        <section class="public-access-card public-access-card-highlight">
+            <h2>Hai ricevuto un codice?</h2>
+            <p>Crea il tuo account cliente usando il codice invito che ti abbiamo inviato.</p>
+            <a href="{{ register_url }}" class="action-link">Registrati con codice</a>
+        </section>
+    </div>
+</section>
+{% endblock %}
