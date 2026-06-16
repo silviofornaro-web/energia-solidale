@@ -355,7 +355,10 @@ class ServiceUtilityTests(SimpleTestCase):
             "offer_fix": "Fissa",
         }
         rows = services.build_comparison_table_rows(services.build_comparison_values(data, calc))
-        self.assertNotIn("Quota Potenza", [row["voce"] for row in rows])
+        labels = [row["voce"] for row in rows]
+        self.assertNotIn("Vendita Fissa Luce", labels)
+        self.assertNotIn("Quota Potenza", labels)
+        self.assertIn("Vendita Fissa Gas", labels)
 
     def test_eon_offer_options_include_residential_and_business(self):
         options = services.offer_options_payload()
@@ -1377,6 +1380,30 @@ class ConfrontoViewTests(TestCase):
         self.assertIsInstance(ws["D15"].value, (int, float))
         self.assertEqual(ws["B17"].value, 12.12)
         self.assertEqual(ws["B18"].value, "=SUM(B4:B14)+B17")
+
+    def test_gas_excel_download_removes_luce_only_rows(self):
+        self.login()
+        self.client.post(
+            "/",
+            valid_payload(
+                commodity="GAS",
+                tax_power_kw="0",
+                b_quota_potenza="0",
+                tax_annual_consumption="1200",
+                consumo="100",
+            ),
+        )
+        response = self.client.get("/scarica-excel/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("confronto_illumia_Mario_Rossi_GAS.xlsx", response["Content-Disposition"])
+
+        wb = load_workbook(BytesIO(response.content), data_only=False)
+        ws = wb["Confronto"]
+        labels = [ws[f"A{row}"].value for row in range(1, ws.max_row + 1)]
+        self.assertNotIn("Vendita Fissa Luce", labels)
+        self.assertNotIn("Quota Potenza", labels)
+        self.assertIn("Vendita Fissa Gas", labels)
+        self.assertEqual(ws["F13"].value, "Fornitura: Gas")
 
     def test_excel_download_contains_both_provider_columns(self):
         self.login()
