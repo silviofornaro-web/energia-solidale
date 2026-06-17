@@ -58,6 +58,123 @@ h2 span {
     margin-bottom: 22px;
 }
 
+.home-brand,
+.home-login-card,
+.home-access-panel,
+.home-landing {
+    border-radius: 14px;
+}
+
+.home-brand {
+    background:
+        radial-gradient(circle at top left, rgba(21, 151, 211, 0.12), transparent 38%),
+        linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+    border: 1px solid #d8e1ea;
+    display: grid;
+    align-content: center;
+    gap: 12px;
+    min-height: 100%;
+    padding: 34px;
+}
+
+.home-brand-centered {
+    border: 0;
+    justify-items: center;
+    padding: 20px 20px 8px;
+    text-align: center;
+}
+
+.home-brand-logo {
+    height: auto;
+    max-width: 320px;
+    width: min(100%, 320px);
+}
+
+.home-kicker {
+    color: #1597d3;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin: 0;
+    text-transform: uppercase;
+}
+
+.home-brand h1 {
+    font-size: 44px;
+    margin: 0;
+}
+
+.home-lead {
+    color: #475569;
+    font-size: 17px;
+    line-height: 1.6;
+    margin: 0;
+    max-width: 760px;
+}
+
+.home-landing {
+    background:
+        radial-gradient(circle at top left, rgba(21, 151, 211, 0.1), transparent 32%),
+        linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+    border-color: #d7e5f1;
+    padding: 26px;
+}
+
+.home-tabs {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    margin-top: 18px;
+}
+
+.home-tab {
+    background: #fff;
+    border: 1px solid #d8e1ea;
+    border-radius: 12px;
+    color: #1f2937;
+    min-height: 92px;
+    padding: 18px 14px;
+    text-align: center;
+    text-decoration: none;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.home-tab:hover {
+    border-color: #1597d3;
+    box-shadow: 0 14px 28px rgba(21, 151, 211, 0.12);
+    transform: translateY(-1px);
+}
+
+.home-tab.is-active {
+    background: #1597d3;
+    border-color: #1597d3;
+    box-shadow: 0 14px 28px rgba(21, 151, 211, 0.2);
+    color: #fff;
+}
+
+.home-tab-label {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.home-login-card {
+    background: linear-gradient(180deg, #fffef8 0%, #ffffff 100%);
+    border-color: #eadfb0;
+    display: grid;
+    align-content: start;
+}
+
+.home-login-card h2 {
+    margin-top: 0;
+}
+
+.panel-inline-highlight {
+    border-radius: 10px;
+    box-shadow: 0 0 0 3px rgba(21, 151, 211, 0.12);
+}
+
 .admin-customer-tools {
     background: linear-gradient(180deg, #f7fbff 0%, #ffffff 100%);
     border-color: #cfe0ee;
@@ -719,6 +836,22 @@ footer strong {
     .status-grid,
     .upload-panel,
     .meta {
+        grid-template-columns: 1fr;
+    }
+
+    .home-brand {
+        padding: 24px 20px;
+    }
+
+    .home-brand h1 {
+        font-size: 34px;
+    }
+
+    .home-landing {
+        padding: 20px 16px;
+    }
+
+    .home-tabs {
         grid-template-columns: 1fr;
     }
 

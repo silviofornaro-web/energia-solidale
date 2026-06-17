@@ -1,6 +1,6 @@
 import logging
 import os
-from urllib.parse import quote, urljoin
+from urllib.parse import quote, urlencode, urljoin
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
@@ -145,14 +145,46 @@ def _public_access_page(request):
     )
 
 
-def _internal_login_page(request):
+def _home_tabs():
+    root_url = reverse("confronto")
+    return [
+        {
+            "key": "dashboard-clienti",
+            "label": "Dashboard Clienti",
+            "href": reverse("accesso_clienti"),
+        },
+        {
+            "key": "registrazione-clienti",
+            "label": "Registrazione Clienti",
+            "href": reverse("register"),
+        },
+        {
+            "key": "stato-clienti",
+            "label": "Stato Clienti",
+            "href": f"{root_url}?{urlencode({'home_tab': 'stato-clienti', 'next': f'{root_url}?panel=status-clienti'})}",
+        },
+        {
+            "key": "genera-codici",
+            "label": "Genera Codici",
+            "href": f"{root_url}?{urlencode({'home_tab': 'genera-codici', 'next': f'{root_url}?panel=genera-codici'})}",
+        },
+        {
+            "key": "confronto-bollette-offerte",
+            "label": "Confronto Bollette/Offerte",
+            "href": f"{root_url}?{urlencode({'home_tab': 'confronto-bollette-offerte', 'next': f'{root_url}?panel=confronto'})}",
+        },
+    ]
+
+
+def _home_page(request):
     return ResilientLoginView.as_view(
-        template_name="registration/login.html",
+        template_name="confronti/home.html",
         extra_context={
-            "page_title": "Accesso Admin",
-            "page_heading": "Accedi alla dashboard interna",
-            "page_lead": "Area riservata amministratore di Energia Solidale.",
-            "hide_register_link": True,
+            "page_title": "Energia Solidale",
+            "hide_header_brand": True,
+            "customer_access_url": reverse("accesso_clienti"),
+            "customer_register_url": reverse("register"),
+            "home_tabs": _home_tabs(),
         },
     )(request)
 
@@ -172,6 +204,7 @@ def _confronto_page(request, *, customer_mode=False):
     customer_invite_form = CustomerInviteForm()
     customer_invite_result = None
     customer_status = None
+    admin_focus_panel = ""
     uploaded_bill_name = request.session.get(mode["upload_name_session_key"], "")
     upload_form = BillUploadForm()
     if request.method == "POST":
@@ -283,6 +316,10 @@ def _confronto_page(request, *, customer_mode=False):
                 request.session[mode["comparison_session_key"]] = session_data
                 form = _comparison_form(initial=data, customer_mode=customer_mode)
     else:
+        if not customer_mode:
+            admin_focus_panel = request.GET.get("panel", "")
+            if admin_focus_panel == "status-clienti":
+                customer_status = _customer_status_snapshot()
         initial = (
             {
                 "providers": ["ILLUMIA"],
@@ -318,6 +355,7 @@ def _confronto_page(request, *, customer_mode=False):
             "customer_invite_form": customer_invite_form,
             "customer_invite_result": customer_invite_result,
             "customer_status": customer_status,
+            "admin_focus_panel": admin_focus_panel,
             "whatsapp_sender_number": WHATSAPP_SENDER_NUMBER,
             "whatsapp_web_home_url": WHATSAPP_WEB_HOME_URL,
         },
@@ -350,7 +388,7 @@ def _scarica_excel(request, *, customer_mode=False):
 
 def confronto(request):
     if not request.user.is_authenticated:
-        return _internal_login_page(request)
+        return _home_page(request)
     if not _is_internal_user(request.user):
         return redirect("confronto_cliente_illumia")
     return _confronto_page(request)

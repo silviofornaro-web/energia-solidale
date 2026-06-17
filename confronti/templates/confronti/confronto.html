@@ -40,7 +40,7 @@
 </section>
 {% endif %}
 {% if not customer_mode %}
-<section class="panel admin-customer-tools">
+<section id="strumenti-clienti" class="panel admin-customer-tools">
     <h2>Strumenti clienti</h2>
     <p class="panel-lead">
         Apri rapidamente la dashboard cliente oppure genera un codice invito da inviare con WhatsApp Web.
@@ -51,14 +51,14 @@
         <a href="{{ customer_dashboard_local_url }}" class="action-link">Apri dashboard cliente</a>
         <a href="{{ customer_register_url }}" class="action-link action-link-secondary" target="_blank" rel="noopener">Apri registrazione cliente</a>
     </div>
-    <form method="post" class="status-tools-form">
+    <form method="post" class="status-tools-form{% if admin_focus_panel == 'status-clienti' %} panel-inline-highlight{% endif %}">
         {% csrf_token %}
         <div class="form-actions">
             <button type="submit" name="action" value="show_customer_status" class="status-action">Stato clienti</button>
         </div>
     </form>
     {% if customer_status %}
-    <div class="status-result">
+    <div id="stato-clienti" class="status-result{% if admin_focus_panel == 'status-clienti' %} panel-inline-highlight{% endif %}">
         <div class="status-cards">
             <div class="status-card">
                 <strong>Clienti registrati</strong>
@@ -122,7 +122,7 @@
         </div>
     </div>
     {% endif %}
-    <form method="post" class="invite-tools-form">
+    <form id="genera-codici" method="post" class="invite-tools-form{% if admin_focus_panel == 'genera-codici' %} panel-inline-highlight{% endif %}">
         {% csrf_token %}
         {{ customer_invite_form.non_field_errors }}
         <div class="whatsapp-reminder">
@@ -165,7 +165,7 @@
 </section>
 {% endif %}
 
-<form method="post" enctype="multipart/form-data" class="panel upload-panel">
+<form id="confronto-bollette-offerte" method="post" enctype="multipart/form-data" class="panel upload-panel{% if admin_focus_panel == 'confronto' %} panel-inline-highlight{% endif %}">
     {% csrf_token %}
     <div>
         <h2>{% if customer_mode %}1. Carica la bolletta{% else %}Importa bolletta PDF{% endif %}</h2>
@@ -198,7 +198,7 @@
     <div class="validity-warning">{{ warning }}</div>
 {% endfor %}
 
-<form method="post" class="panel">
+<form method="post" class="panel{% if admin_focus_panel == 'confronto' %} panel-inline-highlight{% endif %}">
     {% csrf_token %}
     {{ form.non_field_errors }}
     {% if form.errors %}

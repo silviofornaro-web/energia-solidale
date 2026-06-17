@@ -804,12 +804,18 @@ class ConfrontoViewTests(TestCase):
     def login_customer(self):
         self.assertTrue(self.client.login(username="cliente-base@example.com", password="secret"))
 
-    def test_root_shows_internal_login_for_anonymous_users(self):
+    def test_root_shows_homepage_and_internal_login_for_anonymous_users(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Accedi alla dashboard interna")
-        self.assertContains(response, "Area riservata amministratore di Energia Solidale.")
-        self.assertNotContains(response, "Crea il tuo account")
+        self.assertContains(response, "Energia Solidale")
+        self.assertContains(response, "Piattaforma di confronto")
+        self.assertContains(response, "Dashboard Clienti")
+        self.assertContains(response, "Registrazione Clienti")
+        self.assertContains(response, "Stato Clienti")
+        self.assertContains(response, "Genera Codici")
+        self.assertContains(response, "Confronto Bollette/Offerte")
+        self.assertContains(response, 'href="/area-clienti/"')
+        self.assertContains(response, 'href="/accounts/register/"')
 
     def test_root_accepts_staff_login_without_redirecting_to_accounts_login(self):
         response = self.client.post(
@@ -821,6 +827,13 @@ class ConfrontoViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/")
+
+    def test_internal_status_tab_opens_status_section_after_login(self):
+        self.login()
+        response = self.client.get("/?panel=status-clienti")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(response.context["customer_status"])
+        self.assertContains(response, 'id="stato-clienti"')
 
     def test_customer_access_page_shows_public_access_choices_for_anonymous_users(self):
         response = self.client.get("/area-clienti/")

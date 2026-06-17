@@ -1,0 +1,50 @@
+{% extends "confronti/base.html" %}
+{% load static %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<section class="panel home-landing">
+    <div class="home-brand home-brand-centered">
+        <img src="{% static 'confronti/logo_energia_solidale.png' %}" alt="Energia Solidale" class="home-brand-logo">
+        <p class="home-kicker">Piattaforma di confronto</p>
+        <h1>Energia Solidale</h1>
+        <p class="home-lead">
+            Un unico ingresso per dashboard clienti, registrazioni, codici invito, stato clienti e confronto bollette/offerte.
+        </p>
+    </div>
+
+    <nav class="home-tabs" aria-label="Navigazione principale">
+        {% for tab in home_tabs %}
+            <a href="{{ tab.href }}" class="home-tab{% if request.GET.home_tab == tab.key %} is-active{% endif %}">
+                <span class="home-tab-label">{{ tab.label }}</span>
+            </a>
+        {% endfor %}
+    </nav>
+</section>
+
+<section class="panel home-login-card">
+    <h2>Accesso interno</h2>
+    <p class="panel-lead">
+        Entra nella dashboard amministrativa della piattaforma. Se hai selezionato un tab interno, dopo il login verrai portato nella sezione corretta.
+    </p>
+    {% if form.errors %}
+        <p class="error">Credenziali non valide.</p>
+    {% endif %}
+    <form method="post" class="form-grid one">
+        {% csrf_token %}
+        {% if next %}
+            <input type="hidden" name="next" value="{{ next }}">
+        {% endif %}
+        <label>
+            Email o username
+            {{ form.username }}
+        </label>
+        <label>
+            Password
+            {{ form.password }}
+        </label>
+        <button type="submit">Entra nella dashboard</button>
+    </form>
+</section>
+{% endblock %}

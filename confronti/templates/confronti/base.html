@@ -5,12 +5,14 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Confronto bollette{% endblock %}</title>
-    <link rel="stylesheet" href="{% static 'confronti/style.css' %}?v=20260614-whatsapp-reminder">
+    <link rel="stylesheet" href="{% static 'confronti/style.css' %}?v=20260617-home-tabs">
 </head>
 <body>
     <main class="page">
         <header class="topbar">
-            <img src="{% static 'confronti/logo_energia_solidale.png' %}" alt="Energia Solidale">
+            {% if not hide_header_brand %}
+                <img src="{% static 'confronti/logo_energia_solidale.png' %}" alt="Energia Solidale">
+            {% endif %}
             {% if user.is_authenticated %}
                 <form method="post" action="{% url 'logout' %}">
                     {% csrf_token %}
