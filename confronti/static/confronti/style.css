@@ -28,6 +28,10 @@ body {
     height: auto;
 }
 
+.topbar-brand {
+    display: inline-flex;
+}
+
 h1 {
     margin: 0 0 18px;
     font-size: 32px;
@@ -120,14 +124,45 @@ h2 span {
     padding: 26px;
 }
 
-.home-tabs {
+.home-primary-tabs {
     display: grid;
     gap: 12px;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     margin-top: 18px;
 }
 
-.home-tab {
+.home-primary-tab {
+    background: #eef6fb;
+    border: 1px solid #cfe0ee;
+    border-radius: 12px;
+    color: #1f5f7a;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+    min-height: 72px;
+    padding: 16px 18px;
+    text-align: center;
+    transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.home-primary-tab.is-active {
+    background: #1597d3;
+    border-color: #1597d3;
+    box-shadow: 0 14px 28px rgba(21, 151, 211, 0.18);
+    color: #fff;
+}
+
+.home-primary-panel {
+    margin-top: 18px;
+}
+
+.home-subtabs {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.home-subtab {
     background: #fff;
     border: 1px solid #d8e1ea;
     border-radius: 12px;
@@ -139,24 +174,42 @@ h2 span {
     transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
 }
 
-.home-tab:hover {
+.home-subtab:hover {
     border-color: #1597d3;
     box-shadow: 0 14px 28px rgba(21, 151, 211, 0.12);
     transform: translateY(-1px);
 }
 
-.home-tab.is-active {
-    background: #1597d3;
-    border-color: #1597d3;
-    box-shadow: 0 14px 28px rgba(21, 151, 211, 0.2);
-    color: #fff;
-}
-
-.home-tab-label {
+.home-subtab-label {
     display: block;
     font-size: 15px;
     font-weight: 700;
     line-height: 1.35;
+}
+
+.home-customer-entry {
+    background: linear-gradient(180deg, #fffef8 0%, #ffffff 100%);
+    border: 1px solid #eadfb0;
+    border-radius: 14px;
+    color: #1f2937;
+    display: grid;
+    gap: 10px;
+    min-height: 132px;
+    padding: 24px;
+    text-align: left;
+    text-decoration: none;
+}
+
+.home-customer-entry-title {
+    color: #8a5a00;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.home-customer-entry-text {
+    color: #475569;
+    font-size: 15px;
+    line-height: 1.5;
 }
 
 .home-login-card {
@@ -173,6 +226,46 @@ h2 span {
 .panel-inline-highlight {
     border-radius: 10px;
     box-shadow: 0 0 0 3px rgba(21, 151, 211, 0.12);
+}
+
+.admin-tabs-shell {
+    background: linear-gradient(180deg, #f7fbff 0%, #ffffff 100%);
+    border-color: #cfe0ee;
+    padding: 16px;
+}
+
+.admin-tabs-nav {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.admin-tab-link {
+    align-items: center;
+    background: #eef6fb;
+    border: 1px solid #cfe0ee;
+    border-radius: 12px;
+    color: #1f5f7a;
+    display: flex;
+    font-weight: 700;
+    justify-content: center;
+    min-height: 74px;
+    padding: 14px 16px;
+    text-align: center;
+    text-decoration: none;
+    transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, color 0.16s ease;
+}
+
+.admin-tab-link:hover {
+    border-color: #1597d3;
+    box-shadow: 0 12px 24px rgba(21, 151, 211, 0.1);
+}
+
+.admin-tab-link.is-active {
+    background: #1597d3;
+    border-color: #1597d3;
+    box-shadow: 0 14px 28px rgba(21, 151, 211, 0.18);
+    color: #fff;
 }
 
 .admin-customer-tools {
@@ -831,6 +924,7 @@ footer strong {
     .form-grid-customer-basic,
     .form-grid-customer-optional,
     .customer-steps,
+    .admin-tabs-nav,
     .public-access-grid,
     .status-cards,
     .status-grid,
@@ -851,7 +945,8 @@ footer strong {
         padding: 20px 16px;
     }
 
-    .home-tabs {
+    .home-primary-tabs,
+    .home-subtabs {
         grid-template-columns: 1fr;
     }
 

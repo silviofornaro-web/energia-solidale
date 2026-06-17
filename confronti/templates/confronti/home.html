@@ -10,41 +10,60 @@
         <p class="home-kicker">Piattaforma di confronto</p>
         <h1>Energia Solidale</h1>
         <p class="home-lead">
-            Un unico ingresso per dashboard clienti, registrazioni, codici invito, stato clienti e confronto bollette/offerte.
+            Scegli il percorso di accesso alla piattaforma.
         </p>
     </div>
 
-    <nav class="home-tabs" aria-label="Navigazione principale">
-        {% for tab in home_tabs %}
-            <a href="{{ tab.href }}" class="home-tab{% if request.GET.home_tab == tab.key %} is-active{% endif %}">
-                <span class="home-tab-label">{{ tab.label }}</span>
-            </a>
-        {% endfor %}
-    </nav>
+    <div class="home-primary-tabs" role="tablist" aria-label="Accessi principali">
+        <button type="button" class="home-primary-tab is-active" data-home-primary-tab="admin" aria-selected="true">
+            Dashboard Amministrazione (Interna)
+        </button>
+        <button type="button" class="home-primary-tab" data-home-primary-tab="customer" aria-selected="false">
+            Confronto Bollette
+        </button>
+    </div>
+
+    <section class="home-primary-panel is-active" data-home-primary-panel="admin">
+        <div class="home-subtabs" aria-label="Funzioni amministrazione">
+            {% for tab in admin_tabs %}
+                <a href="{{ tab.href }}" class="home-subtab">
+                    <span class="home-subtab-label">{{ tab.label }}</span>
+                </a>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="home-primary-panel" data-home-primary-panel="customer" hidden>
+        <a href="{{ customer_dashboard_url }}" class="home-customer-entry">
+            <span class="home-customer-entry-title">Confronto Bollette</span>
+            <span class="home-customer-entry-text">Accedi all'attuale dashboard clienti per il confronto bollette.</span>
+        </a>
+    </section>
 </section>
 
-<section class="panel home-login-card">
-    <h2>Accesso interno</h2>
-    <p class="panel-lead">
-        Entra nella dashboard amministrativa della piattaforma. Se hai selezionato un tab interno, dopo il login verrai portato nella sezione corretta.
-    </p>
-    {% if form.errors %}
-        <p class="error">Credenziali non valide.</p>
-    {% endif %}
-    <form method="post" class="form-grid one">
-        {% csrf_token %}
-        {% if next %}
-            <input type="hidden" name="next" value="{{ next }}">
-        {% endif %}
-        <label>
-            Email o username
-            {{ form.username }}
-        </label>
-        <label>
-            Password
-            {{ form.password }}
-        </label>
-        <button type="submit">Entra nella dashboard</button>
-    </form>
-</section>
+<script>
+(() => {
+    const primaryTabs = Array.from(document.querySelectorAll("[data-home-primary-tab]"));
+    const primaryPanels = Array.from(document.querySelectorAll("[data-home-primary-panel]"));
+
+    const setActiveTab = (key) => {
+        primaryTabs.forEach((tab) => {
+            const active = tab.dataset.homePrimaryTab === key;
+            tab.classList.toggle("is-active", active);
+            tab.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        primaryPanels.forEach((panel) => {
+            const active = panel.dataset.homePrimaryPanel === key;
+            panel.classList.toggle("is-active", active);
+            panel.hidden = !active;
+        });
+    };
+
+    primaryTabs.forEach((tab) => {
+        tab.addEventListener("click", () => {
+            setActiveTab(tab.dataset.homePrimaryTab);
+        });
+    });
+})();
+</script>
 {% endblock %}

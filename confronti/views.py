@@ -9,7 +9,6 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
-from .auth_views import ResilientLoginView
 from .bill_parser import parse_uploaded_bill
 from .forms import BillUploadForm, ConfrontoForm, CustomerInviteForm, session_to_service_data
 from .models import InviteCode
@@ -147,51 +146,94 @@ def _public_access_page(request):
 
 def _home_tabs():
     root_url = reverse("confronto")
+    login_url = reverse("login")
     return [
         {
-            "key": "dashboard-clienti",
-            "label": "Dashboard Clienti",
-            "href": reverse("accesso_clienti"),
+            "key": "mostra-dashboard-clienti",
+            "label": "Mostra Dashboard Clienti",
+            "href": f"{login_url}?{urlencode({'next': reverse('accesso_clienti')})}",
         },
         {
-            "key": "registrazione-clienti",
-            "label": "Registrazione Clienti",
+            "key": "mostra-registrazione-clienti",
+            "label": "Mostra Registrazione Clienti",
             "href": reverse("register"),
         },
         {
             "key": "stato-clienti",
             "label": "Stato Clienti",
-            "href": f"{root_url}?{urlencode({'home_tab': 'stato-clienti', 'next': f'{root_url}?panel=status-clienti'})}",
+            "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=status-clienti'})}",
         },
         {
             "key": "genera-codici",
             "label": "Genera Codici",
-            "href": f"{root_url}?{urlencode({'home_tab': 'genera-codici', 'next': f'{root_url}?panel=genera-codici'})}",
+            "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=genera-codici'})}",
         },
         {
             "key": "confronto-bollette-offerte",
             "label": "Confronto Bollette/Offerte",
-            "href": f"{root_url}?{urlencode({'home_tab': 'confronto-bollette-offerte', 'next': f'{root_url}?panel=confronto'})}",
+            "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=confronto'})}",
+        },
+    ]
+
+
+def _normalize_admin_focus_panel(panel):
+    return panel if panel in {"confronto", "genera-codici", "status-clienti"} else "confronto"
+
+
+def _admin_tabs(active_panel):
+    root_url = reverse("confronto")
+    return [
+        {
+            "key": "confronto",
+            "label": "Esegui confronto",
+            "href": f"{root_url}?panel=confronto#confronto-bollette-offerte",
+            "active": active_panel == "confronto",
+        },
+        {
+            "key": "genera-codici",
+            "label": "Genera Codice invito",
+            "href": f"{root_url}?panel=genera-codici#genera-codici",
+            "active": active_panel == "genera-codici",
+        },
+        {
+            "key": "status-clienti",
+            "label": "Stato clienti",
+            "href": f"{root_url}?panel=status-clienti#stato-clienti",
+            "active": active_panel == "status-clienti",
+        },
+        {
+            "key": "apri-dashboard-cliente",
+            "label": "Apri dashboard cliente",
+            "href": reverse("accesso_clienti"),
+            "active": False,
+            "new_tab": True,
+        },
+        {
+            "key": "apri-registrazione-cliente",
+            "label": "Apri registrazione cliente",
+            "href": reverse("register"),
+            "active": False,
+            "new_tab": True,
         },
     ]
 
 
 def _home_page(request):
-    return ResilientLoginView.as_view(
-        template_name="confronti/home.html",
-        extra_context={
+    return render(
+        request,
+        "confronti/home.html",
+        {
             "page_title": "Energia Solidale",
             "hide_header_brand": True,
-            "customer_access_url": reverse("accesso_clienti"),
-            "customer_register_url": reverse("register"),
-            "home_tabs": _home_tabs(),
+            "admin_tabs": _home_tabs(),
+            "customer_dashboard_url": reverse("accesso_clienti"),
         },
-    )(request)
+    )
 
 
 def accesso_clienti(request):
     if request.user.is_authenticated:
-        return redirect("confronto_cliente_illumia")
+        return _confronto_page(request, customer_mode=True)
     return _public_access_page(request)
 
 
@@ -204,12 +246,13 @@ def _confronto_page(request, *, customer_mode=False):
     customer_invite_form = CustomerInviteForm()
     customer_invite_result = None
     customer_status = None
-    admin_focus_panel = ""
+    admin_focus_panel = "confronto" if not customer_mode else ""
     uploaded_bill_name = request.session.get(mode["upload_name_session_key"], "")
     upload_form = BillUploadForm()
     if request.method == "POST":
         action = request.POST.get("action")
         if action == "send_customer_invite" and not customer_mode:
+            admin_focus_panel = "genera-codici"
             customer_invite_form = CustomerInviteForm(request.POST)
             form = _comparison_form(customer_mode=customer_mode)
             if customer_invite_form.is_valid():
@@ -238,9 +281,12 @@ def _confronto_page(request, *, customer_mode=False):
                     }
                 )
         elif action == "show_customer_status" and not customer_mode:
+            admin_focus_panel = "status-clienti"
             customer_status = _customer_status_snapshot()
             form = _comparison_form(customer_mode=customer_mode)
         elif action == "extract_bill":
+            if not customer_mode:
+                admin_focus_panel = "confronto"
             request.session.pop(mode["comparison_session_key"], None)
             upload_form = BillUploadForm(request.POST, request.FILES)
             uploaded_file = request.FILES.get("bill_pdf")
@@ -270,6 +316,8 @@ def _confronto_page(request, *, customer_mode=False):
             else:
                 form = _comparison_form(customer_mode=customer_mode)
         elif action == "reset_bill":
+            if not customer_mode:
+                admin_focus_panel = "confronto"
             request.session.pop(mode["comparison_session_key"], None)
             request.session.pop(mode["upload_name_session_key"], None)
             uploaded_bill_name = ""
@@ -301,6 +349,8 @@ def _confronto_page(request, *, customer_mode=False):
                 initial_data = _force_customer_mode_data(initial_data)
             form = _comparison_form(initial=initial_data, customer_mode=customer_mode)
         else:
+            if not customer_mode:
+                admin_focus_panel = "confronto"
             form = _comparison_form(request.POST, customer_mode=customer_mode)
             if form.is_valid():
                 data = form.service_data()
@@ -317,7 +367,7 @@ def _confronto_page(request, *, customer_mode=False):
                 form = _comparison_form(initial=data, customer_mode=customer_mode)
     else:
         if not customer_mode:
-            admin_focus_panel = request.GET.get("panel", "")
+            admin_focus_panel = _normalize_admin_focus_panel(request.GET.get("panel"))
             if admin_focus_panel == "status-clienti":
                 customer_status = _customer_status_snapshot()
         initial = (
@@ -350,12 +400,13 @@ def _confronto_page(request, *, customer_mode=False):
             "page_title": mode["page_title"],
             "page_intro": mode["page_intro"],
             "download_url_name": mode["download_url_name"],
-            "customer_dashboard_local_url": reverse("confronto_cliente_illumia"),
+            "customer_dashboard_local_url": reverse("accesso_clienti"),
             "customer_register_url": _customer_registration_url(),
             "customer_invite_form": customer_invite_form,
             "customer_invite_result": customer_invite_result,
             "customer_status": customer_status,
             "admin_focus_panel": admin_focus_panel,
+            "admin_tabs": _admin_tabs(admin_focus_panel) if not customer_mode else [],
             "whatsapp_sender_number": WHATSAPP_SENDER_NUMBER,
             "whatsapp_web_home_url": WHATSAPP_WEB_HOME_URL,
         },
@@ -390,19 +441,19 @@ def confronto(request):
     if not request.user.is_authenticated:
         return _home_page(request)
     if not _is_internal_user(request.user):
-        return redirect("confronto_cliente_illumia")
+        return redirect("accesso_clienti")
     return _confronto_page(request)
 
 
 @login_required
 def confronto_cliente_illumia(request):
-    return _confronto_page(request, customer_mode=True)
+    return redirect("accesso_clienti")
 
 
 @login_required
 def scarica_excel(request):
     if not _is_internal_user(request.user):
-        return redirect("confronto_cliente_illumia")
+        return redirect("accesso_clienti")
     return _scarica_excel(request)
 
 

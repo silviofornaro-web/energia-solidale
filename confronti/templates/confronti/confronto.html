@@ -40,25 +40,22 @@
 </section>
 {% endif %}
 {% if not customer_mode %}
-<section id="strumenti-clienti" class="panel admin-customer-tools">
-    <h2>Strumenti clienti</h2>
-    <p class="panel-lead">
-        Apri rapidamente la dashboard cliente oppure genera un codice invito da inviare con WhatsApp Web.
-        Il messaggio verra preparato per il cliente; per spedirlo dal numero {{ whatsapp_sender_number }},
-        WhatsApp Web deve essere aperto con quell'account.
-    </p>
-    <div class="admin-action-links">
-        <a href="{{ customer_dashboard_local_url }}" class="action-link">Apri dashboard cliente</a>
-        <a href="{{ customer_register_url }}" class="action-link action-link-secondary" target="_blank" rel="noopener">Apri registrazione cliente</a>
-    </div>
-    <form method="post" class="status-tools-form{% if admin_focus_panel == 'status-clienti' %} panel-inline-highlight{% endif %}">
-        {% csrf_token %}
-        <div class="form-actions">
-            <button type="submit" name="action" value="show_customer_status" class="status-action">Stato clienti</button>
-        </div>
-    </form>
+<section class="panel admin-tabs-shell">
+    <nav class="admin-tabs-nav" aria-label="Azioni dashboard interna">
+        {% for tab in admin_tabs %}
+        <a href="{{ tab.href }}" class="admin-tab-link{% if tab.active %} is-active{% endif %}"{% if tab.new_tab %} target="_blank" rel="noopener"{% endif %}>
+            {{ tab.label }}
+        </a>
+        {% endfor %}
+    </nav>
+</section>
+
+{% if admin_focus_panel == "status-clienti" %}
+<section id="stato-clienti" class="panel admin-customer-tools panel-inline-highlight">
+    <h2>Stato clienti</h2>
+    <p class="panel-lead">Controlla i clienti registrati e verifica quali codici invito sono ancora disponibili o gia usati.</p>
     {% if customer_status %}
-    <div id="stato-clienti" class="status-result{% if admin_focus_panel == 'status-clienti' %} panel-inline-highlight{% endif %}">
+    <div class="status-result">
         <div class="status-cards">
             <div class="status-card">
                 <strong>Clienti registrati</strong>
@@ -122,7 +119,15 @@
         </div>
     </div>
     {% endif %}
-    <form id="genera-codici" method="post" class="invite-tools-form{% if admin_focus_panel == 'genera-codici' %} panel-inline-highlight{% endif %}">
+</section>
+{% elif admin_focus_panel == "genera-codici" %}
+<section class="panel admin-customer-tools panel-inline-highlight">
+    <h2>Genera Codice invito</h2>
+    <p class="panel-lead">
+        Prepara un codice invito cliente e apri WhatsApp Web dal numero {{ whatsapp_sender_number }}.
+        Il link finale inviato al cliente restera quello pubblico di registrazione.
+    </p>
+    <form id="genera-codici" method="post" class="invite-tools-form">
         {% csrf_token %}
         {{ customer_invite_form.non_field_errors }}
         <div class="whatsapp-reminder">
@@ -164,7 +169,9 @@
     {% endif %}
 </section>
 {% endif %}
+{% endif %}
 
+{% if customer_mode or admin_focus_panel == "confronto" %}
 <form id="confronto-bollette-offerte" method="post" enctype="multipart/form-data" class="panel upload-panel{% if admin_focus_panel == 'confronto' %} panel-inline-highlight{% endif %}">
     {% csrf_token %}
     <div>
@@ -434,6 +441,7 @@
     <a class="download" href="{% url download_url_name %}" download data-download-excel>Scarica Excel</a>
 </section>
 {% endif %}
+{% endif %}
 {{ offer_options|json_script:"offer-options-data" }}
 <script>
 (() => {
@@ -553,6 +561,9 @@
     };
 
     const toggleGasOnlyFields = () => {
+        if (!commodity) {
+            return;
+        }
         const isGas = commodity.value === "GAS";
         [taxPowerKw, quotaPotenza].forEach((field) => {
             if (!field) return;

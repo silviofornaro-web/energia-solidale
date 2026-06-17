@@ -11,7 +11,9 @@
     <main class="page">
         <header class="topbar">
             {% if not hide_header_brand %}
-                <img src="{% static 'confronti/logo_energia_solidale.png' %}" alt="Energia Solidale">
+                <a href="{% url 'confronto' %}" class="topbar-brand">
+                    <img src="{% static 'confronti/logo_energia_solidale.png' %}" alt="Energia Solidale">
+                </a>
             {% endif %}
             {% if user.is_authenticated %}
                 <form method="post" action="{% url 'logout' %}">

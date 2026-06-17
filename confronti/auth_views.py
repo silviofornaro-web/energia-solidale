@@ -55,10 +55,10 @@ class ResilientLoginView(LoginView):
             return next_url
         if _is_internal_user(self.request.user):
             return reverse("confronto")
-        return reverse("confronto_cliente_illumia")
+        return reverse("accesso_clienti")
 
 
-def _safe_next_url(request, fallback_name="confronto_cliente_illumia"):
+def _safe_next_url(request, fallback_name="accesso_clienti"):
     fallback = reverse(fallback_name)
     candidate = request.POST.get("next") or request.GET.get("next") or fallback
     if url_has_allowed_host_and_scheme(candidate, allowed_hosts={request.get_host()}, require_https=request.is_secure()):

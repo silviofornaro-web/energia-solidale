@@ -809,24 +809,19 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Energia Solidale")
         self.assertContains(response, "Piattaforma di confronto")
-        self.assertContains(response, "Dashboard Clienti")
-        self.assertContains(response, "Registrazione Clienti")
+        self.assertContains(response, "Dashboard Amministrazione (Interna)")
+        self.assertContains(response, "Confronto Bollette")
+        self.assertContains(response, "Mostra Dashboard Clienti")
+        self.assertContains(response, "Mostra Registrazione Clienti")
         self.assertContains(response, "Stato Clienti")
         self.assertContains(response, "Genera Codici")
         self.assertContains(response, "Confronto Bollette/Offerte")
         self.assertContains(response, 'href="/area-clienti/"')
         self.assertContains(response, 'href="/accounts/register/"')
-
-    def test_root_accepts_staff_login_without_redirecting_to_accounts_login(self):
-        response = self.client.post(
-            "/",
-            {
-                "username": "staff@example.com",
-                "password": "secret",
-            },
-        )
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], "/")
+        self.assertContains(response, 'href="/accounts/login/?next=%2Farea-clienti%2F"')
+        self.assertContains(response, 'href="/accounts/login/?next=%2F%3Fpanel%3Dstatus-clienti"')
+        self.assertContains(response, 'href="/accounts/login/?next=%2F%3Fpanel%3Dgenera-codici"')
+        self.assertContains(response, 'href="/accounts/login/?next=%2F%3Fpanel%3Dconfronto"')
 
     def test_internal_status_tab_opens_status_section_after_login(self):
         self.login()
@@ -838,7 +833,6 @@ class ConfrontoViewTests(TestCase):
     def test_customer_access_page_shows_public_access_choices_for_anonymous_users(self):
         response = self.client.get("/area-clienti/")
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Area clienti Energia Solidale")
         self.assertContains(response, "Accedi")
         self.assertContains(response, "Registrati con codice")
         self.assertContains(response, 'href="/accounts/login/"')
@@ -848,19 +842,20 @@ class ConfrontoViewTests(TestCase):
         self.login_customer()
         response = self.client.get("/")
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], "/area-clienti/confronto-illumia/")
+        self.assertEqual(response["Location"], "/area-clienti/")
 
     def test_authenticated_staff_can_open_registration_page(self):
         self.login()
         response = self.client.get("/accounts/register/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Crea le tue credenziali")
+        self.assertContains(response, 'href="/"')
 
     def test_authenticated_customer_is_redirected_from_registration_page(self):
         self.login_customer()
         response = self.client.get("/accounts/register/")
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], "/area-clienti/confronto-illumia/")
+        self.assertEqual(response["Location"], "/area-clienti/")
 
     def test_customer_area_requires_login(self):
         response = self.client.get("/area-clienti/confronto-illumia/")
@@ -892,7 +887,7 @@ class ConfrontoViewTests(TestCase):
             },
         )
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], "/area-clienti/confronto-illumia/")
+        self.assertEqual(response["Location"], "/area-clienti/")
         user = get_user_model().objects.get(username="luca@example.com")
         self.assertEqual(user.email, "luca@example.com")
         self.assertEqual(int(self.client.session["_auth_user_id"]), user.pk)
@@ -963,14 +958,16 @@ class ConfrontoViewTests(TestCase):
         response = self.client.get("/")
         self.assertNotContains(response, 'type="month"')
         self.assertNotContains(response, "Build locale CAP-FISCALE 2026-06-06")
-        self.assertContains(response, "Strumenti clienti")
-        self.assertContains(response, "Apri dashboard cliente")
-        self.assertContains(response, "Apri/Riapri WhatsApp Web")
-        self.assertContains(response, "Il codice non verra creato finche non lo confermi")
+        self.assertContains(response, "Esegui confronto")
+        self.assertContains(response, "Genera Codice invito")
         self.assertContains(response, "Stato clienti")
-        self.assertContains(response, "Genera codice e apri WhatsApp Web")
-        self.assertContains(response, "3271044102")
-        self.assertContains(response, "https://energia-solidale.onrender.com/accounts/register/")
+        self.assertContains(response, "Apri dashboard cliente")
+        self.assertContains(response, "Apri registrazione cliente")
+        self.assertContains(response, 'href="/?panel=confronto#confronto-bollette-offerte"')
+        self.assertContains(response, 'href="/?panel=genera-codici#genera-codici"')
+        self.assertContains(response, 'href="/?panel=status-clienti#stato-clienti"')
+        self.assertContains(response, 'href="/area-clienti/"')
+        self.assertContains(response, 'href="/accounts/register/"')
         self.assertContains(response, "Vendita fissa (totale bolletta)")
         self.assertContains(response, "Rete/oneri fissa (totale bolletta)")
         self.assertContains(response, 'data-month-field="bill_start"')
@@ -985,9 +982,20 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "CVE - Offerta variabile")
         self.assertContains(response, "Importa bolletta PDF")
 
+    def test_internal_invite_tab_shows_whatsapp_tools(self):
+        self.login()
+        response = self.client.get("/?panel=genera-codici")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Genera Codice invito")
+        self.assertContains(response, "Apri/Riapri WhatsApp Web")
+        self.assertContains(response, "Il codice non verra creato finche non lo confermi")
+        self.assertContains(response, "Genera codice e apri WhatsApp Web")
+        self.assertContains(response, "3271044102")
+        self.assertNotContains(response, "Importa bolletta PDF")
+
     def test_customer_page_hides_provider_picker_and_shows_illumia_lock(self):
         self.login()
-        response = self.client.get("/area-clienti/confronto-illumia/")
+        response = self.client.get("/area-clienti/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Confronto bolletta con Illumia")
         self.assertContains(response, "1. Carica la bolletta")
@@ -1007,6 +1015,12 @@ class ConfrontoViewTests(TestCase):
         self.assertNotContains(response, "Strumenti clienti")
         self.assertNotContains(response, "Stato clienti")
         self.assertNotContains(response, "Genera codice e apri WhatsApp Web")
+
+    def test_legacy_customer_dashboard_url_redirects_to_customer_area(self):
+        self.login_customer()
+        response = self.client.get("/area-clienti/confronto-illumia/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/area-clienti/")
 
     def test_internal_dashboard_generates_whatsapp_web_invite(self):
         self.login()
@@ -1203,7 +1217,7 @@ class ConfrontoViewTests(TestCase):
     def test_customer_area_always_calculates_with_illumia_only(self):
         self.login()
         response = self.client.post(
-            "/area-clienti/confronto-illumia/",
+            "/area-clienti/",
             valid_payload(
                 email_cliente="mario@example.com",
                 telefono_cliente="3331234567",
@@ -1241,7 +1255,7 @@ class ConfrontoViewTests(TestCase):
 
     def test_customer_page_hides_technical_fields_inside_optional_panel(self):
         self.login()
-        response = self.client.get("/area-clienti/confronto-illumia/")
+        response = self.client.get("/area-clienti/")
         html = response.content.decode()
         self.assertIn("Servizi extra", html)
         self.assertIn("Accise e IVA totali", html)
