@@ -813,6 +813,8 @@ def build_comparison_table_rows(values):
     ]
     out = []
     for key, label in rows_config:
+        if comm == "GAS" and key in {"vendita_fissa_luce", "quota_potenza"}:
+            continue
         cells = [format_eur(comparison_value(values["bolletta"], key, comm))]
         for column in values["offer_columns"]:
             value = comparison_value(column["vals"], key, comm) if column["has_offer"] else "N.D."
@@ -1297,14 +1299,12 @@ def ensure_export_rows(ws):
         copy_row_format(ws, source_row, row)
 
 
-def validate_row_map(rm):
+def validate_row_map(rm, commodity: str = "EE"):
     required = [
         "vendita_consumo",
-        "vendita_fissa_luce",
         "vendita_fissa_gas",
         "rete_consumi",
         "rete_fissa",
-        "quota_potenza",
         "sconti",
         "ricalcoli",
         "bonus_sociale",
@@ -1315,9 +1315,19 @@ def validate_row_map(rm):
         "accise_iva",
         "totale",
     ]
+    if commodity == "EE":
+        required.extend(["vendita_fissa_luce", "quota_potenza"])
     missing = [key for key in required if key not in rm]
     if missing:
         raise ValueError("Template Excel incompleto: mancano le righe " + ", ".join(missing))
+
+
+def remove_export_rows_for_commodity(ws, rm, commodity: str):
+    if commodity != "GAS":
+        return
+    rows_to_delete = [rm[key] for key in ("quota_potenza", "vendita_fissa_luce") if key in rm]
+    for row in sorted(set(rows_to_delete), reverse=True):
+        ws.delete_rows(row, amount=1)
 
 
 def apply_export_labels(ws, nome_cliente: str, servizi_accessori_iva_label: str = "22%", commodity: str = "EE"):
@@ -1409,8 +1419,10 @@ def write_column(ws, rm, col, vals, commodity):
     ws[f"{col}{rm['vendita_consumo']}"] = float(vals["vendita_consumo"])
     if commodity == "GAS":
         ws[f"{col}{rm['vendita_fissa_gas']}"] = float(vals["vendita_fissa"])
-        ws[f"{col}{rm['vendita_fissa_luce']}"] = "N.A."
-        ws[f"{col}{rm['quota_potenza']}"] = "N.A."
+        if "vendita_fissa_luce" in rm:
+            ws[f"{col}{rm['vendita_fissa_luce']}"] = "N.A."
+        if "quota_potenza" in rm:
+            ws[f"{col}{rm['quota_potenza']}"] = "N.A."
     else:
         ws[f"{col}{rm['vendita_fissa_luce']}"] = float(vals["vendita_fissa"])
         ws[f"{col}{rm['vendita_fissa_gas']}"] = "N.A."
@@ -1449,7 +1461,9 @@ def build_excel_bytes(data, prepared=None):
     comm = values["commodity"]
     apply_export_labels(ws, data.get("nome_cliente", "Cliente"), servizi_accessori_iva_label, comm)
     rm = find_row_map(ws)
-    validate_row_map(rm)
+    remove_export_rows_for_commodity(ws, rm, comm)
+    rm = find_row_map(ws)
+    validate_row_map(rm, comm)
     ws["B1"] = None
     ws["C1"] = float(data["consumo"])
     ws["B3"] = "Bolletta"

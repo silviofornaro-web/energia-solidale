@@ -244,7 +244,7 @@
         </label>
         <label>{{ form.consumo.label }}{{ form.consumo }}{{ form.consumo.errors }}</label>
         <label>{{ form.tax_primary_home.label }}{{ form.tax_primary_home }}{{ form.tax_primary_home.errors }}</label>
-        <label>{{ form.tax_power_kw.label }}{{ form.tax_power_kw }}{{ form.tax_power_kw.errors }}</label>
+        <label data-power-field>{{ form.tax_power_kw.label }}{{ form.tax_power_kw }}{{ form.tax_power_kw.errors }}</label>
         <label>{{ form.tax_annual_consumption.label }}{{ form.tax_annual_consumption }}{{ form.tax_annual_consumption.errors }}</label>
         <label>{{ form.b_vendita_consumo.label }}{{ form.b_vendita_consumo }}{{ form.b_vendita_consumo.errors }}</label>
         <label>{{ form.b_rete_consumi.label }}{{ form.b_rete_consumi }}{{ form.b_rete_consumi.errors }}</label>
@@ -307,7 +307,7 @@
             <label>{{ form.b_bonus_sociale.label }}{{ form.b_bonus_sociale }}{{ form.b_bonus_sociale.errors }}</label>
             <label>{{ form.b_arrotondamenti.label }}{{ form.b_arrotondamenti }}{{ form.b_arrotondamenti.errors }}</label>
             <label>{{ form.tax_region.label }}{{ form.tax_region }}{{ form.tax_region.errors }}</label>
-            <label>{{ form.b_quota_potenza.label }}{{ form.b_quota_potenza }}{{ form.b_quota_potenza.errors }}</label>
+            <label data-power-field>{{ form.b_quota_potenza.label }}{{ form.b_quota_potenza }}{{ form.b_quota_potenza.errors }}</label>
             <label>{{ form.b_servizi_accessori.label }}{{ form.b_servizi_accessori }}{{ form.b_servizi_accessori.errors }}</label>
             <label>{{ form.servizi_accessori_iva.label }}{{ form.servizi_accessori_iva }}{{ form.servizi_accessori_iva.errors }}</label>
             <label>{{ form.b_accise_iva.label }}{{ form.b_accise_iva }}{{ form.b_accise_iva.errors }}</label>
@@ -340,7 +340,7 @@
     <h2>Dati fiscali Accise/IVA</h2>
     <div class="form-grid">
         <label>{{ form.tax_primary_home.label }}{{ form.tax_primary_home }}{{ form.tax_primary_home.errors }}</label>
-        <label>{{ form.tax_power_kw.label }}{{ form.tax_power_kw }}{{ form.tax_power_kw.errors }}</label>
+        <label data-power-field>{{ form.tax_power_kw.label }}{{ form.tax_power_kw }}{{ form.tax_power_kw.errors }}</label>
         <label>{{ form.tax_annual_consumption.label }}{{ form.tax_annual_consumption }}{{ form.tax_annual_consumption.errors }}</label>
         <label>{{ form.tax_region.label }}{{ form.tax_region }}{{ form.tax_region.errors }}</label>
     </div>
@@ -351,7 +351,7 @@
         <label>{{ form.b_rete_consumi.label }}{{ form.b_rete_consumi }}{{ form.b_rete_consumi.errors }}</label>
         <label>{{ form.b_vendita_fissa.label }}{{ form.b_vendita_fissa }}{{ form.b_vendita_fissa.errors }}</label>
         <label>{{ form.b_rete_fissa.label }}{{ form.b_rete_fissa }}{{ form.b_rete_fissa.errors }}</label>
-        <label>{{ form.b_quota_potenza.label }}{{ form.b_quota_potenza }}{{ form.b_quota_potenza.errors }}</label>
+        <label data-power-field>{{ form.b_quota_potenza.label }}{{ form.b_quota_potenza }}{{ form.b_quota_potenza.errors }}</label>
         <label>{{ form.b_sconti.label }}{{ form.b_sconti }}{{ form.b_sconti.errors }}</label>
         <label>{{ form.b_ricalcoli.label }}{{ form.b_ricalcoli }}{{ form.b_ricalcoli.errors }}</label>
         <label>{{ form.b_bonus_sociale.label }}{{ form.b_bonus_sociale }}{{ form.b_bonus_sociale.errors }}</label>
@@ -469,6 +469,7 @@
     };
     const taxPowerKw = document.getElementById("id_tax_power_kw");
     const quotaPotenza = document.getElementById("id_b_quota_potenza");
+    const powerFieldWrappers = Array.from(document.querySelectorAll("[data-power-field]"));
     const dataElement = document.getElementById("offer-options-data");
     const offerOptions = dataElement ? JSON.parse(dataElement.textContent) : {};
     const months = [
@@ -536,17 +537,22 @@
         }
     };
 
-    const refreshOffers = () => {
-        if (!segmento || !commodity) return;
-        const activeProviders = selectedProviders();
+    const refreshCveOver70 = (activeProviders) => {
         const cveActive = activeProviders.includes("CVE");
-        if (cveOver70Field && cveOver70Input) {
-            cveOver70Field.hidden = !cveActive;
-            cveOver70Input.disabled = !cveActive;
-            if (!cveActive) {
-                cveOver70Input.checked = false;
-            }
+        if (!cveOver70Field || !cveOver70Input) {
+            return;
         }
+        cveOver70Field.hidden = !cveActive;
+        cveOver70Input.disabled = !cveActive;
+        if (!cveActive) {
+            cveOver70Input.checked = false;
+        }
+    };
+
+    const refreshOffers = () => {
+        const activeProviders = selectedProviders();
+        refreshCveOver70(activeProviders);
+        if (!segmento || !commodity) return;
         Object.entries(offerControls).forEach(([provider, controls]) => {
             const active = activeProviders.includes(provider);
             const panel = document.querySelector(`[data-provider-panel="${provider}"]`);
@@ -560,22 +566,22 @@
         });
     };
 
-    const toggleGasOnlyFields = () => {
-        if (!commodity) {
-            return;
-        }
-        const isGas = commodity.value === "GAS";
+    const togglePowerFields = () => {
+        const showPowerFields = commodity && commodity.value === "EE";
+        powerFieldWrappers.forEach((wrapper) => {
+            wrapper.hidden = !showPowerFields;
+        });
         [taxPowerKw, quotaPotenza].forEach((field) => {
             if (!field) return;
-            field.disabled = isGas;
-            if (isGas) {
+            field.disabled = !showPowerFields;
+            if (!showPowerFields) {
                 field.value = "0";
             }
         });
     };
 
     const refreshUiState = () => {
-        toggleGasOnlyFields();
+        togglePowerFields();
         refreshOffers();
     };
 
@@ -633,7 +639,7 @@
         commodity.addEventListener("input", refreshUiState);
     }
     refreshUiState();
-    window.setTimeout(toggleGasOnlyFields, 0);
+    window.setTimeout(togglePowerFields, 0);
 
     const excelDownload = document.querySelector("[data-download-excel]");
     if (excelDownload) {

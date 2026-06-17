@@ -80,6 +80,19 @@ class ServiceUtilityTests(SimpleTestCase):
         self.assertEqual(services.parse_number("-€ 21,60"), -21.6)
         self.assertEqual(services.parse_number(""), 0.0)
 
+    def test_cve_over70_field_has_compact_checkbox_style(self):
+        css = (services.BASE_DIR / "confronti/static/confronti/style.css").read_text()
+        self.assertIn(".checkbox-field", css)
+        self.assertIn("width: fit-content;", css)
+        self.assertIn(".checkbox-field[hidden]", css)
+        self.assertIn(".checkbox-field input", css)
+        self.assertIn("height: 16px;", css)
+
+    def test_power_fields_have_hide_style(self):
+        css = (services.BASE_DIR / "confronti/static/confronti/style.css").read_text()
+        self.assertIn("[data-power-field][hidden]", css)
+        self.assertIn("display: none !important;", css)
+
     def test_billing_months_and_labels(self):
         self.assertEqual(services.billing_months_from_dates(date(2026, 1, 1), date(2026, 3, 31)), 3)
         self.assertEqual(services.billing_label_from_months(1), "MENSILE")
@@ -329,6 +342,23 @@ class ServiceUtilityTests(SimpleTestCase):
         rows = services.build_comparison_table_rows(services.build_comparison_values(data, calc))
         self.assertTrue(all(row["variabile"] == "N.D." for row in rows))
         self.assertTrue(all(row["fissa"] == "N.D." for row in rows))
+
+    def test_gas_comparison_table_hides_power_row(self):
+        data = service_data(commodity="GAS", tax_power_kw="0", b_quota_potenza="0")
+        calc = {
+            "billing_months": 1,
+            "v_cons": 45,
+            "v_fix": 6,
+            "f_cons": 42,
+            "f_fix": 7,
+            "offer_var": "Variabile",
+            "offer_fix": "Fissa",
+        }
+        rows = services.build_comparison_table_rows(services.build_comparison_values(data, calc))
+        labels = [row["voce"] for row in rows]
+        self.assertNotIn("Vendita Fissa Luce", labels)
+        self.assertNotIn("Quota Potenza", labels)
+        self.assertIn("Vendita Fissa Gas", labels)
 
     def test_eon_offer_options_include_residential_and_business(self):
         options = services.offer_options_payload()
@@ -976,6 +1006,9 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, 'type="date"')
         self.assertContains(response, "Nuova bolletta")
         self.assertContains(response, "Fornitori confronto")
+        self.assertContains(response, 'data-power-field')
+        self.assertContains(response, 'togglePowerFields')
+        self.assertContains(response, 'commodity.value === "EE"')
         self.assertContains(response, 'data-cve-over70-field hidden')
         self.assertContains(response, "Tariffa CVE Over 70")
         self.assertContains(response, 'activeProviders.includes("CVE")')
@@ -1162,6 +1195,7 @@ class ConfrontoViewTests(TestCase):
         self.assertIn("Incidenza fiscale bolletta:</strong> 8,47%", html)
         self.assertIn("Cap fiscale applicato:</strong> Si", html)
         self.assertIn("Incidenza teorica senza cap:</strong>", html)
+        self.assertNotIn("Quota Potenza", [row["voce"] for row in response.context["rows"]])
 
     def test_calculate_can_compare_selected_eon_offer(self):
         self.login()
@@ -1373,6 +1407,30 @@ class ConfrontoViewTests(TestCase):
         self.assertIsInstance(ws["D15"].value, (int, float))
         self.assertEqual(ws["B17"].value, 12.12)
         self.assertEqual(ws["B18"].value, "=SUM(B4:B14)+B17")
+
+    def test_gas_excel_download_removes_luce_only_rows(self):
+        self.login()
+        self.client.post(
+            "/",
+            valid_payload(
+                commodity="GAS",
+                tax_power_kw="0",
+                b_quota_potenza="0",
+                tax_annual_consumption="1200",
+                consumo="100",
+            ),
+        )
+        response = self.client.get("/scarica-excel/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("confronto_illumia_Mario_Rossi_GAS.xlsx", response["Content-Disposition"])
+
+        wb = load_workbook(BytesIO(response.content), data_only=False)
+        ws = wb["Confronto"]
+        labels = [ws[f"A{row}"].value for row in range(1, ws.max_row + 1)]
+        self.assertNotIn("Vendita Fissa Luce", labels)
+        self.assertNotIn("Quota Potenza", labels)
+        self.assertIn("Vendita Fissa Gas", labels)
+        self.assertEqual(ws["F13"].value, "Fornitura: Gas")
 
     def test_excel_download_contains_both_provider_columns(self):
         self.login()
