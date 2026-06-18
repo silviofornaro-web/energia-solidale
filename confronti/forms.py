@@ -265,6 +265,8 @@ class ConfrontoForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         self.customer_mode = bool(kwargs.pop("customer_mode", False))
+        self.operator_mode = bool(kwargs.pop("operator_mode", False))
+        self.illumia_only_mode = self.customer_mode or self.operator_mode
         super().__init__(*args, **kwargs)
         if self.customer_mode:
             self.fields["bill_offer_expiry"].required = False
@@ -305,6 +307,18 @@ class ConfrontoForm(forms.Form):
             self.fields["offer_var_choice_cve"] = forms.CharField(required=False, widget=forms.HiddenInput())
             self.fields["offer_fix_choice_cve"] = forms.CharField(required=False, widget=forms.HiddenInput())
             self.fields["cve_over70"].widget = forms.HiddenInput()
+        elif self.operator_mode:
+            self.fields["providers"] = forms.CharField(required=False, initial="ILLUMIA", widget=forms.HiddenInput())
+            self.fields["tariff_selection_mode"] = forms.CharField(
+                required=False,
+                initial="LATEST",
+                widget=forms.HiddenInput(),
+            )
+            self.fields["offer_var_choice_eon"] = forms.CharField(required=False, widget=forms.HiddenInput())
+            self.fields["offer_fix_choice_eon"] = forms.CharField(required=False, widget=forms.HiddenInput())
+            self.fields["offer_var_choice_cve"] = forms.CharField(required=False, widget=forms.HiddenInput())
+            self.fields["offer_fix_choice_cve"] = forms.CharField(required=False, widget=forms.HiddenInput())
+            self.fields["cve_over70"].widget = forms.HiddenInput()
         else:
             self.fields["email_cliente"].widget = forms.HiddenInput()
             self.fields["telefono_cliente"].widget = forms.HiddenInput()
@@ -312,7 +326,7 @@ class ConfrontoForm(forms.Form):
         commodity = self._current_value("commodity")
         self.fields["offer_var_choice_illumia"].choices = self._offer_choices("ILLUMIA", segmento, commodity, "VARIABILE")
         self.fields["offer_fix_choice_illumia"].choices = self._offer_choices("ILLUMIA", segmento, commodity, "FISSA")
-        if not self.customer_mode:
+        if not self.illumia_only_mode:
             self.fields["offer_var_choice_eon"].choices = self._offer_choices("EON", segmento, commodity, "VARIABILE")
             self.fields["offer_fix_choice_eon"].choices = self._offer_choices("EON", segmento, commodity, "FISSA")
             self.fields["offer_var_choice_cve"].choices = self._offer_choices("CVE", segmento, commodity, "VARIABILE")
@@ -358,8 +372,9 @@ class ConfrontoForm(forms.Form):
         if cleaned.get("bill_start") and cleaned.get("bill_end") and cleaned["bill_end"] < cleaned["bill_start"]:
             raise forms.ValidationError("Il mese finale non può essere precedente al mese iniziale.")
         commodity = cleaned.get("commodity")
-        if self.customer_mode:
-            cleaned["pod_pdr"] = ""
+        if self.illumia_only_mode:
+            if self.customer_mode:
+                cleaned["pod_pdr"] = ""
             providers = ["ILLUMIA"]
             cleaned["tariff_selection_mode"] = "LATEST"
             cleaned["offer_var_choice_eon"] = ""

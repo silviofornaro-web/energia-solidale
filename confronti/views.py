@@ -12,6 +12,7 @@ from django.utils import timezone
 from .bill_parser import parse_uploaded_bill
 from .forms import BillUploadForm, ConfrontoForm, CustomerInviteForm, session_to_service_data
 from .models import InviteCode
+from .roles import is_illumia_operator, is_internal_user
 from .services import build_excel_bytes, offer_options_payload, prepare_comparison, provider_label, safe_download_filename
 
 
@@ -63,7 +64,7 @@ def _build_whatsapp_invite(customer_name, customer_phone, invite_code):
     }
 
 
-def _mode_config(customer_mode=False):
+def _mode_config(customer_mode=False, operator_mode=False):
     if customer_mode:
         return {
             "comparison_session_key": LAST_COMPARISON_CLIENT_KEY,
@@ -75,6 +76,14 @@ def _mode_config(customer_mode=False):
             ),
             "download_url_name": "scarica_excel_cliente_illumia",
         }
+    if operator_mode:
+        return {
+            "comparison_session_key": LAST_COMPARISON_KEY,
+            "upload_name_session_key": LAST_UPLOADED_BILL_NAME_KEY,
+            "page_title": "Confronto bollette vs Illumia",
+            "page_intro": "Utenza operatore: confronto abilitato solo con Illumia e ultime tariffe disponibili.",
+            "download_url_name": "scarica_excel",
+        }
     return {
         "comparison_session_key": LAST_COMPARISON_KEY,
         "upload_name_session_key": LAST_UPLOADED_BILL_NAME_KEY,
@@ -84,9 +93,10 @@ def _mode_config(customer_mode=False):
     }
 
 
-def _force_customer_mode_data(data):
+def _force_illumia_only_data(data, *, clear_pod_pdr=False):
     payload = dict(data)
-    payload["pod_pdr"] = ""
+    if clear_pod_pdr:
+        payload["pod_pdr"] = ""
     payload["providers"] = ["ILLUMIA"]
     payload["provider"] = "ILLUMIA"
     payload["tariff_selection_mode"] = "LATEST"
@@ -98,8 +108,12 @@ def _force_customer_mode_data(data):
     return payload
 
 
-def _comparison_form(*args, customer_mode=False, **kwargs):
-    return ConfrontoForm(*args, customer_mode=customer_mode, **kwargs)
+def _force_customer_mode_data(data):
+    return _force_illumia_only_data(data, clear_pod_pdr=True)
+
+
+def _comparison_form(*args, customer_mode=False, operator_mode=False, **kwargs):
+    return ConfrontoForm(*args, customer_mode=customer_mode, operator_mode=operator_mode, **kwargs)
 
 
 def _customer_optional_section_open(form):
@@ -127,10 +141,6 @@ def _customer_status_snapshot():
         "available_count": len(available_invites),
         "used_count": len(used_invites),
     }
-
-
-def _is_internal_user(user):
-    return bool(user.is_authenticated and (user.is_staff or user.is_superuser))
 
 
 def _public_access_page(request):
@@ -181,15 +191,18 @@ def _normalize_admin_focus_panel(panel):
     return panel if panel in {"confronto", "genera-codici", "status-clienti"} else "confronto"
 
 
-def _admin_tabs(active_panel):
+def _admin_tabs(active_panel, operator_mode=False):
     root_url = reverse("confronto")
+    comparison_tab = {
+        "key": "confronto",
+        "label": "Esegui confronto",
+        "href": f"{root_url}?panel=confronto#confronto-bollette-offerte",
+        "active": active_panel == "confronto",
+    }
+    if operator_mode:
+        return [comparison_tab]
     return [
-        {
-            "key": "confronto",
-            "label": "Esegui confronto",
-            "href": f"{root_url}?panel=confronto#confronto-bollette-offerte",
-            "active": active_panel == "confronto",
-        },
+        comparison_tab,
         {
             "key": "genera-codici",
             "label": "Genera Codice invito",
@@ -239,8 +252,9 @@ def accesso_clienti(request):
     return _public_access_page(request)
 
 
-def _confronto_page(request, *, customer_mode=False):
-    mode = _mode_config(customer_mode)
+def _confronto_page(request, *, customer_mode=False, operator_mode=False):
+    illumia_only_mode = customer_mode or operator_mode
+    mode = _mode_config(customer_mode, operator_mode)
     prepared = None
     rows = None
     extraction_warnings = []
@@ -253,10 +267,10 @@ def _confronto_page(request, *, customer_mode=False):
     upload_form = BillUploadForm()
     if request.method == "POST":
         action = request.POST.get("action")
-        if action == "send_customer_invite" and not customer_mode:
+        if action == "send_customer_invite" and not customer_mode and not operator_mode:
             admin_focus_panel = "genera-codici"
             customer_invite_form = CustomerInviteForm(request.POST)
-            form = _comparison_form(customer_mode=customer_mode)
+            form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
             if customer_invite_form.is_valid():
                 customer_name = customer_invite_form.cleaned_data.get("customer_name", "").strip()
                 customer_phone = customer_invite_form.cleaned_data["customer_phone"]
@@ -282,10 +296,10 @@ def _confronto_page(request, *, customer_mode=False):
                         "whatsapp_ready": True,
                     }
                 )
-        elif action == "show_customer_status" and not customer_mode:
+        elif action == "show_customer_status" and not customer_mode and not operator_mode:
             admin_focus_panel = "status-clienti"
             customer_status = _customer_status_snapshot()
-            form = _comparison_form(customer_mode=customer_mode)
+            form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
         elif action == "extract_bill":
             if not customer_mode:
                 admin_focus_panel = "confronto"
@@ -303,27 +317,31 @@ def _confronto_page(request, *, customer_mode=False):
                     parsed = parse_uploaded_bill(upload_form.cleaned_data["bill_pdf"])
                 except Exception:
                     logger.exception("Impossibile leggere il PDF della bolletta.")
-                    form = _comparison_form(customer_mode=customer_mode)
+                    form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
                     extraction_warnings = [
                         "Non sono riuscito a leggere questo PDF. Inserisci manualmente i valori della bolletta."
                     ]
                 else:
                     initial_data = parsed.values
-                    if customer_mode:
-                        initial_data = _force_customer_mode_data(initial_data)
-                    form = _comparison_form(initial=initial_data, customer_mode=customer_mode)
+                    if illumia_only_mode:
+                        initial_data = _force_illumia_only_data(initial_data, clear_pod_pdr=customer_mode)
+                    form = _comparison_form(
+                        initial=initial_data,
+                        customer_mode=customer_mode,
+                        operator_mode=operator_mode,
+                    )
                     extraction_warnings = parsed.warnings
                     extraction_count = len(parsed.values)
                     upload_form = BillUploadForm()
             else:
-                form = _comparison_form(customer_mode=customer_mode)
+                form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
         elif action == "reset_bill":
             if not customer_mode:
                 admin_focus_panel = "confronto"
             request.session.pop(mode["comparison_session_key"], None)
             request.session.pop(mode["upload_name_session_key"], None)
             uploaded_bill_name = ""
-            providers = ["ILLUMIA"] if customer_mode else (request.POST.getlist("providers") or [request.POST.get("provider") or ""])
+            providers = ["ILLUMIA"] if illumia_only_mode else (request.POST.getlist("providers") or [request.POST.get("provider") or ""])
             initial_data = {
                 "nome_cliente": request.POST.get("nome_cliente") or "",
                 "email_cliente": request.POST.get("email_cliente") or "",
@@ -347,43 +365,43 @@ def _confronto_page(request, *, customer_mode=False):
                 "offer_fix_choice_cve": request.POST.get("offer_fix_choice_cve") or "",
                 "cve_over70": bool(request.POST.get("cve_over70")),
             }
-            if customer_mode:
-                initial_data = _force_customer_mode_data(initial_data)
-            form = _comparison_form(initial=initial_data, customer_mode=customer_mode)
+            if illumia_only_mode:
+                initial_data = _force_illumia_only_data(initial_data, clear_pod_pdr=customer_mode)
+            form = _comparison_form(initial=initial_data, customer_mode=customer_mode, operator_mode=operator_mode)
         else:
             if not customer_mode:
                 admin_focus_panel = "confronto"
-            form = _comparison_form(request.POST, customer_mode=customer_mode)
+            form = _comparison_form(request.POST, customer_mode=customer_mode, operator_mode=operator_mode)
             if form.is_valid():
                 data = form.service_data()
-                if customer_mode:
-                    data = _force_customer_mode_data(data)
+                if illumia_only_mode:
+                    data = _force_illumia_only_data(data, clear_pod_pdr=customer_mode)
                 data["comparison_datetime"] = timezone.localtime().isoformat(timespec="seconds")
                 prepared = prepare_comparison(data)
                 rows = prepared["rows"]
                 session_data = form.session_data()
-                if customer_mode:
-                    session_data = _force_customer_mode_data(session_data)
+                if illumia_only_mode:
+                    session_data = _force_illumia_only_data(session_data, clear_pod_pdr=customer_mode)
                 session_data["comparison_datetime"] = data["comparison_datetime"]
                 request.session[mode["comparison_session_key"]] = session_data
-                form = _comparison_form(initial=data, customer_mode=customer_mode)
+                form = _comparison_form(initial=data, customer_mode=customer_mode, operator_mode=operator_mode)
     else:
         if not customer_mode:
-            admin_focus_panel = _normalize_admin_focus_panel(request.GET.get("panel"))
-            if admin_focus_panel == "status-clienti":
+            admin_focus_panel = "confronto" if operator_mode else _normalize_admin_focus_panel(request.GET.get("panel"))
+            if admin_focus_panel == "status-clienti" and not operator_mode:
                 customer_status = _customer_status_snapshot()
         initial = (
             {
                 "providers": ["ILLUMIA"],
                 "tariff_selection_mode": "LATEST",
-                "pod_pdr": "",
+                "pod_pdr": "" if customer_mode else "",
                 "email_cliente": "",
                 "telefono_cliente": "",
             }
-            if customer_mode
+            if illumia_only_mode
             else None
         )
-        form = _comparison_form(initial=initial, customer_mode=customer_mode)
+        form = _comparison_form(initial=initial, customer_mode=customer_mode, operator_mode=operator_mode)
 
     return render(
         request,
@@ -398,6 +416,8 @@ def _confronto_page(request, *, customer_mode=False):
             "extraction_warnings": extraction_warnings,
             "extraction_count": extraction_count,
             "customer_mode": customer_mode,
+            "operator_mode": operator_mode,
+            "illumia_only_mode": illumia_only_mode,
             "customer_optional_open": _customer_optional_section_open(form),
             "page_title": mode["page_title"],
             "page_intro": mode["page_intro"],
@@ -409,21 +429,21 @@ def _confronto_page(request, *, customer_mode=False):
             "customer_invite_result": customer_invite_result,
             "customer_status": customer_status,
             "admin_focus_panel": admin_focus_panel,
-            "admin_tabs": _admin_tabs(admin_focus_panel) if not customer_mode else [],
+            "admin_tabs": _admin_tabs(admin_focus_panel, operator_mode) if not customer_mode else [],
             "whatsapp_sender_number": WHATSAPP_SENDER_NUMBER,
             "whatsapp_web_home_url": WHATSAPP_WEB_HOME_URL,
         },
     )
 
 
-def _scarica_excel(request, *, customer_mode=False):
-    mode = _mode_config(customer_mode)
+def _scarica_excel(request, *, customer_mode=False, operator_mode=False):
+    mode = _mode_config(customer_mode, operator_mode)
     raw = request.session.get(mode["comparison_session_key"])
     if not raw:
         return HttpResponse("Nessun confronto pronto. Torna alla pagina principale e calcola il confronto.", status=400)
     data = session_to_service_data(raw)
-    if customer_mode:
-        data = _force_customer_mode_data(data)
+    if customer_mode or operator_mode:
+        data = _force_illumia_only_data(data, clear_pod_pdr=customer_mode)
     prepared = prepare_comparison(data)
     content = build_excel_bytes(data, prepared)
     provider_name = "_".join(provider_label(provider).lower().replace(".", "") for provider in data.get("providers", []))
@@ -443,9 +463,9 @@ def _scarica_excel(request, *, customer_mode=False):
 def confronto(request):
     if not request.user.is_authenticated:
         return _home_page(request)
-    if not _is_internal_user(request.user):
+    if not is_internal_user(request.user):
         return redirect("accesso_clienti")
-    return _confronto_page(request)
+    return _confronto_page(request, operator_mode=is_illumia_operator(request.user))
 
 
 @login_required
@@ -455,9 +475,9 @@ def confronto_cliente_illumia(request):
 
 @login_required
 def scarica_excel(request):
-    if not _is_internal_user(request.user):
+    if not is_internal_user(request.user):
         return redirect("accesso_clienti")
-    return _scarica_excel(request)
+    return _scarica_excel(request, operator_mode=is_illumia_operator(request.user))
 
 
 @login_required

@@ -1,3 +1,4 @@
+import os
 from datetime import date
 from io import BytesIO
 from io import StringIO
@@ -5,6 +6,7 @@ from unittest.mock import patch
 
 from django import forms
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase
@@ -13,6 +15,7 @@ from openpyxl import load_workbook
 from .bill_parser import ParsedBill, parse_bill_text
 from .forms import ConfrontoForm, CustomerInviteForm
 from .models import InviteCode
+from .roles import ILLUMIA_OPERATOR_GROUP
 from . import services
 
 
@@ -746,6 +749,34 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertFalse(form.cleaned_data["cve_over70"])
 
 
+    def test_operator_mode_forces_illumia_latest_but_keeps_pod(self):
+        form = ConfrontoForm(
+            valid_payload(
+                pod_pdr="IT001E99999999",
+                providers=["EON", "CVE"],
+                tariff_selection_mode="PERIOD",
+                offer_var_choice_eon="E.ON Flex Luce Casa",
+                offer_fix_choice_eon="E.ON Luce Tua",
+                offer_var_choice_cve="CVE 1Casa Smart Luce",
+                offer_fix_choice_cve="Qualsiasi offerta",
+                cve_over70="on",
+            ),
+            operator_mode=True,
+        )
+        self.assertTrue(isinstance(form.fields["providers"].widget, forms.HiddenInput))
+        self.assertTrue(isinstance(form.fields["tariff_selection_mode"].widget, forms.HiddenInput))
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+        self.assertEqual(form.cleaned_data["pod_pdr"], "IT001E99999999")
+        self.assertEqual(form.cleaned_data["providers"], ["ILLUMIA"])
+        self.assertEqual(form.cleaned_data["provider"], "ILLUMIA")
+        self.assertEqual(form.cleaned_data["tariff_selection_mode"], "LATEST")
+        self.assertEqual(form.cleaned_data["offer_var_choice_eon"], "")
+        self.assertEqual(form.cleaned_data["offer_fix_choice_eon"], "")
+        self.assertEqual(form.cleaned_data["offer_var_choice_cve"], "")
+        self.assertEqual(form.cleaned_data["offer_fix_choice_cve"], "")
+        self.assertFalse(form.cleaned_data["cve_over70"])
+
+
 class InviteCommandTests(TestCase):
     def test_crea_invito_creates_single_code_with_label(self):
         output = StringIO()
@@ -765,6 +796,33 @@ class InviteCommandTests(TestCase):
         self.assertEqual([invite.label for invite in invites], ["Campagna 1", "Campagna 2", "Campagna 3"])
         lines = [line.strip() for line in output.getvalue().splitlines() if line.strip()]
         self.assertEqual(len(lines), 3)
+
+
+    @patch.dict(
+        os.environ,
+        {
+            "DJANGO_OPERATOR_USERNAME": "operatore.illumia@example.com",
+            "DJANGO_OPERATOR_EMAIL": "operatore.illumia@example.com",
+            "DJANGO_OPERATOR_PASSWORD": "OperatorTestPassword123!",
+            "DJANGO_OPERATOR_FIRST_NAME": "Operatore",
+            "DJANGO_OPERATOR_LAST_NAME": "Illumia",
+        },
+        clear=False,
+    )
+    def test_create_initial_superuser_can_create_illumia_operator(self):
+        output = StringIO()
+        call_command("create_initial_superuser", stdout=output)
+
+        User = get_user_model()
+        user = User.objects.get(username="operatore.illumia@example.com")
+        self.assertEqual(user.email, "operatore.illumia@example.com")
+        self.assertEqual(user.first_name, "Operatore")
+        self.assertEqual(user.last_name, "Illumia")
+        self.assertTrue(user.is_staff)
+        self.assertFalse(user.is_superuser)
+        self.assertTrue(user.check_password("OperatorTestPassword123!"))
+        self.assertTrue(user.groups.filter(name=ILLUMIA_OPERATOR_GROUP).exists())
+        self.assertIn("Initial Illumia operator created: operatore.illumia@example.com", output.getvalue())
 
     def test_stato_clienti_lists_customers_and_invite_status(self):
         customer = get_user_model().objects.create_user(
@@ -826,6 +884,14 @@ class ConfrontoViewTests(TestCase):
             first_name="Cliente",
             last_name="Base",
         )
+        self.operator_user = User.objects.create_user(
+            username="operatore@example.com",
+            email="operatore@example.com",
+            password="secret",
+            is_staff=True,
+        )
+        operator_group = Group.objects.create(name=ILLUMIA_OPERATOR_GROUP)
+        self.operator_user.groups.add(operator_group)
         self.client = Client()
 
     def login(self):
@@ -833,6 +899,9 @@ class ConfrontoViewTests(TestCase):
 
     def login_customer(self):
         self.assertTrue(self.client.login(username="cliente-base@example.com", password="secret"))
+
+    def login_operator(self):
+        self.assertTrue(self.client.login(username="operatore@example.com", password="secret"))
 
     def test_root_shows_homepage_and_internal_login_for_anonymous_users(self):
         response = self.client.get("/")
@@ -1035,6 +1104,50 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Genera codice e apri WhatsApp Web")
         self.assertContains(response, "3271044102")
         self.assertNotContains(response, "Importa bolletta PDF")
+
+
+    def test_operator_dashboard_is_limited_to_illumia_latest_tariffs(self):
+        self.login_operator()
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Confronto bollette vs Illumia")
+        self.assertContains(response, "Fornitore abilitato:</strong> Illumia")
+        self.assertContains(response, "Illumia - Offerta variabile")
+        self.assertContains(response, "Illumia - Offerta fissa")
+        self.assertNotContains(response, "Fornitori confronto")
+        self.assertNotContains(response, "Logica tariffe confronto")
+        self.assertNotContains(response, "Tariffe del periodo bolletta")
+        self.assertNotContains(response, "E.ON - Offerta variabile")
+        self.assertNotContains(response, "CVE - Offerta variabile")
+        self.assertNotContains(response, "Tariffa CVE Over 70")
+        self.assertNotContains(response, "Genera Codice invito")
+        self.assertNotContains(response, "Stato clienti")
+        self.assertNotContains(response, "Apri dashboard cliente")
+
+    def test_operator_post_is_forced_to_illumia_latest_even_if_tampered(self):
+        self.login_operator()
+        response = self.client.post(
+            "/",
+            valid_payload(
+                providers=["EON", "CVE"],
+                tariff_selection_mode="PERIOD",
+                offer_var_choice_eon="E.ON Flex Luce Casa",
+                offer_fix_choice_eon="E.ON Luce Tua",
+                offer_var_choice_cve="CVE 1Casa Smart Luce",
+                cve_over70="on",
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("Fornitori confronto:</strong> Illumia", html)
+        self.assertIn("Illumia Variabile", html)
+        self.assertIn("Illumia Fissa", html)
+        self.assertNotIn("E.ON Variabile", html)
+        self.assertNotIn("CVE Variabile", html)
+        self.assertNotIn("Logica tariffe:</strong>", html)
+        self.assertEqual(self.client.session["last_confronto"]["providers"], ["ILLUMIA"])
+        self.assertEqual(self.client.session["last_confronto"]["provider"], "ILLUMIA")
+        self.assertEqual(self.client.session["last_confronto"]["tariff_selection_mode"], "LATEST")
 
     def test_customer_page_hides_provider_picker_and_shows_illumia_lock(self):
         self.login()
