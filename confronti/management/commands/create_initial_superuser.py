@@ -89,6 +89,9 @@ class Command(BaseCommand):
             if user.is_superuser:
                 user.is_superuser = False
                 changed_fields.append("is_superuser")
+            if not user.check_password(password):
+                user.set_password(password)
+                changed_fields.append("password")
             if changed_fields:
                 user.save(update_fields=changed_fields)
             self.stdout.write(f"Initial Illumia operator already exists: {username}")

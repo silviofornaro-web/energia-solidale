@@ -824,6 +824,40 @@ class InviteCommandTests(TestCase):
         self.assertTrue(user.groups.filter(name=ILLUMIA_OPERATOR_GROUP).exists())
         self.assertIn("Initial Illumia operator created: operatore.illumia@example.com", output.getvalue())
 
+
+    @patch.dict(
+        os.environ,
+        {
+            "DJANGO_OPERATOR_USERNAME": "operatore.illumia@example.com",
+            "DJANGO_OPERATOR_EMAIL": "operatore.illumia@example.com",
+            "DJANGO_OPERATOR_PASSWORD": "OperatorTestPassword123!",
+            "DJANGO_OPERATOR_FIRST_NAME": "Operatore",
+            "DJANGO_OPERATOR_LAST_NAME": "Illumia",
+        },
+        clear=False,
+    )
+    def test_create_initial_superuser_updates_existing_illumia_operator_password(self):
+        User = get_user_model()
+        existing = User.objects.create_user(
+            username="operatore.illumia@example.com",
+            email="vecchia@example.com",
+            password="OldPassword123!",
+        )
+
+        output = StringIO()
+        call_command("create_initial_superuser", stdout=output)
+
+        existing.refresh_from_db()
+        self.assertEqual(existing.email, "operatore.illumia@example.com")
+        self.assertEqual(existing.first_name, "Operatore")
+        self.assertEqual(existing.last_name, "Illumia")
+        self.assertTrue(existing.is_staff)
+        self.assertFalse(existing.is_superuser)
+        self.assertFalse(existing.check_password("OldPassword123!"))
+        self.assertTrue(existing.check_password("OperatorTestPassword123!"))
+        self.assertTrue(existing.groups.filter(name=ILLUMIA_OPERATOR_GROUP).exists())
+        self.assertIn("Initial Illumia operator already exists: operatore.illumia@example.com", output.getvalue())
+
     def test_stato_clienti_lists_customers_and_invite_status(self):
         customer = get_user_model().objects.create_user(
             username="cliente@example.com",
