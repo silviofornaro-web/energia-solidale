@@ -81,7 +81,7 @@ def _mode_config(customer_mode=False, operator_mode=False):
             "comparison_session_key": LAST_COMPARISON_KEY,
             "upload_name_session_key": LAST_UPLOADED_BILL_NAME_KEY,
             "page_title": "Confronto bollette vs Illumia",
-            "page_intro": "Utenza operatore: confronto abilitato solo con Illumia e ultime tariffe disponibili.",
+            "page_intro": "",
             "download_url_name": "scarica_excel",
         }
     return {
@@ -200,7 +200,7 @@ def _admin_tabs(active_panel, operator_mode=False):
         "active": active_panel == "confronto",
     }
     if operator_mode:
-        return [comparison_tab]
+        return []
     return [
         comparison_tab,
         {

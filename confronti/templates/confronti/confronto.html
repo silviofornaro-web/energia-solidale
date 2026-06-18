@@ -39,7 +39,7 @@
     </div>
 </section>
 {% endif %}
-{% if not customer_mode %}
+{% if not customer_mode and admin_tabs %}
 <section class="panel admin-tabs-shell">
     <nav class="admin-tabs-nav" aria-label="Azioni dashboard interna">
         {% for tab in admin_tabs %}
@@ -271,9 +271,6 @@
             {{ form.offer_var_choice_cve }}
             {{ form.offer_fix_choice_cve }}
             {{ form.cve_over70 }}
-            <div class="operator-locked-provider">
-                <strong>Fornitore abilitato:</strong> Illumia
-            </div>
         {% else %}
             <fieldset class="provider-picker">
                 <legend>{{ form.providers.label }}</legend>
