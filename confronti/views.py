@@ -138,6 +138,7 @@ def _public_access_page(request):
         request,
         "registration/access_choice.html",
         {
+            "brand_home_url": reverse("accesso_clienti"),
             "login_url": reverse("login"),
             "register_url": reverse("register"),
         },
@@ -223,6 +224,7 @@ def _home_page(request):
         request,
         "confronti/home.html",
         {
+            "brand_home_url": reverse("confronto"),
             "page_title": "Energia Solidale",
             "hide_header_brand": True,
             "admin_tabs": _home_tabs(),
@@ -400,6 +402,7 @@ def _confronto_page(request, *, customer_mode=False):
             "page_title": mode["page_title"],
             "page_intro": mode["page_intro"],
             "download_url_name": mode["download_url_name"],
+            "brand_home_url": reverse("accesso_clienti") if customer_mode else reverse("confronto"),
             "customer_dashboard_local_url": reverse("accesso_clienti"),
             "customer_register_url": _customer_registration_url(),
             "customer_invite_form": customer_invite_form,

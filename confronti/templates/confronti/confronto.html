@@ -303,7 +303,6 @@
         <summary>3. Solo se manca in bolletta</summary>
         <p class="panel-lead">Apri questa sezione solo se il PDF non ha letto tutti i dati o se vuoi correggere dettagli tecnici come accise, IVA, servizi extra o quota potenza.</p>
         <div class="form-grid form-grid-customer-optional">
-            <label>{{ form.bill_offer_expiry.label }}{{ form.bill_offer_expiry }}{{ form.bill_offer_expiry.errors }}</label>
             <label>{{ form.b_bonus_sociale.label }}{{ form.b_bonus_sociale }}{{ form.b_bonus_sociale.errors }}</label>
             <label>{{ form.b_arrotondamenti.label }}{{ form.b_arrotondamenti }}{{ form.b_arrotondamenti.errors }}</label>
             <label>{{ form.tax_region.label }}{{ form.tax_region }}{{ form.tax_region.errors }}</label>
@@ -311,6 +310,7 @@
             <label>{{ form.b_servizi_accessori.label }}{{ form.b_servizi_accessori }}{{ form.b_servizi_accessori.errors }}</label>
             <label>{{ form.servizi_accessori_iva.label }}{{ form.servizi_accessori_iva }}{{ form.servizi_accessori_iva.errors }}</label>
             <label>{{ form.b_accise_iva.label }}{{ form.b_accise_iva }}{{ form.b_accise_iva.errors }}</label>
+            <label>{{ form.bill_offer_expiry.label }}{{ form.bill_offer_expiry }}{{ form.bill_offer_expiry.errors }}</label>
         </div>
     </details>
     {% else %}

@@ -11,7 +11,7 @@
     <main class="page">
         <header class="topbar">
             {% if not hide_header_brand %}
-                <a href="{% url 'confronto' %}" class="topbar-brand">
+                <a href="{{ brand_home_url|default_if_none:''|default:'/' }}" class="topbar-brand">
                     <img src="{% static 'confronti/logo_energia_solidale.png' %}" alt="Energia Solidale">
                 </a>
             {% endif %}

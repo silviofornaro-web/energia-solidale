@@ -863,6 +863,8 @@ class ConfrontoViewTests(TestCase):
     def test_customer_access_page_shows_public_access_choices_for_anonymous_users(self):
         response = self.client.get("/area-clienti/")
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'href="/area-clienti/"')
+        self.assertContains(response, 'class="topbar-brand"')
         self.assertContains(response, "Accedi")
         self.assertContains(response, "Registrati con codice")
         self.assertContains(response, 'href="/accounts/login/"')
@@ -880,6 +882,14 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Crea le tue credenziali")
         self.assertContains(response, 'href="/"')
+
+    def test_customer_dashboard_logo_points_to_customer_area(self):
+        self.login_customer()
+        response = self.client.get("/area-clienti/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="topbar-brand"')
+        self.assertContains(response, 'href="/area-clienti/"')
+        self.assertNotContains(response, 'href="/"')
 
     def test_authenticated_customer_is_redirected_from_registration_page(self):
         self.login_customer()
