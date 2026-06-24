@@ -1,4 +1,5 @@
 {% extends "confronti/base.html" %}
+{% load confronto_extras %}
 
 {% block title %}{{ page_title }} - Energia Solidale{% endblock %}
 
@@ -166,6 +167,50 @@
             window.open("{{ customer_invite_result.whatsapp_url|escapejs }}", "_blank", "noopener");
         }, 50);
     </script>
+    {% endif %}
+</section>
+{% elif admin_focus_panel == "sunto-report" %}
+<section id="sunto-report" class="panel admin-customer-tools panel-inline-highlight">
+    <h2>Sunto report confronti</h2>
+    <p class="panel-lead">Carica uno o piu file Excel generati dai confronti: il sistema crea una riga per ogni bolletta con indirizzo fornitura, dati economici della bolletta e offerte dei fornitori affiancate.</p>
+    <form method="post" enctype="multipart/form-data" class="invite-tools-form">
+        {% csrf_token %}
+        {{ report_summary_form.non_field_errors }}
+        <label class="upload-file-picker">
+            {{ report_summary_form.report_files.label }}
+            {{ report_summary_form.report_files }}
+            {{ report_summary_form.report_files.errors }}
+        </label>
+        <div class="form-actions">
+            <button type="submit" name="action" value="build_report_summary">Crea sunto report</button>
+        </div>
+    </form>
+    {% for warning in report_summary_warnings %}
+        <div class="validity-warning">{{ warning }}</div>
+    {% endfor %}
+    {% if report_summary.rows %}
+    <div class="extraction-message">Sunto creato per {{ report_summary.count }} report.</div>
+    <div class="summary-table-wrap">
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    {% for column in report_summary.columns %}
+                        <th>{{ column }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in report_summary.rows %}
+                    <tr>
+                        {% for column in report_summary.columns %}
+                            <td>{{ row|get_item:column }}</td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <a class="download" href="{% url 'scarica_sunto_report' %}" download>Scarica sunto Excel</a>
     {% endif %}
 </section>
 {% endif %}

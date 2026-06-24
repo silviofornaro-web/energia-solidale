@@ -10,11 +10,13 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .bill_parser import parse_uploaded_bill
-from .forms import BillUploadForm, ConfrontoForm, CustomerInviteForm, session_to_service_data
+from .forms import BillUploadForm, ConfrontoForm, CustomerInviteForm, ReportSummaryUploadForm, session_to_service_data
 from .models import InviteCode
 from .roles import is_illumia_operator, is_internal_user
 from .services import (
     build_excel_bytes,
+    build_reports_summary,
+    build_reports_summary_excel,
     normalize_providers,
     offer_options_payload,
     prepare_comparison,
@@ -28,6 +30,7 @@ LAST_UPLOADED_BILL_NAME_KEY = "last_uploaded_bill_name"
 LAST_UPLOADED_BILL_NAME_CLIENT_KEY = "last_uploaded_bill_name_cliente_illumia"
 LAST_COMPARISON_KEY = "last_confronto"
 LAST_COMPARISON_CLIENT_KEY = "last_confronto_cliente_illumia"
+LAST_REPORT_SUMMARY_KEY = "last_report_summary"
 WHATSAPP_SENDER_NUMBER = os.environ.get("WHATSAPP_SENDER_NUMBER", "3271044102")
 WHATSAPP_WEB_HOME_URL = "https://web.whatsapp.com/"
 CUSTOMER_PORTAL_BASE_URL = (
@@ -205,11 +208,16 @@ def _home_tabs():
             "label": "Confronto Bollette/Offerte",
             "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=confronto'})}",
         },
+        {
+            "key": "sunto-report",
+            "label": "Sunto Report",
+            "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=sunto-report'})}",
+        },
     ]
 
 
 def _normalize_admin_focus_panel(panel):
-    return panel if panel in {"confronto", "genera-codici", "status-clienti"} else "confronto"
+    return panel if panel in {"confronto", "genera-codici", "status-clienti", "sunto-report"} else "confronto"
 
 
 def _admin_tabs(active_panel, operator_mode=False):
@@ -235,6 +243,12 @@ def _admin_tabs(active_panel, operator_mode=False):
             "label": "Stato clienti",
             "href": f"{root_url}?panel=status-clienti#stato-clienti",
             "active": active_panel == "status-clienti",
+        },
+        {
+            "key": "sunto-report",
+            "label": "Sunto report",
+            "href": f"{root_url}?panel=sunto-report#sunto-report",
+            "active": active_panel == "sunto-report",
         },
         {
             "key": "apri-dashboard-cliente",
@@ -283,6 +297,9 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
     customer_invite_form = CustomerInviteForm()
     customer_invite_result = None
     customer_status = None
+    report_summary_form = ReportSummaryUploadForm()
+    report_summary = None
+    report_summary_warnings = []
     admin_focus_panel = "confronto" if not customer_mode else ""
     uploaded_bill_name = request.session.get(mode["upload_name_session_key"], "")
     upload_form = BillUploadForm()
@@ -321,6 +338,20 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
             admin_focus_panel = "status-clienti"
             customer_status = _customer_status_snapshot()
             form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
+        elif action == "build_report_summary" and not customer_mode and not operator_mode:
+            admin_focus_panel = "sunto-report"
+            form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
+            report_summary_form = ReportSummaryUploadForm(request.POST, request.FILES)
+            if report_summary_form.is_valid():
+                report_summary = build_reports_summary(report_summary_form.cleaned_data["report_files"])
+                report_summary_warnings = report_summary.get("warnings", [])
+                request.session[LAST_REPORT_SUMMARY_KEY] = {
+                    "columns": report_summary.get("columns", []),
+                    "rows": report_summary.get("rows", []),
+                    "warnings": report_summary_warnings,
+                    "count": report_summary.get("count", 0),
+                }
+                report_summary_form = ReportSummaryUploadForm()
         elif action == "extract_bill":
             if not customer_mode:
                 admin_focus_panel = "confronto"
@@ -420,6 +451,10 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
             admin_focus_panel = "confronto" if operator_mode else _normalize_admin_focus_panel(request.GET.get("panel"))
             if admin_focus_panel == "status-clienti" and not operator_mode:
                 customer_status = _customer_status_snapshot()
+            if admin_focus_panel == "sunto-report" and not operator_mode:
+                report_summary = request.session.get(LAST_REPORT_SUMMARY_KEY)
+                if report_summary:
+                    report_summary_warnings = report_summary.get("warnings", [])
         initial = None
         if customer_mode:
             initial = {
@@ -458,6 +493,9 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
             "customer_invite_form": customer_invite_form,
             "customer_invite_result": customer_invite_result,
             "customer_status": customer_status,
+            "report_summary_form": report_summary_form,
+            "report_summary": report_summary,
+            "report_summary_warnings": report_summary_warnings,
             "admin_focus_panel": admin_focus_panel,
             "admin_tabs": _admin_tabs(admin_focus_panel, operator_mode) if not customer_mode else [],
             "whatsapp_sender_number": WHATSAPP_SENDER_NUMBER,
@@ -483,6 +521,24 @@ def _scarica_excel(request, *, customer_mode=False, operator_mode=False):
     nome = safe_download_filename(
         f"confronto_{provider_name}_{data.get('nome_cliente', 'Cliente')}_{data.get('commodity', 'ENERGIA')}.xlsx"
     )
+    response = HttpResponse(
+        content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{nome}"'
+    response["Content-Length"] = str(len(content))
+    return response
+
+
+@login_required
+def scarica_sunto_report(request):
+    if not is_internal_user(request.user) or is_illumia_operator(request.user):
+        return redirect("accesso_clienti")
+    summary = request.session.get(LAST_REPORT_SUMMARY_KEY)
+    if not summary or not summary.get("rows"):
+        return HttpResponse("Nessun sunto pronto. Carica i report dalla dashboard admin.", status=400)
+    content = build_reports_summary_excel(summary)
+    nome = safe_download_filename("sunto_report_confronti.xlsx")
     response = HttpResponse(
         content,
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

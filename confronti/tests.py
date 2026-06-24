@@ -952,12 +952,14 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Stato Clienti")
         self.assertContains(response, "Genera Codici")
         self.assertContains(response, "Confronto Bollette/Offerte")
+        self.assertContains(response, "Sunto Report")
         self.assertContains(response, 'href="/area-clienti/"')
         self.assertContains(response, 'href="/accounts/register/"')
         self.assertContains(response, 'href="/accounts/login/?next=%2Farea-clienti%2F"')
         self.assertContains(response, 'href="/accounts/login/?next=%2F%3Fpanel%3Dstatus-clienti"')
         self.assertContains(response, 'href="/accounts/login/?next=%2F%3Fpanel%3Dgenera-codici"')
         self.assertContains(response, 'href="/accounts/login/?next=%2F%3Fpanel%3Dconfronto"')
+        self.assertContains(response, 'href="/accounts/login/?next=%2F%3Fpanel%3Dsunto-report"')
 
     def test_internal_status_tab_opens_status_section_after_login(self):
         self.login()
@@ -1109,11 +1111,13 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Stato clienti")
         self.assertContains(response, "Apri dashboard cliente")
         self.assertContains(response, "Apri registrazione cliente")
+        self.assertContains(response, "Sunto report")
         self.assertContains(response, 'href="/?panel=confronto#confronto-bollette-offerte"')
         self.assertContains(response, 'href="/?panel=genera-codici#genera-codici"')
         self.assertContains(response, 'href="/?panel=status-clienti#stato-clienti"')
         self.assertContains(response, 'href="/area-clienti/"')
         self.assertContains(response, 'href="/accounts/register/"')
+        self.assertContains(response, 'href="/?panel=sunto-report#sunto-report"')
         self.assertContains(response, "Vendita fissa (totale bolletta)")
         self.assertContains(response, "Rete/oneri fissa (totale bolletta)")
         self.assertContains(response, 'data-month-field="bill_start"')
@@ -1601,6 +1605,73 @@ class ConfrontoViewTests(TestCase):
         self.assertNotIn("Quota Potenza", labels)
         self.assertIn("Vendita Fissa Gas", labels)
         self.assertEqual(ws["F14"].value, "Fornitura: Gas")
+
+
+    def _comparison_excel(self, **payload_overrides):
+        self.client.post("/", valid_payload(**payload_overrides))
+        response = self.client.get("/scarica-excel/")
+        self.assertEqual(response.status_code, 200)
+        return response.content
+
+    def test_internal_report_summary_uploads_multiple_comparison_excels(self):
+        self.login()
+        first = self._comparison_excel(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10")
+        second = self._comparison_excel(
+            nome_cliente="Luigi Bianchi",
+            indirizzo_fornitura="Viale Milano 20",
+            providers=["ILLUMIA", "EON"],
+            offer_var_choice_eon="E.ON Flex Luce Casa",
+            offer_fix_choice_eon="E.ON Luce Tua",
+        )
+        response = self.client.post(
+            "/?panel=sunto-report",
+            {
+                "action": "build_report_summary",
+                "report_files": [
+                    SimpleUploadedFile("rossi.xlsx", first, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                    SimpleUploadedFile("bianchi.xlsx", second, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sunto report confronti")
+        self.assertContains(response, "Sunto creato per 2 report")
+        self.assertContains(response, "Via Roma 10")
+        self.assertContains(response, "Viale Milano 20")
+        self.assertContains(response, "Bolletta - Vendita Consumo")
+        self.assertContains(response, "E.ON Fissa - Totale")
+        summary = self.client.session["last_report_summary"]
+        self.assertEqual(summary["count"], 2)
+        self.assertIn("Indirizzo fornitura", summary["columns"])
+        self.assertIn("Bolletta - Totale", summary["columns"])
+
+    def test_report_summary_download_contains_rows(self):
+        self.login()
+        content = self._comparison_excel(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10")
+        self.client.post(
+            "/?panel=sunto-report",
+            {
+                "action": "build_report_summary",
+                "report_files": [
+                    SimpleUploadedFile("rossi.xlsx", content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                ],
+            },
+        )
+        response = self.client.get("/scarica-sunto-report/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("sunto_report_confronti.xlsx", response["Content-Disposition"])
+        wb = load_workbook(BytesIO(response.content), data_only=False)
+        ws = wb["Sunto Report"]
+        headers = [cell.value for cell in ws[1]]
+        self.assertIn("Indirizzo fornitura", headers)
+        self.assertIn("Bolletta - Totale", headers)
+        address_col = headers.index("Indirizzo fornitura") + 1
+        self.assertEqual(ws.cell(row=2, column=address_col).value, "Via Roma 10")
+
+    def test_report_summary_download_requires_previous_summary(self):
+        self.login()
+        response = self.client.get("/scarica-sunto-report/")
+        self.assertEqual(response.status_code, 400)
 
     def test_excel_download_contains_both_provider_columns(self):
         self.login()

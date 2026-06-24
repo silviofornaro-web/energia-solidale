@@ -38,6 +38,36 @@ class BillUploadForm(forms.Form):
         return bill_pdf
 
 
+class MultipleFileInput(forms.ClearableFileInput):
+    allow_multiple_selected = True
+
+
+class MultipleFileField(forms.FileField):
+    def clean(self, data, initial=None):
+        if isinstance(data, (list, tuple)):
+            return [super(MultipleFileField, self).clean(item, initial) for item in data]
+        return [super().clean(data, initial)]
+
+
+class ReportSummaryUploadForm(forms.Form):
+    report_files = MultipleFileField(
+        label="Report confronto Excel",
+        validators=[FileExtensionValidator(["xlsx"])],
+        widget=MultipleFileInput(attrs={"accept": ".xlsx", "multiple": True}),
+    )
+
+    def clean_report_files(self):
+        files = self.cleaned_data["report_files"]
+        if not files:
+            raise forms.ValidationError("Carica almeno un report Excel.")
+        if len(files) > 50:
+            raise forms.ValidationError("Puoi caricare al massimo 50 report alla volta.")
+        for uploaded_file in files:
+            if uploaded_file.size > 15 * 1024 * 1024:
+                raise forms.ValidationError(f"Il file {uploaded_file.name} supera il limite di 15 MB.")
+        return files
+
+
 class ClientRegistrationForm(UserCreationForm):
     first_name = forms.CharField(label="Nome", max_length=150)
     last_name = forms.CharField(label="Cognome", max_length=150, required=False)

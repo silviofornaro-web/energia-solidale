@@ -905,6 +905,22 @@ th {
     background: #eef6fb;
 }
 
+.summary-table-wrap {
+    margin: 18px 0;
+    overflow-x: auto;
+}
+
+.summary-table th,
+.summary-table td {
+    min-width: 150px;
+    white-space: nowrap;
+}
+
+.summary-table th:first-child,
+.summary-table td:first-child {
+    min-width: 190px;
+}
+
 .error {
     color: #b91c1c;
     font-weight: 700;

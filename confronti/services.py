@@ -1452,6 +1452,153 @@ def fill_column_text(ws, rm, col, text):
         ws[f"{col}{r}"] = text
 
 
+REPORT_SUMMARY_BASE_COLUMNS = [
+    "File",
+    "Cliente",
+    "Indirizzo fornitura",
+    "Codice POD/PDR",
+    "Fornitura",
+    "Periodo bolletta",
+    "Consumo",
+    "Fornitori confronto",
+]
+
+
+def _summary_clean(value):
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return value
+
+
+def _metadata_value(ws, prefix):
+    needle = str(prefix).lower()
+    for row in ws.iter_rows(values_only=True):
+        for value in row:
+            if isinstance(value, str) and value.lower().startswith(needle):
+                return value.split(":", 1)[1].strip() if ":" in value else ""
+    return ""
+
+
+def _formula_cell_value(ws, cell, seen=None):
+    value = cell.value
+    if not (isinstance(value, str) and value.startswith("=")):
+        return _summary_clean(value)
+    seen = seen or set()
+    if cell.coordinate in seen:
+        return ""
+    seen.add(cell.coordinate)
+    formula = value.replace(" ", "").upper()
+    match = re.fullmatch(r"=SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)\+([A-Z]+)(\d+)", formula)
+    if match:
+        start_col, start_row, end_col, end_row, extra_col, extra_row = match.groups()
+        total = 0.0
+        for row in range(int(start_row), int(end_row) + 1):
+            for cells in ws[f"{start_col}{row}:{end_col}{row}"]:
+                for item in cells:
+                    item_value = _formula_cell_value(ws, item, seen.copy())
+                    if isinstance(item_value, (int, float)):
+                        total += float(item_value)
+        extra_value = _formula_cell_value(ws, ws[f"{extra_col}{extra_row}"], seen.copy())
+        if isinstance(extra_value, (int, float)):
+            total += float(extra_value)
+        return round(total, 6)
+    match = re.fullmatch(r"=SUM\(([A-Z]+)(\d+):([A-Z]+)(\d+)\)", formula)
+    if match:
+        start_col, start_row, end_col, end_row = match.groups()
+        total = 0.0
+        for row in range(int(start_row), int(end_row) + 1):
+            for cells in ws[f"{start_col}{row}:{end_col}{row}"]:
+                for item in cells:
+                    item_value = _formula_cell_value(ws, item, seen.copy())
+                    if isinstance(item_value, (int, float)):
+                        total += float(item_value)
+        return round(total, 6)
+    return value
+
+
+def _report_data_columns(ws):
+    columns = []
+    col = 2
+    while col <= ws.max_column:
+        label = clean_text(ws.cell(row=3, column=col).value)
+        if not label:
+            break
+        columns.append((col, label))
+        col += 1
+    return columns
+
+
+def summarize_report_workbook(uploaded_file):
+    uploaded_file.seek(0)
+    wb = openpyxl.load_workbook(uploaded_file, data_only=False)
+    ws = wb["Confronto"] if "Confronto" in wb.sheetnames else wb.active
+    file_name = Path(getattr(uploaded_file, "name", "report.xlsx")).name
+    summary = {
+        "File": file_name,
+        "Cliente": clean_text(ws["A1"].value) or "N.D.",
+        "Indirizzo fornitura": _metadata_value(ws, "Indirizzo fornitura") or "N.D.",
+        "Codice POD/PDR": _metadata_value(ws, "Codice POD/PDR") or "N.D.",
+        "Fornitura": _metadata_value(ws, "Fornitura") or "N.D.",
+        "Periodo bolletta": _metadata_value(ws, "Periodo bolletta") or "N.D.",
+        "Consumo": _summary_clean(ws["C1"].value),
+        "Fornitori confronto": _metadata_value(ws, "Fornitori confronto") or "N.D.",
+    }
+    label_rows = []
+    for row in range(4, ws.max_row + 1):
+        label = clean_text(ws.cell(row=row, column=1).value)
+        if label:
+            label_rows.append((row, label))
+        if label.lower() == "totale":
+            break
+    for col, header in _report_data_columns(ws):
+        for row, label in label_rows:
+            value = _formula_cell_value(ws, ws.cell(row=row, column=col))
+            summary[f"{header} - {label}"] = value
+    return summary
+
+
+def build_reports_summary(uploaded_files):
+    rows = []
+    warnings = []
+    for uploaded_file in uploaded_files:
+        try:
+            rows.append(summarize_report_workbook(uploaded_file))
+        except Exception as exc:
+            warnings.append(f"{Path(getattr(uploaded_file, 'name', 'report')).name}: file non leggibile ({exc}).")
+    dynamic_columns = []
+    for row in rows:
+        for key in row:
+            if key not in REPORT_SUMMARY_BASE_COLUMNS and key not in dynamic_columns:
+                dynamic_columns.append(key)
+    columns = REPORT_SUMMARY_BASE_COLUMNS + dynamic_columns
+    return {"columns": columns, "rows": rows, "warnings": warnings, "count": len(rows)}
+
+
+def build_reports_summary_excel(summary):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sunto Report"
+    columns = summary.get("columns") or []
+    rows = summary.get("rows") or []
+    for col_index, label in enumerate(columns, start=1):
+        cell = ws.cell(row=1, column=col_index, value=label)
+        cell.font = Font(bold=True)
+    for row_index, row in enumerate(rows, start=2):
+        for col_index, label in enumerate(columns, start=1):
+            ws.cell(row=row_index, column=col_index, value=row.get(label, ""))
+    for col_index, label in enumerate(columns, start=1):
+        max_len = len(str(label))
+        for row_index in range(2, len(rows) + 2):
+            value = ws.cell(row=row_index, column=col_index).value
+            max_len = max(max_len, len(str(value or "")))
+        ws.column_dimensions[get_column_letter(col_index)].width = min(max(max_len + 2, 12), 42)
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
 def build_excel_bytes(data, prepared=None):
     prepared = prepared or prepare_comparison(data)
     wb = openpyxl.load_workbook(TEMPLATE_XLSX)
