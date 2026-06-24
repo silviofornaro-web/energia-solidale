@@ -1154,6 +1154,7 @@ def prepare_comparison(data):
 
     calc = {
         "nome_cliente": clean_text(data.get("nome_cliente")) or "Cliente",
+        "indirizzo_fornitura": clean_text(data.get("indirizzo_fornitura")),
         "pod_pdr": clean_text(data.get("pod_pdr")),
         "commodity": commodity,
         "bill_tariff_type": normalize_bill_tariff_type(data.get("bill_tariff_type")),
@@ -1380,11 +1381,12 @@ def write_export_metadata(ws, prepared, start_col="F"):
     ws[f"{start_col}11"] = (
         f"Logica tariffe: {calc.get('tariff_selection_mode_label', 'Ultime tariffe disponibili')}"
     )
-    ws[f"{start_col}12"] = f"Codice POD/PDR: {calc.get('pod_pdr') or 'N.D.'}"
-    ws[f"{start_col}13"] = f"Fornitura: {'Gas' if calc.get('commodity') == 'GAS' else 'Luce'}"
-    ws[f"{start_col}14"] = f"Periodo bolletta: {calc.get('period_label', 'N.D.')}"
+    ws[f"{start_col}12"] = f"Indirizzo fornitura: {calc.get('indirizzo_fornitura') or 'N.D.'}"
+    ws[f"{start_col}13"] = f"Codice POD/PDR: {calc.get('pod_pdr') or 'N.D.'}"
+    ws[f"{start_col}14"] = f"Fornitura: {'Gas' if calc.get('commodity') == 'GAS' else 'Luce'}"
+    ws[f"{start_col}15"] = f"Periodo bolletta: {calc.get('period_label', 'N.D.')}"
     if calc.get("cve_selected"):
-        ws[f"{start_col}15"] = f"CVE Over 70: {calc.get('cve_over70_label', 'No')}"
+        ws[f"{start_col}16"] = f"CVE Over 70: {calc.get('cve_over70_label', 'No')}"
 
 
 def _excel_decimal(value: float) -> str:

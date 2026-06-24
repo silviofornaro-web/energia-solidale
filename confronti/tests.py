@@ -22,6 +22,7 @@ from . import services
 def valid_payload(**overrides):
     data = {
         "nome_cliente": "Mario Rossi",
+        "indirizzo_fornitura": "Via Roma 10, Chioggia VE",
         "pod_pdr": "IT001E12345678",
         "segmento": "RESIDENZIALE",
         "commodity": "EE",
@@ -543,6 +544,7 @@ class BillParserTests(SimpleTestCase):
         )
         self.assertEqual(parsed.values["commodity"], "GAS")
         self.assertEqual(parsed.values["pod_pdr"], "15351410010036")
+        self.assertEqual(parsed.values["indirizzo_fornitura"], "Via Signoria 79")
         self.assertEqual(parsed.values["bill_start"], date(2025, 10, 1))
         self.assertEqual(parsed.values["bill_end"], date(2025, 10, 31))
         self.assertAlmostEqual(parsed.values["b_rete_fissa"], 7.33)
@@ -581,6 +583,7 @@ class ConfrontoFormTests(SimpleTestCase):
     def test_dashboard_context_fields_are_required_and_not_prefilled(self):
         form = ConfrontoForm()
         self.assertIsNone(form.fields["nome_cliente"].initial)
+        self.assertIsNone(form.fields["indirizzo_fornitura"].initial)
         self.assertFalse(form.fields["pod_pdr"].required)
         self.assertEqual(form.fields["segmento"].choices[0], ("", "Seleziona segmento"))
         self.assertEqual(form.fields["commodity"].choices[0], ("", "Seleziona fornitura"))
@@ -597,6 +600,7 @@ class ConfrontoFormTests(SimpleTestCase):
         invalid = ConfrontoForm(
             valid_payload(
                 nome_cliente="",
+                indirizzo_fornitura="",
                 segmento="",
                 commodity="",
                 bill_tariff_type="",
@@ -611,6 +615,7 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertFalse(invalid.is_valid())
         for field in [
             "nome_cliente",
+            "indirizzo_fornitura",
             "segmento",
             "commodity",
             "bill_tariff_type",
@@ -1198,6 +1203,7 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "4. Calcola confronto")
         self.assertContains(response, "Obbligatorio")
         self.assertNotContains(response, "Build locale CAP-FISCALE 2026-06-06")
+        self.assertContains(response, "Indirizzo fornitura")
         self.assertContains(response, "Email")
         self.assertContains(response, "Telefono")
         self.assertNotContains(response, "Fornitore confronto")
@@ -1483,6 +1489,7 @@ class ConfrontoViewTests(TestCase):
         mock_parse_uploaded_bill.return_value = ParsedBill(
             values={
                 "nome_cliente": "Federico Boetto",
+                "indirizzo_fornitura": "Via Roma 10",
                 "pod_pdr": "00881906523889",
                 "commodity": "GAS",
                 "consumo": 83,
@@ -1500,8 +1507,9 @@ class ConfrontoViewTests(TestCase):
             },
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Ho riportato nella dashboard 6 valori riconosciuti")
+        self.assertContains(response, "Ho riportato nella dashboard 7 valori riconosciuti")
         self.assertContains(response, "Federico Boetto")
+        self.assertContains(response, "Via Roma 10")
         self.assertContains(response, "00881906523889")
         self.assertContains(response, "Data fine offerta bolletta non riconosciuta")
         self.assertContains(response, "File caricato: bolletta.pdf")
@@ -1543,9 +1551,10 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(ws["F9"].value, "Consumo annuo stimato: 1200 kWh/anno")
         self.assertTrue(str(ws["F10"].value).startswith("Parametri Accise/IVA: "))
         self.assertEqual(ws["F11"].value, "Logica tariffe: Ultime tariffe disponibili")
-        self.assertEqual(ws["F12"].value, "Codice POD/PDR: IT001E12345678")
-        self.assertEqual(ws["F13"].value, "Fornitura: Luce")
-        self.assertEqual(ws["F14"].value, "Periodo bolletta: Gennaio 2026 - Marzo 2026")
+        self.assertEqual(ws["F12"].value, "Indirizzo fornitura: Via Roma 10, Chioggia VE")
+        self.assertEqual(ws["F13"].value, "Codice POD/PDR: IT001E12345678")
+        self.assertEqual(ws["F14"].value, "Fornitura: Luce")
+        self.assertEqual(ws["F15"].value, "Periodo bolletta: Gennaio 2026 - Marzo 2026")
         self.assertEqual(ws["A12"].value, "Bonus Sociale")
         self.assertEqual(ws["A13"].value, "Arrotondamenti")
         self.assertEqual(ws["A14"].value, "Servizi accessori (IVA 10%)")
@@ -1591,7 +1600,7 @@ class ConfrontoViewTests(TestCase):
         self.assertNotIn("Vendita Fissa Luce", labels)
         self.assertNotIn("Quota Potenza", labels)
         self.assertIn("Vendita Fissa Gas", labels)
-        self.assertEqual(ws["F13"].value, "Fornitura: Gas")
+        self.assertEqual(ws["F14"].value, "Fornitura: Gas")
 
     def test_excel_download_contains_both_provider_columns(self):
         self.login()

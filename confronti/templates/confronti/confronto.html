@@ -219,6 +219,7 @@
     <h3 class="customer-section-heading">Obbligatorio</h3>
     <div class="form-grid form-grid-customer-basic">
         <label>{{ form.nome_cliente.label }}{{ form.nome_cliente }}{{ form.nome_cliente.errors }}</label>
+        <label>{{ form.indirizzo_fornitura.label }}{{ form.indirizzo_fornitura }}{{ form.indirizzo_fornitura.errors }}</label>
         <label>{{ form.email_cliente.label }}{{ form.email_cliente }}{{ form.email_cliente.errors }}</label>
         <label>{{ form.telefono_cliente.label }}{{ form.telefono_cliente }}{{ form.telefono_cliente.errors }}</label>
         <label>{{ form.segmento.label }}{{ form.segmento }}{{ form.segmento.errors }}</label>
@@ -259,6 +260,7 @@
     {% else %}
     <div class="form-grid top">
         <label>{{ form.nome_cliente.label }}{{ form.nome_cliente }}{{ form.nome_cliente.errors }}</label>
+        <label>{{ form.indirizzo_fornitura.label }}{{ form.indirizzo_fornitura }}{{ form.indirizzo_fornitura.errors }}</label>
         <label>{{ form.pod_pdr.label }}{{ form.pod_pdr }}{{ form.pod_pdr.errors }}</label>
         <label>{{ form.segmento.label }}{{ form.segmento }}{{ form.segmento.errors }}</label>
         <label>{{ form.commodity.label }}{{ form.commodity }}{{ form.commodity.errors }}</label>
@@ -398,6 +400,7 @@
 
     <div class="meta">
         <div><strong>Cliente:</strong> {{ prepared.calc.nome_cliente }}</div>
+        <div><strong>Indirizzo fornitura:</strong> {{ prepared.calc.indirizzo_fornitura|default:"N.D." }}</div>
         {% if not customer_mode %}
         <div><strong>Codice POD/PDR:</strong> {{ prepared.calc.pod_pdr|default:"N.D." }}</div>
         {% endif %}

@@ -367,6 +367,7 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
             providers = ["ILLUMIA"] if customer_mode else (request.POST.getlist("providers") or [request.POST.get("provider") or ""])
             initial_data = {
                 "nome_cliente": request.POST.get("nome_cliente") or "",
+                "indirizzo_fornitura": request.POST.get("indirizzo_fornitura") or "",
                 "email_cliente": request.POST.get("email_cliente") or "",
                 "telefono_cliente": request.POST.get("telefono_cliente") or "",
                 "pod_pdr": request.POST.get("pod_pdr") or "",

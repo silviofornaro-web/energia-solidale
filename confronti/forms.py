@@ -157,6 +157,7 @@ class ConfrontoForm(forms.Form):
     )
 
     nome_cliente = forms.CharField(label="Nome e Cognome", max_length=120)
+    indirizzo_fornitura = forms.CharField(label="Indirizzo fornitura", max_length=180)
     email_cliente = forms.EmailField(label="Email", required=False)
     telefono_cliente = forms.CharField(label="Telefono", max_length=40, required=False)
     pod_pdr = forms.CharField(label="Codice POD/PDR", max_length=24, required=False)
@@ -272,6 +273,7 @@ class ConfrontoForm(forms.Form):
         if self.customer_mode:
             self.fields["bill_offer_expiry"].required = False
             self.fields["nome_cliente"].label = "Nome e cognome"
+            self.fields["indirizzo_fornitura"].label = "Indirizzo fornitura"
             self.fields["segmento"].label = "Tipo cliente"
             self.fields["bill_tariff_type"].label = "Tipo tariffa attuale"
             self.fields["bill_start"].label = "Periodo bolletta da"
