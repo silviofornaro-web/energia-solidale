@@ -13,7 +13,14 @@ from .bill_parser import parse_uploaded_bill
 from .forms import BillUploadForm, ConfrontoForm, CustomerInviteForm, session_to_service_data
 from .models import InviteCode
 from .roles import is_illumia_operator, is_internal_user
-from .services import build_excel_bytes, offer_options_payload, prepare_comparison, provider_label, safe_download_filename
+from .services import (
+    build_excel_bytes,
+    normalize_providers,
+    offer_options_payload,
+    prepare_comparison,
+    provider_label,
+    safe_download_filename,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -80,7 +87,7 @@ def _mode_config(customer_mode=False, operator_mode=False):
         return {
             "comparison_session_key": LAST_COMPARISON_KEY,
             "upload_name_session_key": LAST_UPLOADED_BILL_NAME_KEY,
-            "page_title": "Confronto bollette vs Illumia",
+            "page_title": "Confronto bollette",
             "page_intro": "",
             "download_url_name": "scarica_excel",
         }
@@ -110,6 +117,20 @@ def _force_illumia_only_data(data, *, clear_pod_pdr=False):
 
 def _force_customer_mode_data(data):
     return _force_illumia_only_data(data, clear_pod_pdr=True)
+
+
+def _force_operator_mode_data(data):
+    payload = dict(data)
+    providers = [provider for provider in normalize_providers(payload.get("providers") or payload.get("provider")) if provider in {"ILLUMIA", "EON"}]
+    if not providers:
+        providers = ["ILLUMIA"]
+    payload["providers"] = providers
+    payload["provider"] = providers[0]
+    payload["tariff_selection_mode"] = "LATEST"
+    payload["offer_var_choice_cve"] = ""
+    payload["offer_fix_choice_cve"] = ""
+    payload["cve_over70"] = False
+    return payload
 
 
 def _comparison_form(*args, customer_mode=False, operator_mode=False, **kwargs):
@@ -253,7 +274,7 @@ def accesso_clienti(request):
 
 
 def _confronto_page(request, *, customer_mode=False, operator_mode=False):
-    illumia_only_mode = customer_mode or operator_mode
+    illumia_only_mode = customer_mode
     mode = _mode_config(customer_mode, operator_mode)
     prepared = None
     rows = None
@@ -323,8 +344,10 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
                     ]
                 else:
                     initial_data = parsed.values
-                    if illumia_only_mode:
-                        initial_data = _force_illumia_only_data(initial_data, clear_pod_pdr=customer_mode)
+                    if customer_mode:
+                        initial_data = _force_customer_mode_data(initial_data)
+                    elif operator_mode:
+                        initial_data = _force_operator_mode_data(initial_data)
                     form = _comparison_form(
                         initial=initial_data,
                         customer_mode=customer_mode,
@@ -341,7 +364,7 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
             request.session.pop(mode["comparison_session_key"], None)
             request.session.pop(mode["upload_name_session_key"], None)
             uploaded_bill_name = ""
-            providers = ["ILLUMIA"] if illumia_only_mode else (request.POST.getlist("providers") or [request.POST.get("provider") or ""])
+            providers = ["ILLUMIA"] if customer_mode else (request.POST.getlist("providers") or [request.POST.get("provider") or ""])
             initial_data = {
                 "nome_cliente": request.POST.get("nome_cliente") or "",
                 "email_cliente": request.POST.get("email_cliente") or "",
@@ -365,8 +388,10 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
                 "offer_fix_choice_cve": request.POST.get("offer_fix_choice_cve") or "",
                 "cve_over70": bool(request.POST.get("cve_over70")),
             }
-            if illumia_only_mode:
-                initial_data = _force_illumia_only_data(initial_data, clear_pod_pdr=customer_mode)
+            if customer_mode:
+                initial_data = _force_customer_mode_data(initial_data)
+            elif operator_mode:
+                initial_data = _force_operator_mode_data(initial_data)
             form = _comparison_form(initial=initial_data, customer_mode=customer_mode, operator_mode=operator_mode)
         else:
             if not customer_mode:
@@ -374,14 +399,18 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
             form = _comparison_form(request.POST, customer_mode=customer_mode, operator_mode=operator_mode)
             if form.is_valid():
                 data = form.service_data()
-                if illumia_only_mode:
-                    data = _force_illumia_only_data(data, clear_pod_pdr=customer_mode)
+                if customer_mode:
+                    data = _force_customer_mode_data(data)
+                elif operator_mode:
+                    data = _force_operator_mode_data(data)
                 data["comparison_datetime"] = timezone.localtime().isoformat(timespec="seconds")
                 prepared = prepare_comparison(data)
                 rows = prepared["rows"]
                 session_data = form.session_data()
-                if illumia_only_mode:
-                    session_data = _force_illumia_only_data(session_data, clear_pod_pdr=customer_mode)
+                if customer_mode:
+                    session_data = _force_customer_mode_data(session_data)
+                elif operator_mode:
+                    session_data = _force_operator_mode_data(session_data)
                 session_data["comparison_datetime"] = data["comparison_datetime"]
                 request.session[mode["comparison_session_key"]] = session_data
                 form = _comparison_form(initial=data, customer_mode=customer_mode, operator_mode=operator_mode)
@@ -390,17 +419,17 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
             admin_focus_panel = "confronto" if operator_mode else _normalize_admin_focus_panel(request.GET.get("panel"))
             if admin_focus_panel == "status-clienti" and not operator_mode:
                 customer_status = _customer_status_snapshot()
-        initial = (
-            {
+        initial = None
+        if customer_mode:
+            initial = {
                 "providers": ["ILLUMIA"],
                 "tariff_selection_mode": "LATEST",
-                "pod_pdr": "" if customer_mode else "",
+                "pod_pdr": "",
                 "email_cliente": "",
                 "telefono_cliente": "",
             }
-            if illumia_only_mode
-            else None
-        )
+        elif operator_mode:
+            initial = {"tariff_selection_mode": "LATEST"}
         form = _comparison_form(initial=initial, customer_mode=customer_mode, operator_mode=operator_mode)
 
     return render(
@@ -442,8 +471,10 @@ def _scarica_excel(request, *, customer_mode=False, operator_mode=False):
     if not raw:
         return HttpResponse("Nessun confronto pronto. Torna alla pagina principale e calcola il confronto.", status=400)
     data = session_to_service_data(raw)
-    if customer_mode or operator_mode:
-        data = _force_illumia_only_data(data, clear_pod_pdr=customer_mode)
+    if customer_mode:
+        data = _force_customer_mode_data(data)
+    elif operator_mode:
+        data = _force_operator_mode_data(data)
     prepared = prepare_comparison(data)
     content = build_excel_bytes(data, prepared)
     provider_name = "_".join(provider_label(provider).lower().replace(".", "") for provider in data.get("providers", []))

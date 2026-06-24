@@ -277,12 +277,19 @@
                 {{ form.providers }}
                 {{ form.providers.errors }}
             </fieldset>
-            <label class="checkbox-field" data-cve-over70-field hidden>{{ form.cve_over70 }} {{ form.cve_over70.label }}{{ form.cve_over70.errors }}</label>
-            <fieldset class="provider-picker">
-                <legend>{{ form.tariff_selection_mode.label }}</legend>
+            {% if operator_mode %}
                 {{ form.tariff_selection_mode }}
-                {{ form.tariff_selection_mode.errors }}
-            </fieldset>
+                {{ form.offer_var_choice_cve }}
+                {{ form.offer_fix_choice_cve }}
+                {{ form.cve_over70 }}
+            {% else %}
+                <label class="checkbox-field" data-cve-over70-field hidden>{{ form.cve_over70 }} {{ form.cve_over70.label }}{{ form.cve_over70.errors }}</label>
+                <fieldset class="provider-picker">
+                    <legend>{{ form.tariff_selection_mode.label }}</legend>
+                    {{ form.tariff_selection_mode }}
+                    {{ form.tariff_selection_mode.errors }}
+                </fieldset>
+            {% endif %}
         {% endif %}
     </div>
 
@@ -300,11 +307,13 @@
             <label>{{ form.offer_var_choice_eon.label }}{{ form.offer_var_choice_eon }}{{ form.offer_var_choice_eon.errors }}</label>
             <label>{{ form.offer_fix_choice_eon.label }}{{ form.offer_fix_choice_eon }}{{ form.offer_fix_choice_eon.errors }}</label>
         </div>
+        {% if not operator_mode %}
         <div class="offer-provider" data-provider-panel="CVE">
             <h3>CVE</h3>
             <label>{{ form.offer_var_choice_cve.label }}{{ form.offer_var_choice_cve }}{{ form.offer_var_choice_cve.errors }}</label>
             <label>{{ form.offer_fix_choice_cve.label }}{{ form.offer_fix_choice_cve }}{{ form.offer_fix_choice_cve.errors }}</label>
         </div>
+        {% endif %}
         {% endif %}
     </div>
 
@@ -400,7 +409,7 @@
         <div><strong>Mesi fatturati:</strong> {{ prepared.calc.billing_months }}</div>
         <div><strong>Indice usato:</strong> {{ prepared.calc.indice.mese|default:"N.D." }}</div>
         <div><strong>Fornitori confronto:</strong> {{ prepared.calc.providers_label }}</div>
-        {% if not illumia_only_mode %}<div><strong>Logica tariffe:</strong> {{ prepared.calc.tariff_selection_mode_label }}</div>{% endif %}
+        {% if not illumia_only_mode and not operator_mode %}<div><strong>Logica tariffe:</strong> {{ prepared.calc.tariff_selection_mode_label }}</div>{% endif %}
         {% if prepared.calc.cve_selected %}<div><strong>CVE Over 70:</strong> {{ prepared.calc.cve_over70_label }}</div>{% endif %}
         {% for provider in prepared.calc.provider_results %}
             <div><strong>{{ provider.provider_label }} variabile:</strong> {{ provider.offer_var|default:"N.D." }}</div>

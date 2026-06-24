@@ -749,11 +749,11 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertFalse(form.cleaned_data["cve_over70"])
 
 
-    def test_operator_mode_forces_illumia_latest_but_keeps_pod(self):
+    def test_operator_mode_allows_illumia_and_eon_latest_but_keeps_pod(self):
         form = ConfrontoForm(
             valid_payload(
                 pod_pdr="IT001E99999999",
-                providers=["EON", "CVE"],
+                providers=["EON"],
                 tariff_selection_mode="PERIOD",
                 offer_var_choice_eon="E.ON Flex Luce Casa",
                 offer_fix_choice_eon="E.ON Luce Tua",
@@ -763,15 +763,13 @@ class ConfrontoFormTests(SimpleTestCase):
             ),
             operator_mode=True,
         )
-        self.assertTrue(isinstance(form.fields["providers"].widget, forms.HiddenInput))
+        self.assertEqual(form.fields["providers"].choices, [("ILLUMIA", "Illumia"), ("EON", "E.ON")])
         self.assertTrue(isinstance(form.fields["tariff_selection_mode"].widget, forms.HiddenInput))
         self.assertTrue(form.is_valid(), form.errors.as_data())
         self.assertEqual(form.cleaned_data["pod_pdr"], "IT001E99999999")
-        self.assertEqual(form.cleaned_data["providers"], ["ILLUMIA"])
-        self.assertEqual(form.cleaned_data["provider"], "ILLUMIA")
+        self.assertEqual(form.cleaned_data["providers"], ["EON"])
+        self.assertEqual(form.cleaned_data["provider"], "EON")
         self.assertEqual(form.cleaned_data["tariff_selection_mode"], "LATEST")
-        self.assertEqual(form.cleaned_data["offer_var_choice_eon"], "")
-        self.assertEqual(form.cleaned_data["offer_fix_choice_eon"], "")
         self.assertEqual(form.cleaned_data["offer_var_choice_cve"], "")
         self.assertEqual(form.cleaned_data["offer_fix_choice_cve"], "")
         self.assertFalse(form.cleaned_data["cve_over70"])
@@ -1140,32 +1138,35 @@ class ConfrontoViewTests(TestCase):
         self.assertNotContains(response, "Importa bolletta PDF")
 
 
-    def test_operator_dashboard_is_limited_to_illumia_latest_tariffs(self):
+    def test_operator_dashboard_allows_illumia_and_eon_latest_tariffs_only(self):
         self.login_operator()
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Confronto bollette vs Illumia")
+        self.assertContains(response, "Confronto bollette")
+        self.assertContains(response, "Fornitori confronto")
+        self.assertContains(response, "Illumia")
+        self.assertContains(response, "E.ON")
         self.assertContains(response, "Illumia - Offerta variabile")
         self.assertContains(response, "Illumia - Offerta fissa")
+        self.assertContains(response, "E.ON - Offerta variabile")
+        self.assertContains(response, "E.ON - Offerta fissa")
         self.assertNotContains(response, "Fornitore abilitato")
         self.assertNotContains(response, "Esegui confronto")
         self.assertNotContains(response, "Utenza operatore")
-        self.assertNotContains(response, "Fornitori confronto")
         self.assertNotContains(response, "Logica tariffe confronto")
         self.assertNotContains(response, "Tariffe del periodo bolletta")
-        self.assertNotContains(response, "E.ON - Offerta variabile")
         self.assertNotContains(response, "CVE - Offerta variabile")
         self.assertNotContains(response, "Tariffa CVE Over 70")
         self.assertNotContains(response, "Genera Codice invito")
         self.assertNotContains(response, "Stato clienti")
         self.assertNotContains(response, "Apri dashboard cliente")
 
-    def test_operator_post_is_forced_to_illumia_latest_even_if_tampered(self):
+    def test_operator_post_can_compare_eon_but_uses_latest_and_excludes_cve(self):
         self.login_operator()
         response = self.client.post(
             "/",
             valid_payload(
-                providers=["EON", "CVE"],
+                providers=["EON"],
                 tariff_selection_mode="PERIOD",
                 offer_var_choice_eon="E.ON Flex Luce Casa",
                 offer_fix_choice_eon="E.ON Luce Tua",
@@ -1175,14 +1176,15 @@ class ConfrontoViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
-        self.assertIn("Fornitori confronto:</strong> Illumia", html)
-        self.assertIn("Illumia Variabile", html)
-        self.assertIn("Illumia Fissa", html)
-        self.assertNotIn("E.ON Variabile", html)
+        self.assertIn("Fornitori confronto:</strong> E.ON", html)
+        self.assertIn("E.ON Flex Luce Casa", html)
+        self.assertIn("E.ON Luce Tua", html)
+        self.assertIn("E.ON Variabile", html)
+        self.assertIn("E.ON Fissa", html)
         self.assertNotIn("CVE Variabile", html)
         self.assertNotIn("Logica tariffe:</strong>", html)
-        self.assertEqual(self.client.session["last_confronto"]["providers"], ["ILLUMIA"])
-        self.assertEqual(self.client.session["last_confronto"]["provider"], "ILLUMIA")
+        self.assertEqual(self.client.session["last_confronto"]["providers"], ["EON"])
+        self.assertEqual(self.client.session["last_confronto"]["provider"], "EON")
         self.assertEqual(self.client.session["last_confronto"]["tariff_selection_mode"], "LATEST")
 
     def test_customer_page_hides_provider_picker_and_shows_illumia_lock(self):
