@@ -11,6 +11,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
 from .bill_parser import ParsedBill, parse_bill_text
 from .forms import ConfrontoForm, CustomerInviteForm
@@ -1703,7 +1704,18 @@ class ConfrontoViewTests(TestCase):
         self.assertIn("Indirizzo fornitura", headers)
         self.assertIn("Bolletta - Totale", headers)
         address_col = headers.index("Indirizzo fornitura") + 1
+        detail_col = headers.index("Bolletta - Vendita Consumo") + 1
+        total_col = headers.index("Bolletta - Totale") + 1
+        consumption_col = headers.index("Consumo") + 1
         self.assertEqual(ws.cell(row=2, column=address_col).value, "Via Roma 10")
+        self.assertTrue(ws.column_dimensions[get_column_letter(detail_col)].hidden)
+        self.assertFalse(ws.column_dimensions[get_column_letter(total_col)].hidden)
+        self.assertEqual(ws.cell(row=2, column=consumption_col).number_format, "#,##0.00")
+        self.assertEqual(ws.cell(row=2, column=total_col).number_format, "#,##0.00")
+        for row in ws.iter_rows(min_row=2):
+            for cell in row:
+                if isinstance(cell.value, (int, float)):
+                    self.assertEqual(cell.number_format, "#,##0.00")
 
     def test_report_summary_download_requires_previous_summary(self):
         self.login()

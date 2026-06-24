@@ -1576,6 +1576,17 @@ def build_reports_summary(uploaded_files):
     return {"columns": columns, "rows": rows, "warnings": warnings, "count": len(rows)}
 
 
+def _is_summary_visible_column(label):
+    label = clean_text(label)
+    if label in REPORT_SUMMARY_BASE_COLUMNS:
+        return True
+    return label.endswith(" - Totale")
+
+
+def _is_number_for_summary(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
 def build_reports_summary_excel(summary):
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -1587,13 +1598,23 @@ def build_reports_summary_excel(summary):
         cell.font = Font(bold=True)
     for row_index, row in enumerate(rows, start=2):
         for col_index, label in enumerate(columns, start=1):
-            ws.cell(row=row_index, column=col_index, value=row.get(label, ""))
+            cell = ws.cell(row=row_index, column=col_index, value=row.get(label, ""))
+            if _is_number_for_summary(cell.value):
+                cell.number_format = "#,##0.00"
+    ws.freeze_panes = "A2"
+    if columns and rows:
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(columns))}{len(rows) + 1}"
     for col_index, label in enumerate(columns, start=1):
+        col_letter = get_column_letter(col_index)
         max_len = len(str(label))
         for row_index in range(2, len(rows) + 2):
             value = ws.cell(row=row_index, column=col_index).value
             max_len = max(max_len, len(str(value or "")))
-        ws.column_dimensions[get_column_letter(col_index)].width = min(max(max_len + 2, 12), 42)
+        width = min(max(max_len + 2, 12), 42)
+        if _is_summary_visible_column(label) and label not in REPORT_SUMMARY_BASE_COLUMNS:
+            width = min(max(width, 18), 26)
+        ws.column_dimensions[col_letter].width = width
+        ws.column_dimensions[col_letter].hidden = not _is_summary_visible_column(label)
     out = io.BytesIO()
     wb.save(out)
     return out.getvalue()
