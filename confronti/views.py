@@ -229,7 +229,14 @@ def _admin_tabs(active_panel, operator_mode=False):
         "active": active_panel == "confronto",
     }
     if operator_mode:
-        return []
+        return [
+            {
+                "key": "sunto-report",
+                "label": "Sunto report",
+                "href": f"{root_url}?panel=sunto-report#sunto-report",
+                "active": active_panel == "sunto-report",
+            }
+        ]
     return [
         comparison_tab,
         {
@@ -338,7 +345,7 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
             admin_focus_panel = "status-clienti"
             customer_status = _customer_status_snapshot()
             form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
-        elif action == "build_report_summary" and not customer_mode and not operator_mode:
+        elif action == "build_report_summary" and not customer_mode:
             admin_focus_panel = "sunto-report"
             form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
             report_summary_form = ReportSummaryUploadForm(request.POST, request.FILES)
@@ -448,10 +455,11 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
                 form = _comparison_form(initial=data, customer_mode=customer_mode, operator_mode=operator_mode)
     else:
         if not customer_mode:
-            admin_focus_panel = "confronto" if operator_mode else _normalize_admin_focus_panel(request.GET.get("panel"))
+            requested_panel = _normalize_admin_focus_panel(request.GET.get("panel"))
+            admin_focus_panel = requested_panel if not operator_mode or requested_panel == "sunto-report" else "confronto"
             if admin_focus_panel == "status-clienti" and not operator_mode:
                 customer_status = _customer_status_snapshot()
-            if admin_focus_panel == "sunto-report" and not operator_mode:
+            if admin_focus_panel == "sunto-report":
                 report_summary = request.session.get(LAST_REPORT_SUMMARY_KEY)
                 if report_summary:
                     report_summary_warnings = report_summary.get("warnings", [])
@@ -532,7 +540,7 @@ def _scarica_excel(request, *, customer_mode=False, operator_mode=False):
 
 @login_required
 def scarica_sunto_report(request):
-    if not is_internal_user(request.user) or is_illumia_operator(request.user):
+    if not is_internal_user(request.user):
         return redirect("accesso_clienti")
     summary = request.session.get(LAST_REPORT_SUMMARY_KEY)
     if not summary or not summary.get("rows"):

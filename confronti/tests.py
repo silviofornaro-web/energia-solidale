@@ -1160,6 +1160,8 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "E.ON - Offerta variabile")
         self.assertContains(response, "E.ON - Offerta fissa")
         self.assertNotContains(response, "Fornitore abilitato")
+        self.assertContains(response, "Sunto report")
+        self.assertContains(response, 'href="/?panel=sunto-report#sunto-report"')
         self.assertNotContains(response, "Esegui confronto")
         self.assertNotContains(response, "Utenza operatore")
         self.assertNotContains(response, "Logica tariffe confronto")
@@ -1169,6 +1171,41 @@ class ConfrontoViewTests(TestCase):
         self.assertNotContains(response, "Genera Codice invito")
         self.assertNotContains(response, "Stato clienti")
         self.assertNotContains(response, "Apri dashboard cliente")
+
+
+    def test_operator_can_open_report_summary_panel_without_admin_tools(self):
+        self.login_operator()
+        response = self.client.get("/?panel=sunto-report")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sunto report confronti")
+        self.assertContains(response, "Report confronto Excel")
+        self.assertContains(response, "Crea sunto report")
+        self.assertNotContains(response, "Genera Codice invito")
+        self.assertNotContains(response, "Stato clienti")
+        self.assertNotContains(response, "Apri dashboard cliente")
+        self.assertNotContains(response, "Confronto Bollette/Offerte")
+        self.assertNotContains(response, "Importa bolletta PDF")
+
+    def test_operator_can_upload_and_download_report_summary(self):
+        self.login()
+        content = self._comparison_excel(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10")
+        self.client.logout()
+        self.login_operator()
+        response = self.client.post(
+            "/?panel=sunto-report",
+            {
+                "action": "build_report_summary",
+                "report_files": [
+                    SimpleUploadedFile("rossi.xlsx", content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sunto creato per 1 report")
+        self.assertContains(response, "Via Roma 10")
+        response = self.client.get("/scarica-sunto-report/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("sunto_report_confronti.xlsx", response["Content-Disposition"])
 
     def test_operator_post_can_compare_eon_but_uses_latest_and_excludes_cve(self):
         self.login_operator()
