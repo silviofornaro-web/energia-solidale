@@ -438,7 +438,15 @@
     </div>
     {% endif %}
 
-    <a class="download" href="{% url download_url_name %}" download data-download-excel>Scarica Excel</a>
+    <div class="form-actions">
+        <a class="download" href="{% url download_url_name %}" download data-download-excel>Scarica Excel</a>
+        {% if not customer_mode %}
+        <form method="post" action="{% url 'archivia_report_corrente' %}" class="inline-form">
+            {% csrf_token %}
+            <button type="submit" class="secondary">Archivia report</button>
+        </form>
+        {% endif %}
+    </div>
 </section>
 {% endif %}
 {% endif %}

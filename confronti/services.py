@@ -1415,6 +1415,19 @@ def apply_total_formula(ws, rm, col_letter):
     ws[f"{col_letter}{rm['totale']}"] = f"=SUM({col_letter}{start}:{col_letter}{end})+{col_letter}{acc}"
 
 
+def apply_export_number_format(ws, rm, last_data_column_index):
+    number_format = "#,##0.00"
+    amount_rows = sorted(set(rm.values()))
+    for column_index in range(2, last_data_column_index + 1):
+        col_letter = get_column_letter(column_index)
+        for row_index in amount_rows:
+            cell = ws[f"{col_letter}{row_index}"]
+            if isinstance(cell.value, (int, float)) or (isinstance(cell.value, str) and cell.value.startswith("=")):
+                cell.number_format = number_format
+    if isinstance(ws["C1"].value, (int, float)) or (isinstance(ws["C1"].value, str) and ws["C1"].value.startswith("=")):
+        ws["C1"].number_format = number_format
+
+
 def write_column(ws, rm, col, vals, commodity):
     ws[f"{col}{rm['vendita_consumo']}"] = float(vals["vendita_consumo"])
     if commodity == "GAS":
@@ -1483,6 +1496,8 @@ def build_excel_bytes(data, prepared=None):
             apply_total_formula(ws, rm, col_letter)
         else:
             fill_column_text(ws, rm, col_letter, "N.D.")
+
+    apply_export_number_format(ws, rm, 2 + len(values["offer_columns"]))
 
     metadata_column = get_column_letter(3 + len(values["offer_columns"]) + 1)
     write_export_metadata(ws, prepared, metadata_column)

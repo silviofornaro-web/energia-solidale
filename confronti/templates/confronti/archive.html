@@ -1,0 +1,133 @@
+{% extends "confronti/base.html" %}
+
+{% block title %}{{ page_title }} - Energia Solidale{% endblock %}
+
+{% block content %}
+<h1>{{ page_title }}</h1>
+<p class="panel-lead">Archivio riservato agli admin per consultare, scaricare e aggiornare i report dei confronti salvati.</p>
+
+<section class="panel admin-tabs-shell">
+    <nav class="admin-tabs-nav" aria-label="Azioni dashboard interna">
+        {% for tab in admin_tabs %}
+        <a href="{{ tab.href }}" class="admin-tab-link{% if tab.active %} is-active{% endif %}"{% if tab.new_tab %} target="_blank" rel="noopener"{% endif %}>
+            {{ tab.label }}
+        </a>
+        {% endfor %}
+    </nav>
+</section>
+
+<section class="panel archive-summary-panel">
+    <div class="status-cards archive-status-cards">
+        <div class="status-card">
+            <strong>Cartelle clienti</strong>
+            <span>{{ archive_summary.folder_count }}</span>
+        </div>
+        <div class="status-card">
+            <strong>Report archiviati</strong>
+            <span>{{ archive_summary.report_count }}</span>
+        </div>
+        <div class="status-card">
+            <strong>Ultimo salvataggio</strong>
+            <span class="archive-status-text">{{ archive_summary.latest_report_at|date:"d/m/Y H:i"|default:"N.D." }}</span>
+        </div>
+    </div>
+
+    <form method="get" class="archive-search-form">
+        <label>
+            Cerca cliente, email, telefono o cartella
+            <input type="text" name="q" value="{{ archive_query }}" placeholder="Es. Mario Rossi o mario@example.com">
+        </label>
+        <div class="form-actions">
+            <button type="submit">Cerca</button>
+            {% if archive_query %}
+            <a href="{% url 'archivio_report' %}" class="action-link action-link-secondary">Azzera filtro</a>
+            {% endif %}
+        </div>
+    </form>
+</section>
+
+<section class="archive-layout">
+    <section class="panel archive-folder-panel">
+        <h2>Cartelle clienti</h2>
+        {% if archive_folders %}
+        <div class="archive-folder-list">
+            {% for folder in archive_folders %}
+            <a href="{% url 'archivio_report_cartella' folder.pk %}{% if archive_query %}?q={{ archive_query|urlencode }}{% endif %}" class="archive-folder-card{% if selected_folder and selected_folder.pk == folder.pk %} is-active{% endif %}">
+                <strong>{{ folder.customer_name }}</strong>
+                <span>{{ folder.folder_name }}</span>
+                <span>{{ folder.report_count }} report</span>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="status-empty">Nessun report archiviato con i filtri attuali.</p>
+        {% endif %}
+    </section>
+
+    <section class="panel archive-detail-panel">
+        {% if selected_folder %}
+        <div class="archive-detail-header">
+            <div>
+                <h2>{{ selected_folder.customer_name }}</h2>
+                <p class="panel-lead">Cartella: {{ selected_folder.folder_name }} · Creata il {{ selected_folder.created_at|date:"d/m/Y H:i" }}</p>
+            </div>
+            <a href="{% url 'archivio_report' %}{% if archive_query %}?q={{ archive_query|urlencode }}{% endif %}" class="action-link action-link-secondary">Torna alla lista</a>
+        </div>
+
+        <form method="post" class="archive-edit-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="update_archive_folder">
+            <input type="hidden" name="q" value="{{ archive_query }}">
+            <div class="form-grid form-grid-archive-folder">
+                <label>{{ folder_form.customer_name.label }}{{ folder_form.customer_name }}{{ folder_form.customer_name.errors }}</label>
+                <label>{{ folder_form.customer_email.label }}{{ folder_form.customer_email }}{{ folder_form.customer_email.errors }}</label>
+                <label>{{ folder_form.customer_phone.label }}{{ folder_form.customer_phone }}{{ folder_form.customer_phone.errors }}</label>
+                <label class="archive-notes-field">{{ folder_form.notes.label }}{{ folder_form.notes }}{{ folder_form.notes.errors }}</label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="secondary">Aggiorna cartella</button>
+            </div>
+        </form>
+
+        <h2>Report archiviati</h2>
+        {% if report_entries %}
+            {% for entry in report_entries %}
+            <article class="archive-report-card">
+                <div class="archive-report-meta">
+                    <div>
+                        <strong>{{ entry.report.title|default:"Report confronto" }}</strong>
+                        <div class="archive-report-submeta">
+                            <span>{{ entry.report.providers_label|default:"N.D." }}</span>
+                            <span>{{ entry.report.bill_period_label|default:"N.D." }}</span>
+                            <span>{{ entry.report.comparison_datetime|date:"d/m/Y H:i"|default:"N.D." }}</span>
+                            <span>{{ entry.report.original_filename|default:"report.xlsx" }}</span>
+                        </div>
+                    </div>
+                    <a href="{% url 'scarica_report_archiviato' entry.report.pk %}" class="action-link">Scarica report</a>
+                </div>
+
+                <form method="post" class="archive-edit-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="update_archive_report">
+                    <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+                    <input type="hidden" name="q" value="{{ archive_query }}">
+                    <div class="form-grid form-grid-archive-report">
+                        <label>{{ entry.form.title.label }}{{ entry.form.title }}{{ entry.form.title.errors }}</label>
+                        <label class="archive-notes-field">{{ entry.form.notes.label }}{{ entry.form.notes }}{{ entry.form.notes.errors }}</label>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="secondary">Aggiorna report</button>
+                    </div>
+                </form>
+            </article>
+            {% endfor %}
+        {% else %}
+        <p class="status-empty">Questa cartella non contiene ancora report.</p>
+        {% endif %}
+        {% else %}
+        <h2>Dettaglio archivio</h2>
+        <p class="status-empty">Apri una cartella cliente per consultare e modificare i report salvati.</p>
+        {% endif %}
+    </section>
+</section>
+{% endblock %}

@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Confronto bollette{% endblock %}</title>
-    <link rel="stylesheet" href="{% static 'confronti/style.css' %}?v=20260617-home-tabs">
+    <link rel="stylesheet" href="{% static 'confronti/style.css' %}?v=20260625-archive">
 </head>
 <body>
     <main class="page">
@@ -22,6 +22,13 @@
                 </form>
             {% endif %}
         </header>
+        {% if messages %}
+        <section class="flash-messages" aria-label="Messaggi di sistema">
+            {% for message in messages %}
+            <div class="flash-message{% if message.tags %} flash-{{ message.tags }}{% endif %}">{{ message }}</div>
+            {% endfor %}
+        </section>
+        {% endif %}
         {% block content %}{% endblock %}
         <footer>
             <strong>Energia Solidale</strong><br>

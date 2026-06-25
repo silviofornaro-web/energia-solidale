@@ -1,18 +1,20 @@
 from datetime import date
 from io import BytesIO
 from io import StringIO
+import shutil
+import tempfile
 from unittest.mock import patch
 
 from django import forms
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
-from django.test import Client, SimpleTestCase, TestCase
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from openpyxl import load_workbook
 
 from .bill_parser import ParsedBill, parse_bill_text
 from .forms import ConfrontoForm, CustomerInviteForm
-from .models import InviteCode
+from .models import ComparisonReport, CustomerArchiveFolder, InviteCode
 from . import services
 
 
@@ -811,6 +813,9 @@ class InviteCommandTests(TestCase):
 
 class ConfrontoViewTests(TestCase):
     def setUp(self):
+        self.media_root = tempfile.mkdtemp(prefix="energia-solidale-test-media-")
+        self.media_override = override_settings(MEDIA_ROOT=self.media_root)
+        self.media_override.enable()
         User = get_user_model()
         self.staff_user = User.objects.create_user(
             username="staff@example.com",
@@ -827,6 +832,11 @@ class ConfrontoViewTests(TestCase):
             last_name="Base",
         )
         self.client = Client()
+
+    def tearDown(self):
+        self.media_override.disable()
+        shutil.rmtree(self.media_root, ignore_errors=True)
+        super().tearDown()
 
     def login(self):
         self.assertTrue(self.client.login(username="staff@example.com", password="secret"))
@@ -845,12 +855,14 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Mostra Registrazione Clienti")
         self.assertContains(response, "Stato Clienti")
         self.assertContains(response, "Genera Codici")
+        self.assertContains(response, "Archivio Report")
         self.assertContains(response, "Confronto Bollette/Offerte")
         self.assertContains(response, 'href="/area-clienti/"')
         self.assertContains(response, 'href="/accounts/register/"')
         self.assertContains(response, 'href="/accounts/login/?next=%2Farea-clienti%2F"')
         self.assertContains(response, 'href="/accounts/login/?next=%2F%3Fpanel%3Dstatus-clienti"')
         self.assertContains(response, 'href="/accounts/login/?next=%2F%3Fpanel%3Dgenera-codici"')
+        self.assertContains(response, 'href="/accounts/login/?next=%2Farchivio-report%2F"')
         self.assertContains(response, 'href="/accounts/login/?next=%2F%3Fpanel%3Dconfronto"')
 
     def test_internal_status_tab_opens_status_section_after_login(self):
@@ -1001,11 +1013,13 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Esegui confronto")
         self.assertContains(response, "Genera Codice invito")
         self.assertContains(response, "Stato clienti")
+        self.assertContains(response, "Archivio report")
         self.assertContains(response, "Apri dashboard cliente")
         self.assertContains(response, "Apri registrazione cliente")
         self.assertContains(response, 'href="/?panel=confronto#confronto-bollette-offerte"')
         self.assertContains(response, 'href="/?panel=genera-codici#genera-codici"')
         self.assertContains(response, 'href="/?panel=status-clienti#stato-clienti"')
+        self.assertContains(response, 'href="/archivio-report/"')
         self.assertContains(response, 'href="/area-clienti/"')
         self.assertContains(response, 'href="/accounts/register/"')
         self.assertContains(response, "Vendita fissa (totale bolletta)")
@@ -1124,6 +1138,84 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(response.context["customer_status"]["user_count"], 2)
         self.assertEqual(response.context["customer_status"]["available_count"], 1)
         self.assertEqual(response.context["customer_status"]["used_count"], 1)
+
+    def test_archive_page_requires_internal_user(self):
+        self.login_customer()
+        response = self.client.get("/archivio-report/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/area-clienti/")
+
+    def test_internal_dashboard_can_archive_current_report(self):
+        self.login()
+        self.client.post("/", valid_payload())
+
+        response = self.client.post("/archivio-report/salva/")
+
+        self.assertEqual(response.status_code, 302)
+        folder = CustomerArchiveFolder.objects.get()
+        report = ComparisonReport.objects.get()
+        self.assertEqual(response["Location"], f"/archivio-report/cartella/{folder.pk}/")
+        self.assertEqual(folder.customer_name, "Mario Rossi")
+        self.assertRegex(folder.folder_name, r"^\d{4}-\d{2}-\d{2}__mario-rossi")
+        self.assertEqual(report.folder, folder)
+        self.assertEqual(report.providers_label, "Illumia")
+        self.assertIn("confronto_illumia_Mario_Rossi_EE.xlsx", report.original_filename)
+        self.assertTrue(report.report_file.name.startswith("report_archive/"))
+        with report.report_file.open("rb") as saved_file:
+            self.assertEqual(saved_file.read(2), b"PK")
+
+    def test_archive_page_lists_and_updates_saved_reports(self):
+        self.login()
+        self.client.post("/", valid_payload())
+        self.client.post("/archivio-report/salva/")
+        folder = CustomerArchiveFolder.objects.get()
+        report = ComparisonReport.objects.get()
+
+        response = self.client.get(f"/archivio-report/cartella/{folder.pk}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Archivio report")
+        self.assertContains(response, folder.folder_name)
+        self.assertContains(response, report.original_filename)
+        self.assertContains(response, "Scarica report")
+
+        response = self.client.post(
+            f"/archivio-report/cartella/{folder.pk}/",
+            {
+                "action": "update_archive_folder",
+                "customer_name": "Mario Rossi SRL",
+                "customer_email": "archivio@example.com",
+                "customer_phone": "3331234567",
+                "notes": "Cliente storico",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        folder.refresh_from_db()
+        self.assertEqual(folder.customer_name, "Mario Rossi SRL")
+        self.assertEqual(folder.customer_email, "archivio@example.com")
+        self.assertEqual(folder.customer_phone, "3331234567")
+        self.assertEqual(folder.notes, "Cliente storico")
+
+        response = self.client.post(
+            f"/archivio-report/cartella/{folder.pk}/",
+            {
+                "action": "update_archive_report",
+                "report_id": report.pk,
+                f"report-{report.pk}-title": "Confronto giugno",
+                f"report-{report.pk}-notes": "Ricontattare il cliente",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        report.refresh_from_db()
+        self.assertEqual(report.title, "Confronto giugno")
+        self.assertEqual(report.notes, "Ricontattare il cliente")
+
+        download_response = self.client.get(f"/archivio-report/report/{report.pk}/scarica/")
+        self.assertEqual(download_response.status_code, 200)
+        self.assertEqual(
+            download_response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
     def test_registration_page_prefills_invite_code_from_query_string(self):
         response = self.client.get("/accounts/register/?invite_code=invito-1234")
@@ -1417,6 +1509,10 @@ class ConfrontoViewTests(TestCase):
         self.assertIsInstance(ws["D15"].value, (int, float))
         self.assertEqual(ws["B17"].value, 12.12)
         self.assertEqual(ws["B18"].value, "=SUM(B4:B14)+B17")
+        self.assertEqual(ws["C1"].number_format, "#,##0.00")
+        self.assertEqual(ws["B11"].number_format, "#,##0.00")
+        self.assertEqual(ws["B18"].number_format, "#,##0.00")
+        self.assertEqual(ws["D18"].number_format, "#,##0.00")
 
     def test_gas_excel_download_removes_luce_only_rows(self):
         self.login()

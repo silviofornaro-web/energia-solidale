@@ -32,6 +32,42 @@ body {
     display: inline-flex;
 }
 
+.flash-messages {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.flash-message {
+    border-radius: 8px;
+    font-weight: 700;
+    padding: 12px 14px;
+}
+
+.flash-message.flash-success {
+    background: #eefbf3;
+    border: 1px solid #9dd9b1;
+    color: #166534;
+}
+
+.flash-message.flash-error {
+    background: #fff1f2;
+    border: 1px solid #fecdd3;
+    color: #b91c1c;
+}
+
+.flash-message.flash-warning {
+    background: #fff8db;
+    border: 1px solid #f4d36b;
+    color: #8a5a00;
+}
+
+.flash-message.flash-info {
+    background: #eef6fb;
+    border: 1px solid #cfe0ee;
+    color: #1f5f7a;
+}
+
 h1 {
     margin: 0 0 18px;
     font-size: 32px;
@@ -159,7 +195,7 @@ h2 span {
 .home-subtabs {
     display: grid;
     gap: 12px;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .home-subtab {
@@ -237,7 +273,7 @@ h2 span {
 .admin-tabs-nav {
     display: grid;
     gap: 10px;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .admin-tab-link {
@@ -727,7 +763,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
     width: 100%;
     min-height: 42px;
     border: 1px solid #cbd5e1;
@@ -735,6 +772,11 @@ select {
     padding: 8px 10px;
     font: inherit;
     font-weight: 400;
+}
+
+textarea {
+    min-height: 112px;
+    resize: vertical;
 }
 
 .month-picker-controls {
@@ -770,6 +812,15 @@ button,
     flex-wrap: wrap;
     gap: 10px;
     align-items: center;
+}
+
+.inline-form {
+    display: inline-flex;
+    margin: 0;
+}
+
+.inline-form button {
+    margin-top: 0;
 }
 
 button.secondary {
@@ -943,6 +994,120 @@ th {
     text-decoration: none;
 }
 
+.archive-summary-panel {
+    background: linear-gradient(180deg, #f7fbff 0%, #ffffff 100%);
+    border-color: #cfe0ee;
+}
+
+.archive-status-cards {
+    margin-bottom: 18px;
+}
+
+.archive-status-text {
+    font-size: 16px;
+}
+
+.archive-search-form {
+    align-items: end;
+    display: grid;
+    gap: 14px;
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.archive-layout {
+    display: grid;
+    gap: 22px;
+    grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.4fr);
+}
+
+.archive-folder-panel,
+.archive-detail-panel {
+    min-height: 320px;
+}
+
+.archive-folder-list {
+    display: grid;
+    gap: 12px;
+}
+
+.archive-folder-card {
+    background: #f8fbfd;
+    border: 1px solid #d9e8f2;
+    border-radius: 10px;
+    color: #1f2937;
+    display: grid;
+    gap: 6px;
+    padding: 14px 16px;
+    text-decoration: none;
+    transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.archive-folder-card:hover,
+.archive-folder-card.is-active {
+    border-color: #1597d3;
+    box-shadow: 0 14px 28px rgba(21, 151, 211, 0.12);
+    transform: translateY(-1px);
+}
+
+.archive-folder-card strong {
+    color: #0f172a;
+}
+
+.archive-folder-card span {
+    color: #64748b;
+    font-size: 13px;
+}
+
+.archive-detail-header {
+    align-items: start;
+    display: flex;
+    gap: 14px;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.archive-edit-form {
+    margin-bottom: 20px;
+}
+
+.form-grid-archive-folder {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.form-grid-archive-report {
+    grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
+}
+
+.archive-notes-field {
+    grid-column: 1 / -1;
+}
+
+.archive-report-card {
+    background: #f8fbfd;
+    border: 1px solid #d9e8f2;
+    border-radius: 10px;
+    margin-top: 14px;
+    padding: 16px;
+}
+
+.archive-report-meta {
+    align-items: start;
+    display: flex;
+    gap: 14px;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.archive-report-submeta {
+    color: #64748b;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    font-size: 13px;
+    line-height: 1.45;
+    margin-top: 6px;
+}
+
 footer {
     text-align: center;
     color: #1597d3;
@@ -966,7 +1131,11 @@ footer strong {
     .status-cards,
     .status-grid,
     .upload-panel,
-    .meta {
+    .meta,
+    .archive-search-form,
+    .archive-layout,
+    .form-grid-archive-folder,
+    .form-grid-archive-report {
         grid-template-columns: 1fr;
     }
 
@@ -985,6 +1154,12 @@ footer strong {
     .home-primary-tabs,
     .home-subtabs {
         grid-template-columns: 1fr;
+    }
+
+    .archive-detail-header,
+    .archive-report-meta {
+        align-items: stretch;
+        flex-direction: column;
     }
 
     table {

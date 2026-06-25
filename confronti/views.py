@@ -1,17 +1,28 @@
 import logging
 import os
+from datetime import datetime
 from urllib.parse import quote, urlencode, urljoin
 
+from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
-from django.shortcuts import redirect, render
+from django.core.files.base import ContentFile
+from django.db.models import Count, Max, Q
+from django.http import FileResponse, HttpResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 
 from .bill_parser import parse_uploaded_bill
-from .forms import BillUploadForm, ConfrontoForm, CustomerInviteForm, session_to_service_data
-from .models import InviteCode
+from .forms import (
+    ArchiveFolderForm,
+    ArchiveReportForm,
+    BillUploadForm,
+    ConfrontoForm,
+    CustomerInviteForm,
+    session_to_service_data,
+)
+from .models import ComparisonReport, CustomerArchiveFolder, InviteCode
 from .services import build_excel_bytes, offer_options_payload, prepare_comparison, provider_label, safe_download_filename
 
 
@@ -133,6 +144,166 @@ def _is_internal_user(user):
     return bool(user.is_authenticated and (user.is_staff or user.is_superuser))
 
 
+def _redirect_for_non_internal_user():
+    return redirect("accesso_clienti")
+
+
+def _parse_comparison_datetime(value):
+    if not value:
+        return timezone.localtime()
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return timezone.localtime()
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
+def _archive_match_folder(customer_name, customer_email="", customer_phone=""):
+    normalized_name = CustomerArchiveFolder.normalize_customer_name(customer_name)
+    normalized_email = CustomerArchiveFolder.normalize_customer_email(customer_email)
+    normalized_phone = CustomerArchiveFolder.normalize_customer_phone(customer_phone)
+    folders = CustomerArchiveFolder.objects.all()
+    if normalized_email:
+        folder = folders.filter(customer_email=normalized_email).order_by("-updated_at", "-created_at").first()
+        if folder:
+            return folder
+    if normalized_phone:
+        folder = folders.filter(customer_phone=normalized_phone).order_by("-updated_at", "-created_at").first()
+        if folder:
+            return folder
+    if normalized_name:
+        return folders.filter(customer_name__iexact=normalized_name).order_by("-updated_at", "-created_at").first()
+    return None
+
+
+def _get_or_create_archive_folder(data, user):
+    customer_name = CustomerArchiveFolder.normalize_customer_name(data.get("nome_cliente")) or "Cliente senza nome"
+    customer_email = CustomerArchiveFolder.normalize_customer_email(data.get("email_cliente"))
+    customer_phone = CustomerArchiveFolder.normalize_customer_phone(data.get("telefono_cliente"))
+    folder = _archive_match_folder(customer_name, customer_email, customer_phone)
+    if folder is None:
+        return CustomerArchiveFolder.objects.create(
+            customer_name=customer_name,
+            customer_email=customer_email,
+            customer_phone=customer_phone,
+            created_by=user,
+        )
+    changed_fields = []
+    if customer_name and folder.customer_name != customer_name:
+        folder.customer_name = customer_name
+        changed_fields.append("customer_name")
+    if customer_email and folder.customer_email != customer_email:
+        folder.customer_email = customer_email
+        changed_fields.append("customer_email")
+    if customer_phone and folder.customer_phone != customer_phone:
+        folder.customer_phone = customer_phone
+        changed_fields.append("customer_phone")
+    if changed_fields:
+        folder.save(update_fields=changed_fields + ["updated_at"])
+    return folder
+
+
+def _archive_report_payload(data, prepared):
+    return {
+        "customer_name": data.get("nome_cliente", ""),
+        "customer_email": data.get("email_cliente", ""),
+        "customer_phone": data.get("telefono_cliente", ""),
+        "commodity": data.get("commodity", ""),
+        "providers": list(data.get("providers", [])),
+        "providers_label": prepared["calc"].get("providers_label", ""),
+        "bill_start": data.get("bill_start").isoformat() if data.get("bill_start") else "",
+        "bill_end": data.get("bill_end").isoformat() if data.get("bill_end") else "",
+        "bill_period_label": prepared["calc"].get("period_label", ""),
+        "comparison_datetime": data.get("comparison_datetime", ""),
+    }
+
+
+def _archive_report_filename(data):
+    provider_name = "_".join(provider_label(provider).lower().replace(".", "") for provider in data.get("providers", []))
+    provider_name = provider_name or provider_label(data.get("provider", "ILLUMIA")).lower().replace(".", "")
+    return safe_download_filename(
+        f"confronto_{provider_name}_{data.get('nome_cliente', 'Cliente')}_{data.get('commodity', 'ENERGIA')}.xlsx"
+    )
+
+
+def _archive_report_title(data, prepared):
+    provider_name = prepared["calc"].get("providers_label", "Illumia")
+    commodity = prepared["calc"].get("commodity_label", data.get("commodity", ""))
+    period = prepared["calc"].get("period_label", "")
+    title_parts = [provider_name, commodity]
+    if period:
+        title_parts.append(period)
+    return " - ".join(part for part in title_parts if part)
+
+
+def _archive_report_queryset(search_query=""):
+    folders = CustomerArchiveFolder.objects.annotate(report_count=Count("reports"))
+    query = str(search_query or "").strip()
+    if query:
+        folders = folders.filter(
+            Q(customer_name__icontains=query)
+            | Q(customer_email__icontains=query)
+            | Q(customer_phone__icontains=query)
+            | Q(folder_name__icontains=query)
+            | Q(reports__title__icontains=query)
+            | Q(reports__providers_label__icontains=query)
+        ).distinct()
+    return folders.order_by("-updated_at", "-created_at")
+
+
+def _archive_summary(search_query=""):
+    report_qs = ComparisonReport.objects.all()
+    query = str(search_query or "").strip()
+    if query:
+        report_qs = report_qs.filter(
+            Q(folder__customer_name__icontains=query)
+            | Q(folder__customer_email__icontains=query)
+            | Q(folder__customer_phone__icontains=query)
+            | Q(folder__folder_name__icontains=query)
+            | Q(title__icontains=query)
+            | Q(providers_label__icontains=query)
+        )
+    return {
+        "folder_count": _archive_report_queryset(query).count(),
+        "report_count": report_qs.count(),
+        "latest_report_at": report_qs.aggregate(last_saved=Max("created_at"))["last_saved"],
+    }
+
+
+def _archive_context(request, *, selected_folder=None, folder_form=None, active_report_id=None, active_report_form=None):
+    search_query = str(request.GET.get("q") or request.POST.get("q") or "").strip()
+    folders = list(_archive_report_queryset(search_query))
+    report_entries = []
+    if selected_folder is not None:
+        selected_folder = get_object_or_404(
+            CustomerArchiveFolder.objects.prefetch_related("reports").annotate(report_count=Count("reports")),
+            pk=selected_folder.pk,
+        )
+        reports = list(selected_folder.reports.order_by("-comparison_datetime", "-created_at"))
+        if folder_form is None:
+            folder_form = ArchiveFolderForm(instance=selected_folder)
+        for report in reports:
+            form = (
+                active_report_form
+                if active_report_id == report.pk and active_report_form is not None
+                else ArchiveReportForm(instance=report, prefix=f"report-{report.pk}")
+            )
+            report_entries.append({"report": report, "form": form})
+    return {
+        "brand_home_url": reverse("confronto"),
+        "page_title": "Archivio report",
+        "admin_tabs": _admin_tabs("archivio-report"),
+        "archive_query": search_query,
+        "archive_summary": _archive_summary(search_query),
+        "archive_folders": folders,
+        "selected_folder": selected_folder,
+        "folder_form": folder_form,
+        "report_entries": report_entries,
+    }
+
+
 def _public_access_page(request):
     return render(
         request,
@@ -170,6 +341,11 @@ def _home_tabs():
             "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=genera-codici'})}",
         },
         {
+            "key": "archivio-report",
+            "label": "Archivio Report",
+            "href": f"{login_url}?{urlencode({'next': reverse('archivio_report')})}",
+        },
+        {
             "key": "confronto-bollette-offerte",
             "label": "Confronto Bollette/Offerte",
             "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=confronto'})}",
@@ -201,6 +377,12 @@ def _admin_tabs(active_panel):
             "label": "Stato clienti",
             "href": f"{root_url}?panel=status-clienti#stato-clienti",
             "active": active_panel == "status-clienti",
+        },
+        {
+            "key": "archivio-report",
+            "label": "Archivio report",
+            "href": reverse("archivio_report"),
+            "active": active_panel == "archivio-report",
         },
         {
             "key": "apri-dashboard-cliente",
@@ -437,6 +619,99 @@ def _scarica_excel(request, *, customer_mode=False):
     )
     response["Content-Disposition"] = f'attachment; filename="{nome}"'
     response["Content-Length"] = str(len(content))
+    return response
+
+
+@login_required
+def archivia_report_corrente(request):
+    if not _is_internal_user(request.user):
+        return _redirect_for_non_internal_user()
+    if request.method != "POST":
+        return redirect("confronto")
+    raw = request.session.get(LAST_COMPARISON_KEY)
+    if not raw:
+        messages.error(request, "Non c'e nessun confronto interno pronto da archiviare.")
+        return redirect(f"{reverse('confronto')}?panel=confronto")
+    data = session_to_service_data(raw)
+    prepared = prepare_comparison(data)
+    content = build_excel_bytes(data, prepared)
+    folder = _get_or_create_archive_folder(data, request.user)
+    report = ComparisonReport(
+        folder=folder,
+        title=_archive_report_title(data, prepared),
+        commodity=data.get("commodity", ""),
+        providers_label=prepared["calc"].get("providers_label", ""),
+        bill_period_label=prepared["calc"].get("period_label", ""),
+        comparison_datetime=_parse_comparison_datetime(data.get("comparison_datetime")),
+        original_filename=_archive_report_filename(data),
+        comparison_data=_archive_report_payload(data, prepared),
+        created_by=request.user,
+    )
+    report.report_file.save(report.original_filename, ContentFile(content), save=False)
+    report.save()
+    messages.success(request, f"Report archiviato nella cartella {folder.folder_name}.")
+    return redirect("archivio_report_cartella", folder_id=folder.pk)
+
+
+@login_required
+def archivio_report(request):
+    if not _is_internal_user(request.user):
+        return _redirect_for_non_internal_user()
+    return render(request, "confronti/archive.html", _archive_context(request))
+
+
+@login_required
+def archivio_report_cartella(request, folder_id):
+    if not _is_internal_user(request.user):
+        return _redirect_for_non_internal_user()
+    folder = get_object_or_404(CustomerArchiveFolder, pk=folder_id)
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "update_archive_folder":
+            folder_form = ArchiveFolderForm(request.POST, instance=folder)
+            if folder_form.is_valid():
+                folder_form.save()
+                messages.success(request, "Dati cartella archivio aggiornati.")
+                return redirect("archivio_report_cartella", folder_id=folder.pk)
+            return render(
+                request,
+                "confronti/archive.html",
+                _archive_context(request, selected_folder=folder, folder_form=folder_form),
+            )
+        if action == "update_archive_report":
+            report = get_object_or_404(ComparisonReport, pk=request.POST.get("report_id"), folder=folder)
+            report_form = ArchiveReportForm(request.POST, instance=report, prefix=f"report-{report.pk}")
+            if report_form.is_valid():
+                report_form.save()
+                messages.success(request, "Report archiviato aggiornato.")
+                return redirect("archivio_report_cartella", folder_id=folder.pk)
+            return render(
+                request,
+                "confronti/archive.html",
+                _archive_context(
+                    request,
+                    selected_folder=folder,
+                    active_report_id=report.pk,
+                    active_report_form=report_form,
+                ),
+            )
+    return render(request, "confronti/archive.html", _archive_context(request, selected_folder=folder))
+
+
+@login_required
+def scarica_report_archiviato(request, report_id):
+    if not _is_internal_user(request.user):
+        return _redirect_for_non_internal_user()
+    report = get_object_or_404(ComparisonReport, pk=report_id)
+    filename = report.original_filename or os.path.basename(report.report_file.name)
+    report.report_file.open("rb")
+    response = FileResponse(
+        report.report_file,
+        as_attachment=True,
+        filename=filename,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Length"] = report.report_file.size
     return response
 
 

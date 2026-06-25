@@ -7,7 +7,7 @@ from django.contrib.auth.forms import UserCreationForm
 from django.core.validators import FileExtensionValidator
 from django.db import transaction
 
-from .models import InviteCode
+from .models import ComparisonReport, CustomerArchiveFolder, InviteCode
 from . import services
 
 
@@ -126,6 +126,24 @@ class CustomerInviteForm(forms.Form):
         if not cleaned.get("whatsapp_ready"):
             self.add_error("whatsapp_ready", "Riapri WhatsApp Web e conferma prima di generare il codice.")
         return cleaned
+
+
+class ArchiveFolderForm(forms.ModelForm):
+    class Meta:
+        model = CustomerArchiveFolder
+        fields = ("customer_name", "customer_email", "customer_phone", "notes")
+        widgets = {
+            "notes": forms.Textarea(attrs={"rows": 4}),
+        }
+
+
+class ArchiveReportForm(forms.ModelForm):
+    class Meta:
+        model = ComparisonReport
+        fields = ("title", "notes")
+        widgets = {
+            "notes": forms.Textarea(attrs={"rows": 4}),
+        }
 
 
 class ConfrontoForm(forms.Form):

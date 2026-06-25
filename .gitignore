@@ -13,6 +13,7 @@ db.sqlite3
 confronto_illumia_*.xlsx
 static/downloads/*.xlsx
 staticfiles/
+media/
 FILE_GENERATO.xlsx
 *.zip
 *.backup
