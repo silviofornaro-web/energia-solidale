@@ -1,4 +1,5 @@
 {% extends "confronti/base.html" %}
+{% load confronto_extras %}
 
 {% block title %}{{ page_title }} - Energia Solidale{% endblock %}
 
@@ -146,6 +147,21 @@
 
         <h2>Report archiviati</h2>
         {% if report_entries %}
+        <form id="archive-summary-form" method="post" class="archive-summary-builder">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="build_archive_report_summary">
+            <input type="hidden" name="q" value="{{ archive_query }}">
+            <p class="archive-help-text archive-help-text-compact">Seleziona i file che vuoi includere e crea il sunto solo su quelli scelti.</p>
+            <div class="form-actions">
+                <button type="submit">Crea sunto dai selezionati</button>
+                {% if archive_report_summary.rows %}
+                <a class="download archive-summary-download" href="{% url 'scarica_sunto_report' %}" download>Scarica sunto Excel</a>
+                {% endif %}
+            </div>
+        </form>
+        {% endif %}
+
+        {% if report_entries %}
             {% for entry in report_entries %}
             <article class="archive-report-card">
                 <div class="archive-report-meta">
@@ -159,7 +175,19 @@
                             <span><code class="archive-path">{{ entry.report.report_file.name }}</code></span>
                         </div>
                     </div>
-                    <a href="{% url 'scarica_report_archiviato' entry.report.pk %}" class="action-link">Scarica report</a>
+                    <div class="archive-report-actions">
+                        <label class="checkbox-field archive-summary-checkbox">
+                            <input
+                                type="checkbox"
+                                name="selected_reports"
+                                value="{{ entry.report.pk }}"
+                                form="archive-summary-form"
+                                {% if entry.report.pk in selected_report_ids %}checked{% endif %}
+                            >
+                            <span>Inserisci nel sunto</span>
+                        </label>
+                        <a href="{% url 'scarica_report_archiviato' entry.report.pk %}" class="action-link">Scarica report</a>
+                    </div>
                 </div>
 
                 <form method="post" enctype="multipart/form-data" class="archive-edit-form archive-replace-form">
@@ -192,6 +220,35 @@
             {% endfor %}
         {% else %}
         <p class="status-empty">Questa cartella non contiene ancora report.</p>
+        {% endif %}
+
+        {% for warning in archive_report_summary_warnings %}
+        <div class="validity-warning">{{ warning }}</div>
+        {% endfor %}
+        {% if archive_report_summary.rows %}
+        <section class="archive-summary-results">
+            <div class="extraction-message">Sunto creato per {{ archive_report_summary.count }} report.</div>
+            <div class="summary-table-wrap">
+                <table class="summary-table">
+                    <thead>
+                        <tr>
+                            {% for column in archive_report_summary.columns %}
+                            <th>{{ column }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in archive_report_summary.rows %}
+                        <tr>
+                            {% for column in archive_report_summary.columns %}
+                            <td>{{ row|get_item:column }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
         {% endif %}
         {% else %}
         <h2>Dettaglio archivio</h2>

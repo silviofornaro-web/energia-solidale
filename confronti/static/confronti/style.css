@@ -1178,6 +1178,18 @@ th {
     margin-bottom: 12px;
 }
 
+.archive-summary-builder {
+    background: #f8fbfd;
+    border: 1px solid #d9e8f2;
+    border-radius: 12px;
+    margin-bottom: 18px;
+    padding: 16px;
+}
+
+.archive-summary-download {
+    margin-top: 0;
+}
+
 .archive-notes-field {
     grid-column: 1 / -1;
 }
@@ -1206,6 +1218,21 @@ th {
     font-size: 13px;
     line-height: 1.45;
     margin-top: 6px;
+}
+
+.archive-report-actions {
+    align-items: end;
+    display: grid;
+    gap: 10px;
+    justify-items: end;
+}
+
+.archive-summary-checkbox {
+    margin: 0;
+}
+
+.archive-summary-results {
+    margin-top: 18px;
 }
 
 footer {
@@ -1263,6 +1290,10 @@ footer strong {
     .archive-report-meta {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .archive-report-actions {
+        justify-items: stretch;
     }
 
     table {

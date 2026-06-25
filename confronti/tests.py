@@ -1405,6 +1405,8 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Report nella cartella")
         self.assertContains(response, "Aggiungi file")
         self.assertContains(response, "Sostituisci file")
+        self.assertContains(response, "Crea sunto dai selezionati")
+        self.assertContains(response, "Inserisci nel sunto")
         self.assertContains(response, report.original_filename)
         self.assertContains(response, report.report_file.name)
         self.assertContains(response, "Scarica report")
@@ -1479,6 +1481,38 @@ class ConfrontoViewTests(TestCase):
         self.assertIn(folder.folder_name, report.report_file.name)
         with report.report_file.open("rb") as saved_file:
             self.assertEqual(saved_file.read(2), b"PK")
+
+    def test_archive_page_can_build_summary_from_selected_reports(self):
+        self.login()
+        self.client.post("/", valid_payload(indirizzo_fornitura="Via Roma 10"))
+        self.client.post("/archivio-report/salva/")
+        self.client.post(
+            "/",
+            valid_payload(
+                indirizzo_fornitura="Viale Milano 20",
+                providers=["ILLUMIA", "EON"],
+                offer_var_choice_eon="E.ON Flex Luce Casa",
+                offer_fix_choice_eon="E.ON Luce Tua",
+            ),
+        )
+        self.client.post("/archivio-report/salva/")
+        folder = CustomerArchiveFolder.objects.get()
+        selected_report = folder.reports.order_by("created_at").first()
+
+        response = self.client.post(
+            f"/archivio-report/cartella/{folder.pk}/",
+            {
+                "action": "build_archive_report_summary",
+                "selected_reports": [str(selected_report.pk)],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sunto creato per 1 report.")
+        self.assertContains(response, "Scarica sunto Excel")
+        self.assertContains(response, "Via Roma 10")
+        self.assertNotContains(response, "Viale Milano 20")
+        self.assertEqual(self.client.session["last_report_summary"]["count"], 1)
 
     def test_archive_page_can_replace_archived_report_file(self):
         self.login()

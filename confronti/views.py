@@ -1,3 +1,4 @@
+import io
 import logging
 import os
 from datetime import datetime
@@ -319,6 +320,15 @@ def _archive_summary(search_query=""):
     }
 
 
+def _store_report_summary_session(request, report_summary):
+    request.session[LAST_REPORT_SUMMARY_KEY] = {
+        "columns": report_summary.get("columns", []),
+        "rows": report_summary.get("rows", []),
+        "warnings": report_summary.get("warnings", []),
+        "count": report_summary.get("count", 0),
+    }
+
+
 def _touch_archive_folder(folder):
     CustomerArchiveFolder.objects.filter(pk=folder.pk).update(updated_at=timezone.now())
 
@@ -362,12 +372,33 @@ def _replace_archive_report_file(report, uploaded_file):
     _touch_archive_folder(report.folder)
 
 
+def _build_reports_summary_from_archived_reports(reports):
+    summary_files = []
+    try:
+        for report in reports:
+            report.report_file.open("rb")
+            try:
+                content = report.report_file.read()
+            finally:
+                report.report_file.close()
+            stream = io.BytesIO(content)
+            stream.name = report.original_filename or os.path.basename(report.report_file.name) or f"report-{report.pk}.xlsx"
+            summary_files.append(stream)
+        return build_reports_summary(summary_files)
+    finally:
+        for stream in summary_files:
+            stream.close()
+
+
 def _archive_context(
     request,
     *,
     selected_folder=None,
     folder_form=None,
     add_report_form=None,
+    selected_report_ids=None,
+    report_summary=None,
+    report_summary_warnings=None,
     active_report_id=None,
     active_report_form=None,
     active_replace_report_id=None,
@@ -376,6 +407,8 @@ def _archive_context(
     search_query = str(request.GET.get("q") or request.POST.get("q") or "").strip()
     folders = list(_archive_report_queryset(search_query))
     report_entries = []
+    selected_report_ids = [int(report_id) for report_id in (selected_report_ids or [])]
+    report_summary_warnings = list(report_summary_warnings or [])
     if selected_folder is not None:
         selected_folder = get_object_or_404(
             CustomerArchiveFolder.objects.prefetch_related("reports").annotate(report_count=Count("reports")),
@@ -408,8 +441,13 @@ def _archive_context(
         "selected_folder": selected_folder,
         "folder_form": folder_form,
         "add_report_form": add_report_form,
+        "selected_report_ids": selected_report_ids,
+        "archive_report_summary": report_summary,
+        "archive_report_summary_warnings": report_summary_warnings,
         "report_entries": report_entries,
     }
+
+
 def _public_access_page(request):
     return render(
         request,
@@ -606,12 +644,7 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
             if report_summary_form.is_valid():
                 report_summary = build_reports_summary(report_summary_form.cleaned_data["report_files"])
                 report_summary_warnings = report_summary.get("warnings", [])
-                request.session[LAST_REPORT_SUMMARY_KEY] = {
-                    "columns": report_summary.get("columns", []),
-                    "rows": report_summary.get("rows", []),
-                    "warnings": report_summary_warnings,
-                    "count": report_summary.get("count", 0),
-                }
+                _store_report_summary_session(request, report_summary)
                 report_summary_form = ReportSummaryUploadForm()
         elif action == "extract_bill":
             if not customer_mode:
@@ -861,6 +894,40 @@ def archivio_report_cartella(request, folder_id):
                 request,
                 "confronti/archive.html",
                 _archive_context(request, selected_folder=folder, add_report_form=add_report_form),
+            )
+        if action == "build_archive_report_summary":
+            selected_report_ids = [int(value) for value in request.POST.getlist("selected_reports") if str(value).isdigit()]
+            if not selected_report_ids:
+                messages.error(request, "Seleziona almeno un report da includere nel sunto.")
+                return render(
+                    request,
+                    "confronti/archive.html",
+                    _archive_context(request, selected_folder=folder, selected_report_ids=selected_report_ids),
+                )
+            selected_reports = list(
+                folder.reports.filter(pk__in=selected_report_ids).order_by("-comparison_datetime", "-created_at")
+            )
+            if not selected_reports:
+                messages.error(request, "I report selezionati non sono disponibili in questa cartella.")
+                return render(
+                    request,
+                    "confronti/archive.html",
+                    _archive_context(request, selected_folder=folder),
+                )
+            report_summary = _build_reports_summary_from_archived_reports(selected_reports)
+            report_summary_warnings = report_summary.get("warnings", [])
+            _store_report_summary_session(request, report_summary)
+            messages.success(request, f"Sunto creato per {report_summary.get('count', 0)} report selezionati.")
+            return render(
+                request,
+                "confronti/archive.html",
+                _archive_context(
+                    request,
+                    selected_folder=folder,
+                    selected_report_ids=[report.pk for report in selected_reports],
+                    report_summary=report_summary,
+                    report_summary_warnings=report_summary_warnings,
+                ),
             )
         if action == "update_archive_report":
             report = get_object_or_404(ComparisonReport, pk=request.POST.get("report_id"), folder=folder)
