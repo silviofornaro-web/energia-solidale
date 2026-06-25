@@ -1186,6 +1186,28 @@ th {
     padding: 16px;
 }
 
+.archive-summary-toolbar {
+    align-items: center;
+    display: flex;
+    gap: 14px;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.archive-selection-count {
+    color: #0f172a;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.archive-summary-quick-actions {
+    justify-content: flex-end;
+}
+
+.archive-summary-tool-button {
+    margin-top: 0;
+}
+
 .archive-summary-download {
     margin-top: 0;
 }
@@ -1290,6 +1312,15 @@ footer strong {
     .archive-report-meta {
         align-items: stretch;
         flex-direction: column;
+    }
+
+    .archive-summary-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .archive-summary-quick-actions {
+        justify-content: stretch;
     }
 
     .archive-report-actions {

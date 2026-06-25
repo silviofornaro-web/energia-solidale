@@ -152,8 +152,15 @@
             <input type="hidden" name="action" value="build_archive_report_summary">
             <input type="hidden" name="q" value="{{ archive_query }}">
             <p class="archive-help-text archive-help-text-compact">Seleziona i file che vuoi includere e crea il sunto solo su quelli scelti.</p>
+            <div class="archive-summary-toolbar">
+                <div id="archive-selected-count" class="archive-selection-count" aria-live="polite">0 file selezionati</div>
+                <div class="form-actions archive-summary-quick-actions">
+                    <button type="button" class="secondary archive-summary-tool-button" data-archive-select="all">Seleziona tutti</button>
+                    <button type="button" class="secondary archive-summary-tool-button" data-archive-select="none">Deseleziona tutti</button>
+                </div>
+            </div>
             <div class="form-actions">
-                <button type="submit">Crea sunto dai selezionati</button>
+                <button type="submit" id="archive-summary-submit">Crea sunto dai selezionati</button>
                 {% if archive_report_summary.rows %}
                 <a class="download archive-summary-download" href="{% url 'scarica_sunto_report' %}" download>Scarica sunto Excel</a>
                 {% endif %}
@@ -256,4 +263,56 @@
         {% endif %}
     </section>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        const form = document.getElementById("archive-summary-form");
+        if (!form) {
+            return;
+        }
+
+        const checkboxes = Array.from(document.querySelectorAll('input[name="selected_reports"][form="archive-summary-form"]'));
+        const countNode = document.getElementById("archive-selected-count");
+        const submitButton = document.getElementById("archive-summary-submit");
+        const selectAllButton = form.querySelector('[data-archive-select="all"]');
+        const clearButton = form.querySelector('[data-archive-select="none"]');
+
+        function updateSelectionState() {
+            const selectedCount = checkboxes.filter((checkbox) => checkbox.checked).length;
+            if (countNode) {
+                countNode.textContent = selectedCount === 1 ? "1 file selezionato" : selectedCount + " file selezionati";
+            }
+            if (submitButton) {
+                submitButton.disabled = selectedCount === 0;
+            }
+        }
+
+        function setAllCheckboxes(checked) {
+            checkboxes.forEach((checkbox) => {
+                checkbox.checked = checked;
+            });
+            updateSelectionState();
+        }
+
+        checkboxes.forEach((checkbox) => {
+            checkbox.addEventListener("change", updateSelectionState);
+        });
+
+        if (selectAllButton) {
+            selectAllButton.addEventListener("click", function () {
+                setAllCheckboxes(true);
+            });
+        }
+
+        if (clearButton) {
+            clearButton.addEventListener("click", function () {
+                setAllCheckboxes(false);
+            });
+        }
+
+        updateSelectionState();
+    }());
+</script>
 {% endblock %}

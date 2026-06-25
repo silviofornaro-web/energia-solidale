@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Confronto bollette{% endblock %}</title>
-    <link rel="stylesheet" href="{% static 'confronti/style.css' %}?v=20260625-archive">
+    <link rel="stylesheet" href="{% static 'confronti/style.css' %}?v=20260625-archive-select">
 </head>
 <body>
     <main class="page">
@@ -35,5 +35,6 @@
             Associazione senza scopo di lucro - Chioggia (VE) - info@energiasolidale.org
         </footer>
     </main>
+    {% block scripts %}{% endblock %}
 </body>
 </html>
