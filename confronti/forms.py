@@ -38,6 +38,36 @@ class BillUploadForm(forms.Form):
         return bill_pdf
 
 
+class MultipleFileInput(forms.ClearableFileInput):
+    allow_multiple_selected = True
+
+
+class MultipleFileField(forms.FileField):
+    def clean(self, data, initial=None):
+        if isinstance(data, (list, tuple)):
+            return [super(MultipleFileField, self).clean(item, initial) for item in data]
+        return [super().clean(data, initial)]
+
+
+class ReportSummaryUploadForm(forms.Form):
+    report_files = MultipleFileField(
+        label="Report confronto Excel",
+        validators=[FileExtensionValidator(["xlsx"])],
+        widget=MultipleFileInput(attrs={"accept": ".xlsx", "multiple": True}),
+    )
+
+    def clean_report_files(self):
+        files = self.cleaned_data["report_files"]
+        if not files:
+            raise forms.ValidationError("Carica almeno un report Excel.")
+        if len(files) > 50:
+            raise forms.ValidationError("Puoi caricare al massimo 50 report alla volta.")
+        for uploaded_file in files:
+            if uploaded_file.size > 15 * 1024 * 1024:
+                raise forms.ValidationError(f"Il file {uploaded_file.name} supera il limite di 15 MB.")
+        return files
+
+
 class ClientRegistrationForm(UserCreationForm):
     first_name = forms.CharField(label="Nome", max_length=150)
     last_name = forms.CharField(label="Cognome", max_length=150, required=False)
@@ -150,6 +180,7 @@ class ConfrontoForm(forms.Form):
     SEGMENTI = [("RESIDENZIALE", "Residenziale"), ("MICROBUSINESS", "Microbusiness"), ("BUSINESS", "Business")]
     COMMODITIES = [("GAS", "Gas"), ("EE", "Luce")]
     PROVIDERS = [("ILLUMIA", "Illumia"), ("EON", "E.ON"), ("CVE", "CVE")]
+    OPERATOR_PROVIDERS = [("ILLUMIA", "Illumia"), ("EON", "E.ON")]
     BILL_TARIFF_TYPES = [("VARIABILE", "Variabile"), ("FISSA", "Fissa")]
     TARIFF_SELECTION_MODES = [
         ("LATEST", "Ultime tariffe disponibili"),
@@ -174,6 +205,7 @@ class ConfrontoForm(forms.Form):
     )
 
     nome_cliente = forms.CharField(label="Nome e Cognome", max_length=120)
+    indirizzo_fornitura = forms.CharField(label="Indirizzo fornitura", max_length=180)
     email_cliente = forms.EmailField(label="Email", required=False)
     telefono_cliente = forms.CharField(label="Telefono", max_length=40, required=False)
     pod_pdr = forms.CharField(label="Codice POD/PDR", max_length=24, required=False)
@@ -283,10 +315,13 @@ class ConfrontoForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         self.customer_mode = bool(kwargs.pop("customer_mode", False))
+        self.operator_mode = bool(kwargs.pop("operator_mode", False))
+        self.illumia_only_mode = self.customer_mode
         super().__init__(*args, **kwargs)
         if self.customer_mode:
             self.fields["bill_offer_expiry"].required = False
             self.fields["nome_cliente"].label = "Nome e cognome"
+            self.fields["indirizzo_fornitura"].label = "Indirizzo fornitura"
             self.fields["segmento"].label = "Tipo cliente"
             self.fields["bill_tariff_type"].label = "Tipo tariffa attuale"
             self.fields["bill_start"].label = "Periodo bolletta da"
@@ -323,6 +358,16 @@ class ConfrontoForm(forms.Form):
             self.fields["offer_var_choice_cve"] = forms.CharField(required=False, widget=forms.HiddenInput())
             self.fields["offer_fix_choice_cve"] = forms.CharField(required=False, widget=forms.HiddenInput())
             self.fields["cve_over70"].widget = forms.HiddenInput()
+        elif self.operator_mode:
+            self.fields["providers"].choices = self.OPERATOR_PROVIDERS
+            self.fields["tariff_selection_mode"] = forms.CharField(
+                required=False,
+                initial="LATEST",
+                widget=forms.HiddenInput(),
+            )
+            self.fields["offer_var_choice_cve"] = forms.CharField(required=False, widget=forms.HiddenInput())
+            self.fields["offer_fix_choice_cve"] = forms.CharField(required=False, widget=forms.HiddenInput())
+            self.fields["cve_over70"].widget = forms.HiddenInput()
         else:
             self.fields["email_cliente"].widget = forms.HiddenInput()
             self.fields["telefono_cliente"].widget = forms.HiddenInput()
@@ -333,8 +378,9 @@ class ConfrontoForm(forms.Form):
         if not self.customer_mode:
             self.fields["offer_var_choice_eon"].choices = self._offer_choices("EON", segmento, commodity, "VARIABILE")
             self.fields["offer_fix_choice_eon"].choices = self._offer_choices("EON", segmento, commodity, "FISSA")
-            self.fields["offer_var_choice_cve"].choices = self._offer_choices("CVE", segmento, commodity, "VARIABILE")
-            self.fields["offer_fix_choice_cve"].choices = self._offer_choices("CVE", segmento, commodity, "FISSA")
+            if not self.operator_mode:
+                self.fields["offer_var_choice_cve"].choices = self._offer_choices("CVE", segmento, commodity, "VARIABILE")
+                self.fields["offer_fix_choice_cve"].choices = self._offer_choices("CVE", segmento, commodity, "FISSA")
         self._apply_commodity_rules(commodity)
 
     def _current_value(self, field_name):
@@ -382,6 +428,17 @@ class ConfrontoForm(forms.Form):
             cleaned["tariff_selection_mode"] = "LATEST"
             cleaned["offer_var_choice_eon"] = ""
             cleaned["offer_fix_choice_eon"] = ""
+            cleaned["offer_var_choice_cve"] = ""
+            cleaned["offer_fix_choice_cve"] = ""
+            cleaned["cve_over70"] = False
+        elif self.operator_mode:
+            allowed_providers = {key for key, _label in self.OPERATOR_PROVIDERS}
+            providers = [
+                services.normalize_provider(provider)
+                for provider in cleaned.get("providers", [])
+                if services.normalize_provider(provider) in allowed_providers
+            ]
+            cleaned["tariff_selection_mode"] = "LATEST"
             cleaned["offer_var_choice_cve"] = ""
             cleaned["offer_fix_choice_cve"] = ""
             cleaned["cve_over70"] = False

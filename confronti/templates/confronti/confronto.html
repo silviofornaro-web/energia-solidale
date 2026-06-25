@@ -1,4 +1,5 @@
 {% extends "confronti/base.html" %}
+{% load confronto_extras %}
 
 {% block title %}{{ page_title }} - Energia Solidale{% endblock %}
 
@@ -39,7 +40,7 @@
     </div>
 </section>
 {% endif %}
-{% if not customer_mode %}
+{% if not customer_mode and admin_tabs %}
 <section class="panel admin-tabs-shell">
     <nav class="admin-tabs-nav" aria-label="Azioni dashboard interna">
         {% for tab in admin_tabs %}
@@ -168,6 +169,50 @@
     </script>
     {% endif %}
 </section>
+{% elif admin_focus_panel == "sunto-report" %}
+<section id="sunto-report" class="panel admin-customer-tools panel-inline-highlight">
+    <h2>Sunto report confronti</h2>
+    <p class="panel-lead">Carica uno o piu file Excel generati dai confronti: il sistema crea una riga per ogni bolletta con indirizzo fornitura, dati economici della bolletta e offerte dei fornitori affiancate.</p>
+    <form method="post" enctype="multipart/form-data" class="invite-tools-form">
+        {% csrf_token %}
+        {{ report_summary_form.non_field_errors }}
+        <label class="upload-file-picker">
+            {{ report_summary_form.report_files.label }}
+            {{ report_summary_form.report_files }}
+            {{ report_summary_form.report_files.errors }}
+        </label>
+        <div class="form-actions">
+            <button type="submit" name="action" value="build_report_summary">Crea sunto report</button>
+        </div>
+    </form>
+    {% for warning in report_summary_warnings %}
+        <div class="validity-warning">{{ warning }}</div>
+    {% endfor %}
+    {% if report_summary.rows %}
+    <div class="extraction-message">Sunto creato per {{ report_summary.count }} report.</div>
+    <div class="summary-table-wrap">
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    {% for column in report_summary.columns %}
+                        <th>{{ column }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in report_summary.rows %}
+                    <tr>
+                        {% for column in report_summary.columns %}
+                            <td>{{ row|get_item:column }}</td>
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <a class="download" href="{% url 'scarica_sunto_report' %}" download>Scarica sunto Excel</a>
+    {% endif %}
+</section>
 {% endif %}
 {% endif %}
 
@@ -219,6 +264,7 @@
     <h3 class="customer-section-heading">Obbligatorio</h3>
     <div class="form-grid form-grid-customer-basic">
         <label>{{ form.nome_cliente.label }}{{ form.nome_cliente }}{{ form.nome_cliente.errors }}</label>
+        <label>{{ form.indirizzo_fornitura.label }}{{ form.indirizzo_fornitura }}{{ form.indirizzo_fornitura.errors }}</label>
         <label>{{ form.email_cliente.label }}{{ form.email_cliente }}{{ form.email_cliente.errors }}</label>
         <label>{{ form.telefono_cliente.label }}{{ form.telefono_cliente }}{{ form.telefono_cliente.errors }}</label>
         <label>{{ form.segmento.label }}{{ form.segmento }}{{ form.segmento.errors }}</label>
@@ -259,21 +305,39 @@
     {% else %}
     <div class="form-grid top">
         <label>{{ form.nome_cliente.label }}{{ form.nome_cliente }}{{ form.nome_cliente.errors }}</label>
+        <label>{{ form.indirizzo_fornitura.label }}{{ form.indirizzo_fornitura }}{{ form.indirizzo_fornitura.errors }}</label>
         <label>{{ form.pod_pdr.label }}{{ form.pod_pdr }}{{ form.pod_pdr.errors }}</label>
         <label>{{ form.segmento.label }}{{ form.segmento }}{{ form.segmento.errors }}</label>
         <label>{{ form.commodity.label }}{{ form.commodity }}{{ form.commodity.errors }}</label>
         <label>{{ form.bill_tariff_type.label }}{{ form.bill_tariff_type }}{{ form.bill_tariff_type.errors }}</label>
-        <fieldset class="provider-picker">
-            <legend>{{ form.providers.label }}</legend>
+        {% if illumia_only_mode %}
             {{ form.providers }}
-            {{ form.providers.errors }}
-        </fieldset>
-        <label class="checkbox-field" data-cve-over70-field hidden>{{ form.cve_over70 }} {{ form.cve_over70.label }}{{ form.cve_over70.errors }}</label>
-        <fieldset class="provider-picker">
-            <legend>{{ form.tariff_selection_mode.label }}</legend>
             {{ form.tariff_selection_mode }}
-            {{ form.tariff_selection_mode.errors }}
-        </fieldset>
+            {{ form.offer_var_choice_eon }}
+            {{ form.offer_fix_choice_eon }}
+            {{ form.offer_var_choice_cve }}
+            {{ form.offer_fix_choice_cve }}
+            {{ form.cve_over70 }}
+        {% else %}
+            <fieldset class="provider-picker">
+                <legend>{{ form.providers.label }}</legend>
+                {{ form.providers }}
+                {{ form.providers.errors }}
+            </fieldset>
+            {% if operator_mode %}
+                {{ form.tariff_selection_mode }}
+                {{ form.offer_var_choice_cve }}
+                {{ form.offer_fix_choice_cve }}
+                {{ form.cve_over70 }}
+            {% else %}
+                <label class="checkbox-field" data-cve-over70-field hidden>{{ form.cve_over70 }} {{ form.cve_over70.label }}{{ form.cve_over70.errors }}</label>
+                <fieldset class="provider-picker">
+                    <legend>{{ form.tariff_selection_mode.label }}</legend>
+                    {{ form.tariff_selection_mode }}
+                    {{ form.tariff_selection_mode.errors }}
+                </fieldset>
+            {% endif %}
+        {% endif %}
     </div>
 
     <h2>Offerte confronto</h2>
@@ -284,17 +348,19 @@
             <label>{{ form.offer_var_choice_illumia.label }}{{ form.offer_var_choice_illumia }}{{ form.offer_var_choice_illumia.errors }}</label>
             <label>{{ form.offer_fix_choice_illumia.label }}{{ form.offer_fix_choice_illumia }}{{ form.offer_fix_choice_illumia.errors }}</label>
         </div>
-        {% if not customer_mode %}
+        {% if not illumia_only_mode %}
         <div class="offer-provider" data-provider-panel="EON">
             <h3>E.ON</h3>
             <label>{{ form.offer_var_choice_eon.label }}{{ form.offer_var_choice_eon }}{{ form.offer_var_choice_eon.errors }}</label>
             <label>{{ form.offer_fix_choice_eon.label }}{{ form.offer_fix_choice_eon }}{{ form.offer_fix_choice_eon.errors }}</label>
         </div>
+        {% if not operator_mode %}
         <div class="offer-provider" data-provider-panel="CVE">
             <h3>CVE</h3>
             <label>{{ form.offer_var_choice_cve.label }}{{ form.offer_var_choice_cve }}{{ form.offer_var_choice_cve.errors }}</label>
             <label>{{ form.offer_fix_choice_cve.label }}{{ form.offer_fix_choice_cve }}{{ form.offer_fix_choice_cve.errors }}</label>
         </div>
+        {% endif %}
         {% endif %}
     </div>
 
@@ -379,6 +445,7 @@
 
     <div class="meta">
         <div><strong>Cliente:</strong> {{ prepared.calc.nome_cliente }}</div>
+        <div><strong>Indirizzo fornitura:</strong> {{ prepared.calc.indirizzo_fornitura|default:"N.D." }}</div>
         {% if not customer_mode %}
         <div><strong>Codice POD/PDR:</strong> {{ prepared.calc.pod_pdr|default:"N.D." }}</div>
         {% endif %}
@@ -390,7 +457,7 @@
         <div><strong>Mesi fatturati:</strong> {{ prepared.calc.billing_months }}</div>
         <div><strong>Indice usato:</strong> {{ prepared.calc.indice.mese|default:"N.D." }}</div>
         <div><strong>Fornitori confronto:</strong> {{ prepared.calc.providers_label }}</div>
-        <div><strong>Logica tariffe:</strong> {{ prepared.calc.tariff_selection_mode_label }}</div>
+        {% if not illumia_only_mode and not operator_mode %}<div><strong>Logica tariffe:</strong> {{ prepared.calc.tariff_selection_mode_label }}</div>{% endif %}
         {% if prepared.calc.cve_selected %}<div><strong>CVE Over 70:</strong> {{ prepared.calc.cve_over70_label }}</div>{% endif %}
         {% for provider in prepared.calc.provider_results %}
             <div><strong>{{ provider.provider_label }} variabile:</strong> {{ provider.offer_var|default:"N.D." }}</div>
@@ -454,6 +521,7 @@
 <script>
 (() => {
     const customerMode = {{ customer_mode|yesno:"true,false" }};
+    const illumiaOnlyMode = {{ illumia_only_mode|yesno:"true,false" }};
     const billInput = document.getElementById("id_bill_pdf");
     const billName = document.querySelector("[data-upload-file-name]");
     const providerChecks = Array.from(document.querySelectorAll("input[name='providers']"));
@@ -509,7 +577,7 @@
     };
 
     const selectedProviders = () => {
-        if (customerMode) {
+        if (customerMode || illumiaOnlyMode) {
             return ["ILLUMIA"];
         }
         return providerChecks.filter((box) => box.checked).map((box) => box.value);

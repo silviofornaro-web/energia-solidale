@@ -10,15 +10,12 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 from .forms import ClientRegistrationForm
 from .models import InviteCode
+from .roles import is_internal_user
 
 
 logger = logging.getLogger(__name__)
 _database_ready = False
 _database_ready_lock = Lock()
-
-
-def _is_internal_user(user):
-    return bool(user.is_authenticated and (user.is_staff or user.is_superuser))
 
 
 def ensure_login_database_ready():
@@ -53,7 +50,7 @@ class ResilientLoginView(LoginView):
         next_url = self.get_redirect_url()
         if next_url:
             return next_url
-        if _is_internal_user(self.request.user):
+        if is_internal_user(self.request.user):
             return reverse("confronto")
         return reverse("accesso_clienti")
 
@@ -72,9 +69,9 @@ def register(request):
     except Exception:
         logger.exception("Registration database setup failed before rendering the signup page.")
     next_url = _safe_next_url(request)
-    is_internal_user = _is_internal_user(request.user)
+    internal_user = is_internal_user(request.user)
     registration_success = ""
-    if request.user.is_authenticated and not is_internal_user:
+    if request.user.is_authenticated and not internal_user:
         return redirect(next_url)
     if request.method == "POST":
         form = ClientRegistrationForm(request.POST)
@@ -84,7 +81,7 @@ def register(request):
             except ValueError:
                 form.add_error("invite_code", "Questo codice invito non e piu disponibile.")
             else:
-                if is_internal_user:
+                if internal_user:
                     registration_success = (
                         f"Account cliente creato per {user.email}. "
                         "La tua sessione admin e rimasta attiva."

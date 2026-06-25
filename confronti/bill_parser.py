@@ -37,6 +37,10 @@ DATE_PATTERN = (
     r"(?:\d{1,2}[/.]\d{1,2}[/.]\d{2,4}"
     r"|\d{1,2}\s+(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\s+\d{4})"
 )
+ADDRESS_PREFIX_PATTERN = (
+    r"(?:VIA|VIALE|BORGO|CORSO|PIAZZA|P\.ZZA|PZA|STRADA|LOCALIT[AÀ]|LOC\.?|LARGO|"
+    r"RIVIERA|FONDAMENTA|CALLE|CAMPO|SALIZADA|CONTRADA|VICOLO)"
+)
 
 
 @dataclass
@@ -167,6 +171,59 @@ def _extract_name(text):
     if not match:
         return ""
     return " ".join(match.group(1).split()).title()
+
+
+def _looks_like_address(value):
+    return bool(re.match(rf"^{ADDRESS_PREFIX_PATTERN}\b", str(value or "").strip(), re.IGNORECASE))
+
+
+def _clean_address(value):
+    address = " ".join(str(value or "").split())
+    address = re.split(
+        r"\s+(?:Codice\s+POD|Codice\s+PDR|POD|PDR|Periodo|MERCATO|Contratto|Scontrino)\b",
+        address,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+    return address.strip(" ,;-. ").title()
+
+
+def _extract_supply_address(text, name=""):
+    lines = [" ".join(line.split()).strip() for line in _normalize_text(text).splitlines()]
+    lines = [line for line in lines if line]
+    explicit_labels = (
+        r"Indirizzo\s+(?:di\s+)?fornitura",
+        r"Ubicazione\s+(?:della\s+)?fornitura",
+        r"Luogo\s+di\s+fornitura",
+        r"Punto\s+di\s+fornitura",
+    )
+    label_pattern = "(?:" + "|".join(explicit_labels) + ")"
+    for index, line in enumerate(lines):
+        explicit = re.search(
+            rf"{label_pattern}\s*:?[\s-]*({ADDRESS_PREFIX_PATTERN}\b.+)",
+            line,
+            re.IGNORECASE,
+        )
+        if explicit:
+            return _clean_address(explicit.group(1))
+        if re.search(label_pattern, line, re.IGNORECASE):
+            for candidate in lines[index + 1 : index + 4]:
+                if _looks_like_address(candidate):
+                    return _clean_address(candidate)
+    if name:
+        name_norm = " ".join(str(name).split()).lower()
+        for index, line in enumerate(lines):
+            if " ".join(line.split()).lower() == name_norm:
+                for candidate in lines[index + 1 : index + 4]:
+                    if _looks_like_address(candidate):
+                        return _clean_address(candidate)
+    collapsed = _collapsed(text)
+    explicit = re.search(
+        rf"{label_pattern}\s*:?[\s-]*({ADDRESS_PREFIX_PATTERN}\b.{{5,140}}?)(?=\s+(?:Codice\s+POD|Codice\s+PDR|POD|PDR|Periodo|MERCATO|Contratto|Scontrino|$))",
+        collapsed,
+        re.IGNORECASE,
+    )
+    return _clean_address(explicit.group(1)) if explicit else ""
 
 
 def _extract_period(text):
@@ -395,6 +452,9 @@ def parse_bill_text(text):
     name = _extract_name(normalized)
     if name:
         values["nome_cliente"] = name
+    supply_address = _extract_supply_address(normalized, name)
+    if supply_address:
+        values["indirizzo_fornitura"] = supply_address
     pod_pdr = _extract_pod_pdr(normalized, commodity)
     if pod_pdr:
         values["pod_pdr"] = pod_pdr
@@ -431,6 +491,8 @@ def parse_bill_text(text):
         warnings.append("Data fine offerta bolletta non riconosciuta: compilala manualmente.")
     if not name:
         warnings.append("Nome cliente non riconosciuto: compilalo manualmente.")
+    if not supply_address:
+        warnings.append("Indirizzo fornitura non riconosciuto: compilalo manualmente.")
     if not start or not end:
         warnings.append("Periodo di fatturazione non riconosciuto: compilalo manualmente.")
     if consumo is None:

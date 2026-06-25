@@ -1,3 +1,4 @@
+import os
 from datetime import date
 from io import BytesIO
 from io import StringIO
@@ -7,20 +8,24 @@ from unittest.mock import patch
 
 from django import forms
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
 from .bill_parser import ParsedBill, parse_bill_text
 from .forms import ConfrontoForm, CustomerInviteForm
 from .models import ComparisonReport, CustomerArchiveFolder, InviteCode
+from .roles import ILLUMIA_OPERATOR_GROUP
 from . import services
 
 
 def valid_payload(**overrides):
     data = {
         "nome_cliente": "Mario Rossi",
+        "indirizzo_fornitura": "Via Roma 10, Chioggia VE",
         "pod_pdr": "IT001E12345678",
         "segmento": "RESIDENZIALE",
         "commodity": "EE",
@@ -542,6 +547,7 @@ class BillParserTests(SimpleTestCase):
         )
         self.assertEqual(parsed.values["commodity"], "GAS")
         self.assertEqual(parsed.values["pod_pdr"], "15351410010036")
+        self.assertEqual(parsed.values["indirizzo_fornitura"], "Via Signoria 79")
         self.assertEqual(parsed.values["bill_start"], date(2025, 10, 1))
         self.assertEqual(parsed.values["bill_end"], date(2025, 10, 31))
         self.assertAlmostEqual(parsed.values["b_rete_fissa"], 7.33)
@@ -580,6 +586,7 @@ class ConfrontoFormTests(SimpleTestCase):
     def test_dashboard_context_fields_are_required_and_not_prefilled(self):
         form = ConfrontoForm()
         self.assertIsNone(form.fields["nome_cliente"].initial)
+        self.assertIsNone(form.fields["indirizzo_fornitura"].initial)
         self.assertFalse(form.fields["pod_pdr"].required)
         self.assertEqual(form.fields["segmento"].choices[0], ("", "Seleziona segmento"))
         self.assertEqual(form.fields["commodity"].choices[0], ("", "Seleziona fornitura"))
@@ -596,6 +603,7 @@ class ConfrontoFormTests(SimpleTestCase):
         invalid = ConfrontoForm(
             valid_payload(
                 nome_cliente="",
+                indirizzo_fornitura="",
                 segmento="",
                 commodity="",
                 bill_tariff_type="",
@@ -610,6 +618,7 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertFalse(invalid.is_valid())
         for field in [
             "nome_cliente",
+            "indirizzo_fornitura",
             "segmento",
             "commodity",
             "bill_tariff_type",
@@ -748,6 +757,32 @@ class ConfrontoFormTests(SimpleTestCase):
         self.assertFalse(form.cleaned_data["cve_over70"])
 
 
+    def test_operator_mode_allows_illumia_and_eon_latest_but_keeps_pod(self):
+        form = ConfrontoForm(
+            valid_payload(
+                pod_pdr="IT001E99999999",
+                providers=["EON"],
+                tariff_selection_mode="PERIOD",
+                offer_var_choice_eon="E.ON Flex Luce Casa",
+                offer_fix_choice_eon="E.ON Luce Tua",
+                offer_var_choice_cve="CVE 1Casa Smart Luce",
+                offer_fix_choice_cve="Qualsiasi offerta",
+                cve_over70="on",
+            ),
+            operator_mode=True,
+        )
+        self.assertEqual(form.fields["providers"].choices, [("ILLUMIA", "Illumia"), ("EON", "E.ON")])
+        self.assertTrue(isinstance(form.fields["tariff_selection_mode"].widget, forms.HiddenInput))
+        self.assertTrue(form.is_valid(), form.errors.as_data())
+        self.assertEqual(form.cleaned_data["pod_pdr"], "IT001E99999999")
+        self.assertEqual(form.cleaned_data["providers"], ["EON"])
+        self.assertEqual(form.cleaned_data["provider"], "EON")
+        self.assertEqual(form.cleaned_data["tariff_selection_mode"], "LATEST")
+        self.assertEqual(form.cleaned_data["offer_var_choice_cve"], "")
+        self.assertEqual(form.cleaned_data["offer_fix_choice_cve"], "")
+        self.assertFalse(form.cleaned_data["cve_over70"])
+
+
 class InviteCommandTests(TestCase):
     def test_crea_invito_creates_single_code_with_label(self):
         output = StringIO()
@@ -767,6 +802,67 @@ class InviteCommandTests(TestCase):
         self.assertEqual([invite.label for invite in invites], ["Campagna 1", "Campagna 2", "Campagna 3"])
         lines = [line.strip() for line in output.getvalue().splitlines() if line.strip()]
         self.assertEqual(len(lines), 3)
+
+
+    @patch.dict(
+        os.environ,
+        {
+            "DJANGO_OPERATOR_USERNAME": "operatore.illumia@example.com",
+            "DJANGO_OPERATOR_EMAIL": "operatore.illumia@example.com",
+            "DJANGO_OPERATOR_PASSWORD": "OperatorTestPassword123!",
+            "DJANGO_OPERATOR_FIRST_NAME": "Operatore",
+            "DJANGO_OPERATOR_LAST_NAME": "Illumia",
+        },
+        clear=False,
+    )
+    def test_create_initial_superuser_can_create_illumia_operator(self):
+        output = StringIO()
+        call_command("create_initial_superuser", stdout=output)
+
+        User = get_user_model()
+        user = User.objects.get(username="operatore.illumia@example.com")
+        self.assertEqual(user.email, "operatore.illumia@example.com")
+        self.assertEqual(user.first_name, "Operatore")
+        self.assertEqual(user.last_name, "Illumia")
+        self.assertTrue(user.is_staff)
+        self.assertFalse(user.is_superuser)
+        self.assertTrue(user.check_password("OperatorTestPassword123!"))
+        self.assertTrue(user.groups.filter(name=ILLUMIA_OPERATOR_GROUP).exists())
+        self.assertIn("Initial Illumia operator created: operatore.illumia@example.com", output.getvalue())
+
+
+    @patch.dict(
+        os.environ,
+        {
+            "DJANGO_OPERATOR_USERNAME": "operatore.illumia@example.com",
+            "DJANGO_OPERATOR_EMAIL": "operatore.illumia@example.com",
+            "DJANGO_OPERATOR_PASSWORD": "OperatorTestPassword123!",
+            "DJANGO_OPERATOR_FIRST_NAME": "Operatore",
+            "DJANGO_OPERATOR_LAST_NAME": "Illumia",
+        },
+        clear=False,
+    )
+    def test_create_initial_superuser_updates_existing_illumia_operator_password(self):
+        User = get_user_model()
+        existing = User.objects.create_user(
+            username="operatore.illumia@example.com",
+            email="vecchia@example.com",
+            password="OldPassword123!",
+        )
+
+        output = StringIO()
+        call_command("create_initial_superuser", stdout=output)
+
+        existing.refresh_from_db()
+        self.assertEqual(existing.email, "operatore.illumia@example.com")
+        self.assertEqual(existing.first_name, "Operatore")
+        self.assertEqual(existing.last_name, "Illumia")
+        self.assertTrue(existing.is_staff)
+        self.assertFalse(existing.is_superuser)
+        self.assertFalse(existing.check_password("OldPassword123!"))
+        self.assertTrue(existing.check_password("OperatorTestPassword123!"))
+        self.assertTrue(existing.groups.filter(name=ILLUMIA_OPERATOR_GROUP).exists())
+        self.assertIn("Initial Illumia operator already exists: operatore.illumia@example.com", output.getvalue())
 
     def test_stato_clienti_lists_customers_and_invite_status(self):
         customer = get_user_model().objects.create_user(
@@ -831,6 +927,14 @@ class ConfrontoViewTests(TestCase):
             first_name="Cliente",
             last_name="Base",
         )
+        self.operator_user = User.objects.create_user(
+            username="operatore@example.com",
+            email="operatore@example.com",
+            password="secret",
+            is_staff=True,
+        )
+        operator_group = Group.objects.create(name=ILLUMIA_OPERATOR_GROUP)
+        self.operator_user.groups.add(operator_group)
         self.client = Client()
 
     def tearDown(self):
@@ -843,6 +947,9 @@ class ConfrontoViewTests(TestCase):
 
     def login_customer(self):
         self.assertTrue(self.client.login(username="cliente-base@example.com", password="secret"))
+
+    def login_operator(self):
+        self.assertTrue(self.client.login(username="operatore@example.com", password="secret"))
 
     def test_root_shows_homepage_and_internal_login_for_anonymous_users(self):
         response = self.client.get("/")
@@ -857,6 +964,7 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Genera Codici")
         self.assertContains(response, "Archivio Report")
         self.assertContains(response, "Confronto Bollette/Offerte")
+        self.assertContains(response, "Sunto Report")
         self.assertContains(response, 'href="/area-clienti/"')
         self.assertContains(response, 'href="/accounts/register/"')
         self.assertContains(response, 'href="/accounts/login/?next=%2Farea-clienti%2F"')
@@ -864,6 +972,7 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, 'href="/accounts/login/?next=%2F%3Fpanel%3Dgenera-codici"')
         self.assertContains(response, 'href="/accounts/login/?next=%2Farchivio-report%2F"')
         self.assertContains(response, 'href="/accounts/login/?next=%2F%3Fpanel%3Dconfronto"')
+        self.assertContains(response, 'href="/accounts/login/?next=%2F%3Fpanel%3Dsunto-report"')
 
     def test_internal_status_tab_opens_status_section_after_login(self):
         self.login()
@@ -1016,12 +1125,14 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Archivio report")
         self.assertContains(response, "Apri dashboard cliente")
         self.assertContains(response, "Apri registrazione cliente")
+        self.assertContains(response, "Sunto report")
         self.assertContains(response, 'href="/?panel=confronto#confronto-bollette-offerte"')
         self.assertContains(response, 'href="/?panel=genera-codici#genera-codici"')
         self.assertContains(response, 'href="/?panel=status-clienti#stato-clienti"')
         self.assertContains(response, 'href="/archivio-report/"')
         self.assertContains(response, 'href="/area-clienti/"')
         self.assertContains(response, 'href="/accounts/register/"')
+        self.assertContains(response, 'href="/?panel=sunto-report#sunto-report"')
         self.assertContains(response, "Vendita fissa (totale bolletta)")
         self.assertContains(response, "Rete/oneri fissa (totale bolletta)")
         self.assertContains(response, 'data-month-field="bill_start"')
@@ -1050,6 +1161,93 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "3271044102")
         self.assertNotContains(response, "Importa bolletta PDF")
 
+
+    def test_operator_dashboard_allows_illumia_and_eon_latest_tariffs_only(self):
+        self.login_operator()
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Confronto bollette")
+        self.assertContains(response, "Fornitori confronto")
+        self.assertContains(response, "Illumia")
+        self.assertContains(response, "E.ON")
+        self.assertContains(response, "Illumia - Offerta variabile")
+        self.assertContains(response, "Illumia - Offerta fissa")
+        self.assertContains(response, "E.ON - Offerta variabile")
+        self.assertContains(response, "E.ON - Offerta fissa")
+        self.assertNotContains(response, "Fornitore abilitato")
+        self.assertContains(response, "Sunto report")
+        self.assertContains(response, 'href="/?panel=sunto-report#sunto-report"')
+        self.assertNotContains(response, "Esegui confronto")
+        self.assertNotContains(response, "Utenza operatore")
+        self.assertNotContains(response, "Logica tariffe confronto")
+        self.assertNotContains(response, "Tariffe del periodo bolletta")
+        self.assertNotContains(response, "CVE - Offerta variabile")
+        self.assertNotContains(response, "Tariffa CVE Over 70")
+        self.assertNotContains(response, "Genera Codice invito")
+        self.assertNotContains(response, "Stato clienti")
+        self.assertNotContains(response, "Apri dashboard cliente")
+
+
+    def test_operator_can_open_report_summary_panel_without_admin_tools(self):
+        self.login_operator()
+        response = self.client.get("/?panel=sunto-report")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sunto report confronti")
+        self.assertContains(response, "Report confronto Excel")
+        self.assertContains(response, "Crea sunto report")
+        self.assertNotContains(response, "Genera Codice invito")
+        self.assertNotContains(response, "Stato clienti")
+        self.assertNotContains(response, "Apri dashboard cliente")
+        self.assertNotContains(response, "Confronto Bollette/Offerte")
+        self.assertNotContains(response, "Importa bolletta PDF")
+
+    def test_operator_can_upload_and_download_report_summary(self):
+        self.login()
+        content = self._comparison_excel(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10")
+        self.client.logout()
+        self.login_operator()
+        response = self.client.post(
+            "/?panel=sunto-report",
+            {
+                "action": "build_report_summary",
+                "report_files": [
+                    SimpleUploadedFile("rossi.xlsx", content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sunto creato per 1 report")
+        self.assertContains(response, "Via Roma 10")
+        response = self.client.get("/scarica-sunto-report/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("sunto_report_confronti.xlsx", response["Content-Disposition"])
+
+    def test_operator_post_can_compare_eon_but_uses_latest_and_excludes_cve(self):
+        self.login_operator()
+        response = self.client.post(
+            "/",
+            valid_payload(
+                providers=["EON"],
+                tariff_selection_mode="PERIOD",
+                offer_var_choice_eon="E.ON Flex Luce Casa",
+                offer_fix_choice_eon="E.ON Luce Tua",
+                offer_var_choice_cve="CVE 1Casa Smart Luce",
+                cve_over70="on",
+            ),
+        )
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        self.assertIn("Fornitori confronto:</strong> E.ON", html)
+        self.assertIn("E.ON Flex Luce Casa", html)
+        self.assertIn("E.ON Luce Tua", html)
+        self.assertIn("E.ON Variabile", html)
+        self.assertIn("E.ON Fissa", html)
+        self.assertNotIn("CVE Variabile", html)
+        self.assertNotIn("Logica tariffe:</strong>", html)
+        self.assertEqual(self.client.session["last_confronto"]["providers"], ["EON"])
+        self.assertEqual(self.client.session["last_confronto"]["provider"], "EON")
+        self.assertEqual(self.client.session["last_confronto"]["tariff_selection_mode"], "LATEST")
+
     def test_customer_page_hides_provider_picker_and_shows_illumia_lock(self):
         self.login()
         response = self.client.get("/area-clienti/")
@@ -1061,6 +1259,7 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "4. Calcola confronto")
         self.assertContains(response, "Obbligatorio")
         self.assertNotContains(response, "Build locale CAP-FISCALE 2026-06-06")
+        self.assertContains(response, "Indirizzo fornitura")
         self.assertContains(response, "Email")
         self.assertContains(response, "Telefono")
         self.assertNotContains(response, "Fornitore confronto")
@@ -1144,6 +1343,32 @@ class ConfrontoViewTests(TestCase):
         response = self.client.get("/archivio-report/")
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/area-clienti/")
+
+    def test_archive_page_requires_admin_even_for_operator(self):
+        self.login_operator()
+        response = self.client.get("/archivio-report/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/")
+
+    def test_operator_can_archive_report_without_accessing_archive_dashboard(self):
+        self.login_operator()
+        comparison_response = self.client.post(
+            "/",
+            valid_payload(
+                providers=["EON"],
+                offer_var_choice_eon="E.ON Flex Luce Casa",
+                offer_fix_choice_eon="E.ON Luce Tua",
+            ),
+        )
+        self.assertContains(comparison_response, "Archivia report")
+
+        response = self.client.post("/archivio-report/salva/")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/?panel=confronto")
+        report = ComparisonReport.objects.get()
+        self.assertEqual(report.created_by, self.operator_user)
+        self.assertEqual(report.providers_label, "E.ON")
 
     def test_internal_dashboard_can_archive_current_report(self):
         self.login()
@@ -1424,6 +1649,7 @@ class ConfrontoViewTests(TestCase):
         mock_parse_uploaded_bill.return_value = ParsedBill(
             values={
                 "nome_cliente": "Federico Boetto",
+                "indirizzo_fornitura": "Via Roma 10",
                 "pod_pdr": "00881906523889",
                 "commodity": "GAS",
                 "consumo": 83,
@@ -1441,8 +1667,9 @@ class ConfrontoViewTests(TestCase):
             },
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Ho riportato nella dashboard 6 valori riconosciuti")
+        self.assertContains(response, "Ho riportato nella dashboard 7 valori riconosciuti")
         self.assertContains(response, "Federico Boetto")
+        self.assertContains(response, "Via Roma 10")
         self.assertContains(response, "00881906523889")
         self.assertContains(response, "Data fine offerta bolletta non riconosciuta")
         self.assertContains(response, "File caricato: bolletta.pdf")
@@ -1484,9 +1711,10 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(ws["F9"].value, "Consumo annuo stimato: 1200 kWh/anno")
         self.assertTrue(str(ws["F10"].value).startswith("Parametri Accise/IVA: "))
         self.assertEqual(ws["F11"].value, "Logica tariffe: Ultime tariffe disponibili")
-        self.assertEqual(ws["F12"].value, "Codice POD/PDR: IT001E12345678")
-        self.assertEqual(ws["F13"].value, "Fornitura: Luce")
-        self.assertEqual(ws["F14"].value, "Periodo bolletta: Gennaio 2026 - Marzo 2026")
+        self.assertEqual(ws["F12"].value, "Indirizzo fornitura: Via Roma 10, Chioggia VE")
+        self.assertEqual(ws["F13"].value, "Codice POD/PDR: IT001E12345678")
+        self.assertEqual(ws["F14"].value, "Fornitura: Luce")
+        self.assertEqual(ws["F15"].value, "Periodo bolletta: Gennaio 2026 - Marzo 2026")
         self.assertEqual(ws["A12"].value, "Bonus Sociale")
         self.assertEqual(ws["A13"].value, "Arrotondamenti")
         self.assertEqual(ws["A14"].value, "Servizi accessori (IVA 10%)")
@@ -1536,7 +1764,85 @@ class ConfrontoViewTests(TestCase):
         self.assertNotIn("Vendita Fissa Luce", labels)
         self.assertNotIn("Quota Potenza", labels)
         self.assertIn("Vendita Fissa Gas", labels)
-        self.assertEqual(ws["F13"].value, "Fornitura: Gas")
+        self.assertEqual(ws["F14"].value, "Fornitura: Gas")
+
+
+    def _comparison_excel(self, **payload_overrides):
+        self.client.post("/", valid_payload(**payload_overrides))
+        response = self.client.get("/scarica-excel/")
+        self.assertEqual(response.status_code, 200)
+        return response.content
+
+    def test_internal_report_summary_uploads_multiple_comparison_excels(self):
+        self.login()
+        first = self._comparison_excel(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10")
+        second = self._comparison_excel(
+            nome_cliente="Luigi Bianchi",
+            indirizzo_fornitura="Viale Milano 20",
+            providers=["ILLUMIA", "EON"],
+            offer_var_choice_eon="E.ON Flex Luce Casa",
+            offer_fix_choice_eon="E.ON Luce Tua",
+        )
+        response = self.client.post(
+            "/?panel=sunto-report",
+            {
+                "action": "build_report_summary",
+                "report_files": [
+                    SimpleUploadedFile("rossi.xlsx", first, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                    SimpleUploadedFile("bianchi.xlsx", second, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sunto report confronti")
+        self.assertContains(response, "Sunto creato per 2 report")
+        self.assertContains(response, "Via Roma 10")
+        self.assertContains(response, "Viale Milano 20")
+        self.assertContains(response, "Bolletta - Vendita Consumo")
+        self.assertContains(response, "E.ON Fissa - Totale")
+        summary = self.client.session["last_report_summary"]
+        self.assertEqual(summary["count"], 2)
+        self.assertIn("Indirizzo fornitura", summary["columns"])
+        self.assertIn("Bolletta - Totale", summary["columns"])
+
+    def test_report_summary_download_contains_rows(self):
+        self.login()
+        content = self._comparison_excel(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10")
+        self.client.post(
+            "/?panel=sunto-report",
+            {
+                "action": "build_report_summary",
+                "report_files": [
+                    SimpleUploadedFile("rossi.xlsx", content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+                ],
+            },
+        )
+        response = self.client.get("/scarica-sunto-report/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("sunto_report_confronti.xlsx", response["Content-Disposition"])
+        wb = load_workbook(BytesIO(response.content), data_only=False)
+        ws = wb["Sunto Report"]
+        headers = [cell.value for cell in ws[1]]
+        self.assertIn("Indirizzo fornitura", headers)
+        self.assertIn("Bolletta - Totale", headers)
+        address_col = headers.index("Indirizzo fornitura") + 1
+        detail_col = headers.index("Bolletta - Vendita Consumo") + 1
+        total_col = headers.index("Bolletta - Totale") + 1
+        consumption_col = headers.index("Consumo") + 1
+        self.assertEqual(ws.cell(row=2, column=address_col).value, "Via Roma 10")
+        self.assertTrue(ws.column_dimensions[get_column_letter(detail_col)].hidden)
+        self.assertFalse(ws.column_dimensions[get_column_letter(total_col)].hidden)
+        self.assertEqual(ws.cell(row=2, column=consumption_col).number_format, "#,##0.00")
+        self.assertEqual(ws.cell(row=2, column=total_col).number_format, "#,##0.00")
+        for row in ws.iter_rows(min_row=2):
+            for cell in row:
+                if isinstance(cell.value, (int, float)):
+                    self.assertEqual(cell.number_format, "#,##0.00")
+
+    def test_report_summary_download_requires_previous_summary(self):
+        self.login()
+        response = self.client.get("/scarica-sunto-report/")
+        self.assertEqual(response.status_code, 400)
 
     def test_excel_download_contains_both_provider_columns(self):
         self.login()

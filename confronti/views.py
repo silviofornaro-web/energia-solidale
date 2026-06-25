@@ -20,10 +20,21 @@ from .forms import (
     BillUploadForm,
     ConfrontoForm,
     CustomerInviteForm,
+    ReportSummaryUploadForm,
     session_to_service_data,
 )
 from .models import ComparisonReport, CustomerArchiveFolder, InviteCode
-from .services import build_excel_bytes, offer_options_payload, prepare_comparison, provider_label, safe_download_filename
+from .roles import is_illumia_operator, is_internal_user
+from .services import (
+    build_excel_bytes,
+    build_reports_summary,
+    build_reports_summary_excel,
+    normalize_providers,
+    offer_options_payload,
+    prepare_comparison,
+    provider_label,
+    safe_download_filename,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -31,6 +42,7 @@ LAST_UPLOADED_BILL_NAME_KEY = "last_uploaded_bill_name"
 LAST_UPLOADED_BILL_NAME_CLIENT_KEY = "last_uploaded_bill_name_cliente_illumia"
 LAST_COMPARISON_KEY = "last_confronto"
 LAST_COMPARISON_CLIENT_KEY = "last_confronto_cliente_illumia"
+LAST_REPORT_SUMMARY_KEY = "last_report_summary"
 WHATSAPP_SENDER_NUMBER = os.environ.get("WHATSAPP_SENDER_NUMBER", "3271044102")
 WHATSAPP_WEB_HOME_URL = "https://web.whatsapp.com/"
 CUSTOMER_PORTAL_BASE_URL = (
@@ -74,7 +86,7 @@ def _build_whatsapp_invite(customer_name, customer_phone, invite_code):
     }
 
 
-def _mode_config(customer_mode=False):
+def _mode_config(customer_mode=False, operator_mode=False):
     if customer_mode:
         return {
             "comparison_session_key": LAST_COMPARISON_CLIENT_KEY,
@@ -86,6 +98,14 @@ def _mode_config(customer_mode=False):
             ),
             "download_url_name": "scarica_excel_cliente_illumia",
         }
+    if operator_mode:
+        return {
+            "comparison_session_key": LAST_COMPARISON_KEY,
+            "upload_name_session_key": LAST_UPLOADED_BILL_NAME_KEY,
+            "page_title": "Confronto bollette",
+            "page_intro": "",
+            "download_url_name": "scarica_excel",
+        }
     return {
         "comparison_session_key": LAST_COMPARISON_KEY,
         "upload_name_session_key": LAST_UPLOADED_BILL_NAME_KEY,
@@ -95,9 +115,10 @@ def _mode_config(customer_mode=False):
     }
 
 
-def _force_customer_mode_data(data):
+def _force_illumia_only_data(data, *, clear_pod_pdr=False):
     payload = dict(data)
-    payload["pod_pdr"] = ""
+    if clear_pod_pdr:
+        payload["pod_pdr"] = ""
     payload["providers"] = ["ILLUMIA"]
     payload["provider"] = "ILLUMIA"
     payload["tariff_selection_mode"] = "LATEST"
@@ -109,8 +130,26 @@ def _force_customer_mode_data(data):
     return payload
 
 
-def _comparison_form(*args, customer_mode=False, **kwargs):
-    return ConfrontoForm(*args, customer_mode=customer_mode, **kwargs)
+def _force_customer_mode_data(data):
+    return _force_illumia_only_data(data, clear_pod_pdr=True)
+
+
+def _force_operator_mode_data(data):
+    payload = dict(data)
+    providers = [provider for provider in normalize_providers(payload.get("providers") or payload.get("provider")) if provider in {"ILLUMIA", "EON"}]
+    if not providers:
+        providers = ["ILLUMIA"]
+    payload["providers"] = providers
+    payload["provider"] = providers[0]
+    payload["tariff_selection_mode"] = "LATEST"
+    payload["offer_var_choice_cve"] = ""
+    payload["offer_fix_choice_cve"] = ""
+    payload["cve_over70"] = False
+    return payload
+
+
+def _comparison_form(*args, customer_mode=False, operator_mode=False, **kwargs):
+    return ConfrontoForm(*args, customer_mode=customer_mode, operator_mode=operator_mode, **kwargs)
 
 
 def _customer_optional_section_open(form):
@@ -140,11 +179,16 @@ def _customer_status_snapshot():
     }
 
 
-def _is_internal_user(user):
-    return bool(user.is_authenticated and (user.is_staff or user.is_superuser))
+def _is_archive_admin(user):
+    return bool(
+        getattr(user, "is_authenticated", False)
+        and (getattr(user, "is_superuser", False) or (getattr(user, "is_staff", False) and not is_illumia_operator(user)))
+    )
 
 
-def _redirect_for_non_internal_user():
+def _redirect_for_non_archive_admin(request):
+    if request.user.is_authenticated and is_internal_user(request.user):
+        return redirect("confronto")
     return redirect("accesso_clienti")
 
 
@@ -208,6 +252,7 @@ def _get_or_create_archive_folder(data, user):
 def _archive_report_payload(data, prepared):
     return {
         "customer_name": data.get("nome_cliente", ""),
+        "supply_address": data.get("indirizzo_fornitura", ""),
         "customer_email": data.get("email_cliente", ""),
         "customer_phone": data.get("telefono_cliente", ""),
         "commodity": data.get("commodity", ""),
@@ -302,8 +347,6 @@ def _archive_context(request, *, selected_folder=None, folder_form=None, active_
         "folder_form": folder_form,
         "report_entries": report_entries,
     }
-
-
 def _public_access_page(request):
     return render(
         request,
@@ -350,22 +393,37 @@ def _home_tabs():
             "label": "Confronto Bollette/Offerte",
             "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=confronto'})}",
         },
+        {
+            "key": "sunto-report",
+            "label": "Sunto Report",
+            "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=sunto-report'})}",
+        },
     ]
 
 
 def _normalize_admin_focus_panel(panel):
-    return panel if panel in {"confronto", "genera-codici", "status-clienti"} else "confronto"
+    return panel if panel in {"confronto", "genera-codici", "status-clienti", "sunto-report", "archivio-report"} else "confronto"
 
 
-def _admin_tabs(active_panel):
+def _admin_tabs(active_panel, operator_mode=False):
     root_url = reverse("confronto")
+    comparison_tab = {
+        "key": "confronto",
+        "label": "Esegui confronto",
+        "href": f"{root_url}?panel=confronto#confronto-bollette-offerte",
+        "active": active_panel == "confronto",
+    }
+    if operator_mode:
+        return [
+            {
+                "key": "sunto-report",
+                "label": "Sunto report",
+                "href": f"{root_url}?panel=sunto-report#sunto-report",
+                "active": active_panel == "sunto-report",
+            }
+        ]
     return [
-        {
-            "key": "confronto",
-            "label": "Esegui confronto",
-            "href": f"{root_url}?panel=confronto#confronto-bollette-offerte",
-            "active": active_panel == "confronto",
-        },
+        comparison_tab,
         {
             "key": "genera-codici",
             "label": "Genera Codice invito",
@@ -383,6 +441,12 @@ def _admin_tabs(active_panel):
             "label": "Archivio report",
             "href": reverse("archivio_report"),
             "active": active_panel == "archivio-report",
+        },
+        {
+            "key": "sunto-report",
+            "label": "Sunto report",
+            "href": f"{root_url}?panel=sunto-report#sunto-report",
+            "active": active_panel == "sunto-report",
         },
         {
             "key": "apri-dashboard-cliente",
@@ -421,8 +485,9 @@ def accesso_clienti(request):
     return _public_access_page(request)
 
 
-def _confronto_page(request, *, customer_mode=False):
-    mode = _mode_config(customer_mode)
+def _confronto_page(request, *, customer_mode=False, operator_mode=False):
+    illumia_only_mode = customer_mode
+    mode = _mode_config(customer_mode, operator_mode)
     prepared = None
     rows = None
     extraction_warnings = []
@@ -430,15 +495,18 @@ def _confronto_page(request, *, customer_mode=False):
     customer_invite_form = CustomerInviteForm()
     customer_invite_result = None
     customer_status = None
+    report_summary_form = ReportSummaryUploadForm()
+    report_summary = None
+    report_summary_warnings = []
     admin_focus_panel = "confronto" if not customer_mode else ""
     uploaded_bill_name = request.session.get(mode["upload_name_session_key"], "")
     upload_form = BillUploadForm()
     if request.method == "POST":
         action = request.POST.get("action")
-        if action == "send_customer_invite" and not customer_mode:
+        if action == "send_customer_invite" and not customer_mode and not operator_mode:
             admin_focus_panel = "genera-codici"
             customer_invite_form = CustomerInviteForm(request.POST)
-            form = _comparison_form(customer_mode=customer_mode)
+            form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
             if customer_invite_form.is_valid():
                 customer_name = customer_invite_form.cleaned_data.get("customer_name", "").strip()
                 customer_phone = customer_invite_form.cleaned_data["customer_phone"]
@@ -464,10 +532,24 @@ def _confronto_page(request, *, customer_mode=False):
                         "whatsapp_ready": True,
                     }
                 )
-        elif action == "show_customer_status" and not customer_mode:
+        elif action == "show_customer_status" and not customer_mode and not operator_mode:
             admin_focus_panel = "status-clienti"
             customer_status = _customer_status_snapshot()
-            form = _comparison_form(customer_mode=customer_mode)
+            form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
+        elif action == "build_report_summary" and not customer_mode:
+            admin_focus_panel = "sunto-report"
+            form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
+            report_summary_form = ReportSummaryUploadForm(request.POST, request.FILES)
+            if report_summary_form.is_valid():
+                report_summary = build_reports_summary(report_summary_form.cleaned_data["report_files"])
+                report_summary_warnings = report_summary.get("warnings", [])
+                request.session[LAST_REPORT_SUMMARY_KEY] = {
+                    "columns": report_summary.get("columns", []),
+                    "rows": report_summary.get("rows", []),
+                    "warnings": report_summary_warnings,
+                    "count": report_summary.get("count", 0),
+                }
+                report_summary_form = ReportSummaryUploadForm()
         elif action == "extract_bill":
             if not customer_mode:
                 admin_focus_panel = "confronto"
@@ -485,7 +567,7 @@ def _confronto_page(request, *, customer_mode=False):
                     parsed = parse_uploaded_bill(upload_form.cleaned_data["bill_pdf"])
                 except Exception:
                     logger.exception("Impossibile leggere il PDF della bolletta.")
-                    form = _comparison_form(customer_mode=customer_mode)
+                    form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
                     extraction_warnings = [
                         "Non sono riuscito a leggere questo PDF. Inserisci manualmente i valori della bolletta."
                     ]
@@ -493,12 +575,18 @@ def _confronto_page(request, *, customer_mode=False):
                     initial_data = parsed.values
                     if customer_mode:
                         initial_data = _force_customer_mode_data(initial_data)
-                    form = _comparison_form(initial=initial_data, customer_mode=customer_mode)
+                    elif operator_mode:
+                        initial_data = _force_operator_mode_data(initial_data)
+                    form = _comparison_form(
+                        initial=initial_data,
+                        customer_mode=customer_mode,
+                        operator_mode=operator_mode,
+                    )
                     extraction_warnings = parsed.warnings
                     extraction_count = len(parsed.values)
                     upload_form = BillUploadForm()
             else:
-                form = _comparison_form(customer_mode=customer_mode)
+                form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
         elif action == "reset_bill":
             if not customer_mode:
                 admin_focus_panel = "confronto"
@@ -508,6 +596,7 @@ def _confronto_page(request, *, customer_mode=False):
             providers = ["ILLUMIA"] if customer_mode else (request.POST.getlist("providers") or [request.POST.get("provider") or ""])
             initial_data = {
                 "nome_cliente": request.POST.get("nome_cliente") or "",
+                "indirizzo_fornitura": request.POST.get("indirizzo_fornitura") or "",
                 "email_cliente": request.POST.get("email_cliente") or "",
                 "telefono_cliente": request.POST.get("telefono_cliente") or "",
                 "pod_pdr": request.POST.get("pod_pdr") or "",
@@ -531,41 +620,52 @@ def _confronto_page(request, *, customer_mode=False):
             }
             if customer_mode:
                 initial_data = _force_customer_mode_data(initial_data)
-            form = _comparison_form(initial=initial_data, customer_mode=customer_mode)
+            elif operator_mode:
+                initial_data = _force_operator_mode_data(initial_data)
+            form = _comparison_form(initial=initial_data, customer_mode=customer_mode, operator_mode=operator_mode)
         else:
             if not customer_mode:
                 admin_focus_panel = "confronto"
-            form = _comparison_form(request.POST, customer_mode=customer_mode)
+            form = _comparison_form(request.POST, customer_mode=customer_mode, operator_mode=operator_mode)
             if form.is_valid():
                 data = form.service_data()
                 if customer_mode:
                     data = _force_customer_mode_data(data)
+                elif operator_mode:
+                    data = _force_operator_mode_data(data)
                 data["comparison_datetime"] = timezone.localtime().isoformat(timespec="seconds")
                 prepared = prepare_comparison(data)
                 rows = prepared["rows"]
                 session_data = form.session_data()
                 if customer_mode:
                     session_data = _force_customer_mode_data(session_data)
+                elif operator_mode:
+                    session_data = _force_operator_mode_data(session_data)
                 session_data["comparison_datetime"] = data["comparison_datetime"]
                 request.session[mode["comparison_session_key"]] = session_data
-                form = _comparison_form(initial=data, customer_mode=customer_mode)
+                form = _comparison_form(initial=data, customer_mode=customer_mode, operator_mode=operator_mode)
     else:
         if not customer_mode:
-            admin_focus_panel = _normalize_admin_focus_panel(request.GET.get("panel"))
-            if admin_focus_panel == "status-clienti":
+            requested_panel = _normalize_admin_focus_panel(request.GET.get("panel"))
+            admin_focus_panel = requested_panel if not operator_mode or requested_panel == "sunto-report" else "confronto"
+            if admin_focus_panel == "status-clienti" and not operator_mode:
                 customer_status = _customer_status_snapshot()
-        initial = (
-            {
+            if admin_focus_panel == "sunto-report":
+                report_summary = request.session.get(LAST_REPORT_SUMMARY_KEY)
+                if report_summary:
+                    report_summary_warnings = report_summary.get("warnings", [])
+        initial = None
+        if customer_mode:
+            initial = {
                 "providers": ["ILLUMIA"],
                 "tariff_selection_mode": "LATEST",
                 "pod_pdr": "",
                 "email_cliente": "",
                 "telefono_cliente": "",
             }
-            if customer_mode
-            else None
-        )
-        form = _comparison_form(initial=initial, customer_mode=customer_mode)
+        elif operator_mode:
+            initial = {"tariff_selection_mode": "LATEST"}
+        form = _comparison_form(initial=initial, customer_mode=customer_mode, operator_mode=operator_mode)
 
     return render(
         request,
@@ -580,6 +680,8 @@ def _confronto_page(request, *, customer_mode=False):
             "extraction_warnings": extraction_warnings,
             "extraction_count": extraction_count,
             "customer_mode": customer_mode,
+            "operator_mode": operator_mode,
+            "illumia_only_mode": illumia_only_mode,
             "customer_optional_open": _customer_optional_section_open(form),
             "page_title": mode["page_title"],
             "page_intro": mode["page_intro"],
@@ -590,22 +692,27 @@ def _confronto_page(request, *, customer_mode=False):
             "customer_invite_form": customer_invite_form,
             "customer_invite_result": customer_invite_result,
             "customer_status": customer_status,
+            "report_summary_form": report_summary_form,
+            "report_summary": report_summary,
+            "report_summary_warnings": report_summary_warnings,
             "admin_focus_panel": admin_focus_panel,
-            "admin_tabs": _admin_tabs(admin_focus_panel) if not customer_mode else [],
+            "admin_tabs": _admin_tabs(admin_focus_panel, operator_mode) if not customer_mode else [],
             "whatsapp_sender_number": WHATSAPP_SENDER_NUMBER,
             "whatsapp_web_home_url": WHATSAPP_WEB_HOME_URL,
         },
     )
 
 
-def _scarica_excel(request, *, customer_mode=False):
-    mode = _mode_config(customer_mode)
+def _scarica_excel(request, *, customer_mode=False, operator_mode=False):
+    mode = _mode_config(customer_mode, operator_mode)
     raw = request.session.get(mode["comparison_session_key"])
     if not raw:
         return HttpResponse("Nessun confronto pronto. Torna alla pagina principale e calcola il confronto.", status=400)
     data = session_to_service_data(raw)
     if customer_mode:
         data = _force_customer_mode_data(data)
+    elif operator_mode:
+        data = _force_operator_mode_data(data)
     prepared = prepare_comparison(data)
     content = build_excel_bytes(data, prepared)
     provider_name = "_".join(provider_label(provider).lower().replace(".", "") for provider in data.get("providers", []))
@@ -624,8 +731,8 @@ def _scarica_excel(request, *, customer_mode=False):
 
 @login_required
 def archivia_report_corrente(request):
-    if not _is_internal_user(request.user):
-        return _redirect_for_non_internal_user()
+    if not is_internal_user(request.user):
+        return redirect("accesso_clienti")
     if request.method != "POST":
         return redirect("confronto")
     raw = request.session.get(LAST_COMPARISON_KEY)
@@ -650,20 +757,22 @@ def archivia_report_corrente(request):
     report.report_file.save(report.original_filename, ContentFile(content), save=False)
     report.save()
     messages.success(request, f"Report archiviato nella cartella {folder.folder_name}.")
-    return redirect("archivio_report_cartella", folder_id=folder.pk)
+    if _is_archive_admin(request.user):
+        return redirect("archivio_report_cartella", folder_id=folder.pk)
+    return redirect(f"{reverse('confronto')}?panel=confronto")
 
 
 @login_required
 def archivio_report(request):
-    if not _is_internal_user(request.user):
-        return _redirect_for_non_internal_user()
+    if not _is_archive_admin(request.user):
+        return _redirect_for_non_archive_admin(request)
     return render(request, "confronti/archive.html", _archive_context(request))
 
 
 @login_required
 def archivio_report_cartella(request, folder_id):
-    if not _is_internal_user(request.user):
-        return _redirect_for_non_internal_user()
+    if not _is_archive_admin(request.user):
+        return _redirect_for_non_archive_admin(request)
     folder = get_object_or_404(CustomerArchiveFolder, pk=folder_id)
     if request.method == "POST":
         action = request.POST.get("action")
@@ -700,8 +809,8 @@ def archivio_report_cartella(request, folder_id):
 
 @login_required
 def scarica_report_archiviato(request, report_id):
-    if not _is_internal_user(request.user):
-        return _redirect_for_non_internal_user()
+    if not _is_archive_admin(request.user):
+        return _redirect_for_non_archive_admin(request)
     report = get_object_or_404(ComparisonReport, pk=report_id)
     filename = report.original_filename or os.path.basename(report.report_file.name)
     report.report_file.open("rb")
@@ -715,12 +824,30 @@ def scarica_report_archiviato(request, report_id):
     return response
 
 
+@login_required
+def scarica_sunto_report(request):
+    if not is_internal_user(request.user):
+        return redirect("accesso_clienti")
+    summary = request.session.get(LAST_REPORT_SUMMARY_KEY)
+    if not summary or not summary.get("rows"):
+        return HttpResponse("Nessun sunto pronto. Carica i report dalla dashboard admin.", status=400)
+    content = build_reports_summary_excel(summary)
+    nome = safe_download_filename("sunto_report_confronti.xlsx")
+    response = HttpResponse(
+        content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{nome}"'
+    response["Content-Length"] = str(len(content))
+    return response
+
+
 def confronto(request):
     if not request.user.is_authenticated:
         return _home_page(request)
-    if not _is_internal_user(request.user):
+    if not is_internal_user(request.user):
         return redirect("accesso_clienti")
-    return _confronto_page(request)
+    return _confronto_page(request, operator_mode=is_illumia_operator(request.user))
 
 
 @login_required
@@ -730,9 +857,9 @@ def confronto_cliente_illumia(request):
 
 @login_required
 def scarica_excel(request):
-    if not _is_internal_user(request.user):
+    if not is_internal_user(request.user):
         return redirect("accesso_clienti")
-    return _scarica_excel(request)
+    return _scarica_excel(request, operator_mode=is_illumia_operator(request.user))
 
 
 @login_required

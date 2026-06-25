@@ -19,6 +19,7 @@ urlpatterns = [
         views.scarica_report_archiviato,
         name="scarica_report_archiviato",
     ),
+    path("scarica-sunto-report/", views.scarica_sunto_report, name="scarica_sunto_report"),
     path("area-clienti/confronto-illumia/", views.confronto_cliente_illumia, name="confronto_cliente_illumia"),
     path("area-clienti/scarica-excel/", views.scarica_excel_cliente_illumia, name="scarica_excel_cliente_illumia"),
 ]
