@@ -5,7 +5,7 @@
 
 {% block content %}
 <h1>{{ page_title }}</h1>
-<p class="panel-lead">Archivio riservato agli admin per consultare, scaricare e aggiornare i report dei confronti salvati.</p>
+<p class="panel-lead">Archivio riservato agli admin per consultare, scaricare e aggiornare i report dei confronti salvati nell'app.</p>
 
 <section class="panel admin-tabs-shell">
     <nav class="admin-tabs-nav" aria-label="Azioni dashboard interna">
@@ -93,9 +93,19 @@
 
         <div class="archive-detail-stats">
             <div class="archive-detail-stat">
-                <strong>Cartella fisica</strong>
-                <span><code class="archive-path">{{ selected_folder.folder_name }}</code></span>
+                <strong>Dove sono i file</strong>
+                <span>{{ archive_storage_label }}</span>
             </div>
+            <div class="archive-detail-stat">
+                <strong>Percorso archivio app</strong>
+                <span><code class="archive-path">report_archive/{{ selected_folder.folder_name }}/</code></span>
+            </div>
+            {% if archive_local_open_available %}
+            <div class="archive-detail-stat archive-detail-stat-wide">
+                <strong>Percorso locale reale</strong>
+                <span><code class="archive-path">{{ archive_folder_absolute_path }}</code></span>
+            </div>
+            {% endif %}
             <div class="archive-detail-stat">
                 <strong>Creata il</strong>
                 <span>{{ selected_folder.created_at|date:"d/m/Y H:i" }}</span>
@@ -110,7 +120,19 @@
             </div>
         </div>
 
+        <div class="form-actions archive-open-folder-actions">
+            {% if archive_local_open_available %}
+            <form method="post" action="{% url 'apri_cartella_archivio_locale' selected_folder.pk %}" class="inline-form">
+                {% csrf_token %}
+                <button type="submit" class="secondary">Apri cartella file</button>
+            </form>
+            {% else %}
+            <span class="archive-open-folder-note">Su Render i file restano nel cloud dell'app. Per modificarli usa `Aggiungi file`, `Sostituisci file` ed `Elimina report` direttamente da questa pagina.</span>
+            {% endif %}
+        </div>
+
         <p class="archive-help-text">Da qui puoi aggiornare i dati della cartella, aggiungere nuovi report Excel, sostituire i file gia archiviati e scaricarli quando servono.</p>
+        <p class="archive-help-text archive-help-text-compact">Se modifichi direttamente un file nella cartella locale, mantieni lo stesso nome. Se vuoi cambiare file o nome, usa `Sostituisci file` oppure `Elimina report` + `Aggiungi file`.</p>
 
         <form method="post" class="archive-edit-form">
             {% csrf_token %}
@@ -180,6 +202,9 @@
                             <span>{{ entry.report.comparison_datetime|date:"d/m/Y H:i"|default:"N.D." }}</span>
                             <span>{{ entry.report.original_filename|default:"report.xlsx" }}</span>
                             <span><code class="archive-path">{{ entry.report.report_file.name }}</code></span>
+                            {% if archive_local_open_available %}
+                            <span><code class="archive-path">{{ entry.absolute_path }}</code></span>
+                            {% endif %}
                         </div>
                     </div>
                     <div class="archive-report-actions">
@@ -221,6 +246,16 @@
                     </div>
                     <div class="form-actions">
                         <button type="submit" class="secondary">Aggiorna report</button>
+                    </div>
+                </form>
+
+                <form method="post" class="archive-delete-form" onsubmit="return window.confirm('Eliminare questo report dall\\'archivio?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="delete_archive_report">
+                    <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+                    <input type="hidden" name="q" value="{{ archive_query }}">
+                    <div class="form-actions">
+                        <button type="submit" class="archive-delete-button">Elimina report</button>
                     </div>
                 </form>
             </article>

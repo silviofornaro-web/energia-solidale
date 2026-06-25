@@ -15,6 +15,11 @@ urlpatterns = [
         name="archivio_report_cartella",
     ),
     path(
+        "archivio-report/cartella/<int:folder_id>/apri-cartella/",
+        views.apri_cartella_archivio_locale,
+        name="apri_cartella_archivio_locale",
+    ),
+    path(
         "archivio-report/report/<int:report_id>/scarica/",
         views.scarica_report_archiviato,
         name="scarica_report_archiviato",

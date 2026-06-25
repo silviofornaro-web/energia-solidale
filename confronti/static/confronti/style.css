@@ -1125,6 +1125,10 @@ th {
     padding: 14px 16px;
 }
 
+.archive-detail-stat-wide {
+    grid-column: 1 / -1;
+}
+
 .archive-detail-stat strong {
     color: #0f172a;
     display: block;
@@ -1144,6 +1148,16 @@ th {
 
 .archive-help-text-compact {
     margin-bottom: 12px;
+}
+
+.archive-open-folder-actions {
+    margin: 0 0 14px;
+}
+
+.archive-open-folder-note {
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.45;
 }
 
 .archive-upload-panel {
@@ -1255,6 +1269,20 @@ th {
 
 .archive-summary-results {
     margin-top: 18px;
+}
+
+.archive-delete-form {
+    margin-top: 6px;
+}
+
+.archive-delete-button {
+    background: #b3261e;
+    margin-top: 0;
+}
+
+.archive-delete-button:hover,
+.archive-delete-button:active {
+    background: #8f1f18;
 }
 
 footer {

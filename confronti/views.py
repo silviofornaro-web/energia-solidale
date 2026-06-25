@@ -1,9 +1,12 @@
 import io
 import logging
 import os
+import shutil
+import subprocess
 from datetime import datetime
 from urllib.parse import quote, urlencode, urljoin
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
@@ -329,6 +332,45 @@ def _store_report_summary_session(request, report_summary):
     }
 
 
+def _archive_folder_absolute_path(folder):
+    return os.path.join(str(settings.MEDIA_ROOT), "report_archive", folder.folder_name)
+
+
+def _archive_report_absolute_path(report):
+    try:
+        return report.report_file.path
+    except (NotImplementedError, ValueError):
+        return os.path.join(_archive_folder_absolute_path(report.folder), os.path.basename(report.report_file.name))
+
+
+def _can_open_local_archive_path():
+    if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
+        return False
+    if os.name == "nt":
+        return True
+    return bool(shutil.which("open") or shutil.which("xdg-open"))
+
+
+def _archive_storage_label():
+    if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
+        return "Cloud app (Render + disco persistente)"
+    return "Computer locale"
+
+
+def _open_local_archive_path(path):
+    if not _can_open_local_archive_path():
+        raise RuntimeError("Apertura cartella disponibile solo in locale.")
+    if not os.path.isdir(path):
+        raise FileNotFoundError(path)
+    if os.name == "nt":
+        command = ["explorer", path]
+    elif shutil.which("open"):
+        command = ["open", path]
+    else:
+        command = ["xdg-open", path]
+    subprocess.Popen(command)
+
+
 def _touch_archive_folder(folder):
     CustomerArchiveFolder.objects.filter(pk=folder.pk).update(updated_at=timezone.now())
 
@@ -372,6 +414,18 @@ def _replace_archive_report_file(report, uploaded_file):
     _touch_archive_folder(report.folder)
 
 
+def _delete_archive_report(report):
+    stored_name = report.report_file.name
+    folder = report.folder
+    report.delete()
+    if stored_name:
+        try:
+            report.report_file.storage.delete(stored_name)
+        except OSError:
+            logger.warning("Impossibile eliminare il file archivio %s", stored_name, exc_info=True)
+    _touch_archive_folder(folder)
+
+
 def _build_reports_summary_from_archived_reports(reports):
     summary_files = []
     try:
@@ -409,11 +463,15 @@ def _archive_context(
     report_entries = []
     selected_report_ids = [int(report_id) for report_id in (selected_report_ids or [])]
     report_summary_warnings = list(report_summary_warnings or [])
+    archive_folder_absolute_path = ""
+    archive_local_open_available = False
     if selected_folder is not None:
         selected_folder = get_object_or_404(
             CustomerArchiveFolder.objects.prefetch_related("reports").annotate(report_count=Count("reports")),
             pk=selected_folder.pk,
         )
+        archive_folder_absolute_path = _archive_folder_absolute_path(selected_folder)
+        archive_local_open_available = _can_open_local_archive_path()
         reports = list(selected_folder.reports.order_by("-comparison_datetime", "-created_at"))
         if folder_form is None:
             folder_form = ArchiveFolderForm(instance=selected_folder)
@@ -430,7 +488,14 @@ def _archive_context(
                 if active_replace_report_id == report.pk and active_replace_report_form is not None
                 else ArchiveReportReplaceFileForm(prefix=f"replace-report-{report.pk}")
             )
-            report_entries.append({"report": report, "form": form, "replace_form": replace_form})
+            report_entries.append(
+                {
+                    "report": report,
+                    "form": form,
+                    "replace_form": replace_form,
+                    "absolute_path": _archive_report_absolute_path(report),
+                }
+            )
     return {
         "brand_home_url": reverse("confronto"),
         "page_title": "Archivio report",
@@ -441,6 +506,9 @@ def _archive_context(
         "selected_folder": selected_folder,
         "folder_form": folder_form,
         "add_report_form": add_report_form,
+        "archive_storage_label": _archive_storage_label(),
+        "archive_folder_absolute_path": archive_folder_absolute_path,
+        "archive_local_open_available": archive_local_open_available,
         "selected_report_ids": selected_report_ids,
         "archive_report_summary": report_summary,
         "archive_report_summary_warnings": report_summary_warnings,
@@ -486,7 +554,7 @@ def _home_tabs():
         },
         {
             "key": "archivio-report",
-            "label": "Archivio Report",
+            "label": "Apri archivio file",
             "href": f"{login_url}?{urlencode({'next': reverse('archivio_report')})}",
         },
         {
@@ -539,7 +607,7 @@ def _admin_tabs(active_panel, operator_mode=False):
         },
         {
             "key": "archivio-report",
-            "label": "Archivio report",
+            "label": "Apri archivio file",
             "href": reverse("archivio_report"),
             "active": active_panel == "archivio-report",
         },
@@ -964,6 +1032,11 @@ def archivio_report_cartella(request, folder_id):
                     active_replace_report_form=replace_form,
                 ),
             )
+        if action == "delete_archive_report":
+            report = get_object_or_404(ComparisonReport, pk=request.POST.get("report_id"), folder=folder)
+            _delete_archive_report(report)
+            messages.success(request, "Report archiviato eliminato.")
+            return redirect("archivio_report_cartella", folder_id=folder.pk)
     return render(request, "confronti/archive.html", _archive_context(request, selected_folder=folder))
 
 
@@ -982,6 +1055,28 @@ def scarica_report_archiviato(request, report_id):
     )
     response["Content-Length"] = report.report_file.size
     return response
+
+
+@login_required
+def apri_cartella_archivio_locale(request, folder_id):
+    if not _is_archive_admin(request.user):
+        return _redirect_for_non_archive_admin(request)
+    folder = get_object_or_404(CustomerArchiveFolder, pk=folder_id)
+    if request.method != "POST":
+        return redirect("archivio_report_cartella", folder_id=folder.pk)
+    folder_path = _archive_folder_absolute_path(folder)
+    try:
+        _open_local_archive_path(folder_path)
+    except FileNotFoundError:
+        messages.error(request, "La cartella archivio non esiste ancora sul disco.")
+    except RuntimeError as exc:
+        messages.error(request, str(exc))
+    except OSError:
+        logger.exception("Impossibile aprire la cartella archivio %s", folder_path)
+        messages.error(request, "Non sono riuscito ad aprire la cartella file.")
+    else:
+        messages.success(request, "Cartella file aperta nel computer locale.")
+    return redirect("archivio_report_cartella", folder_id=folder.pk)
 
 
 @login_required

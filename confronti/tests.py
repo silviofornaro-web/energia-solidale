@@ -9,6 +9,7 @@ from unittest.mock import patch
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import Client, SimpleTestCase, TestCase, override_settings
@@ -962,7 +963,7 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Mostra Registrazione Clienti")
         self.assertContains(response, "Stato Clienti")
         self.assertContains(response, "Genera Codici")
-        self.assertContains(response, "Archivio Report")
+        self.assertContains(response, "Apri archivio file")
         self.assertContains(response, "Confronto Bollette/Offerte")
         self.assertContains(response, "Sunto Report")
         self.assertContains(response, 'href="/area-clienti/"')
@@ -1122,7 +1123,7 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Esegui confronto")
         self.assertContains(response, "Genera Codice invito")
         self.assertContains(response, "Stato clienti")
-        self.assertContains(response, "Archivio report")
+        self.assertContains(response, "Apri archivio file")
         self.assertContains(response, "Apri dashboard cliente")
         self.assertContains(response, "Apri registrazione cliente")
         self.assertContains(response, "Sunto report")
@@ -1410,6 +1411,11 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Seleziona tutti")
         self.assertContains(response, "Deseleziona tutti")
         self.assertContains(response, "file selezionati")
+        self.assertContains(response, "Elimina report")
+        self.assertContains(response, "Dove sono i file")
+        self.assertContains(response, "Percorso locale reale")
+        self.assertContains(response, self.media_root)
+        self.assertContains(response, "Apri cartella file")
         self.assertContains(response, report.original_filename)
         self.assertContains(response, report.report_file.name)
         self.assertContains(response, "Scarica report")
@@ -1516,6 +1522,41 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Via Roma 10")
         self.assertNotContains(response, "Viale Milano 20")
         self.assertEqual(self.client.session["last_report_summary"]["count"], 1)
+
+    def test_archive_page_can_delete_archived_report(self):
+        self.login()
+        self.client.post("/", valid_payload())
+        self.client.post("/archivio-report/salva/")
+        folder = CustomerArchiveFolder.objects.get()
+        report = ComparisonReport.objects.get()
+        stored_name = report.report_file.name
+
+        response = self.client.post(
+            f"/archivio-report/cartella/{folder.pk}/",
+            {
+                "action": "delete_archive_report",
+                "report_id": report.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(ComparisonReport.objects.filter(pk=report.pk).exists())
+        self.assertFalse(default_storage.exists(stored_name))
+
+    @patch("confronti.views.subprocess.Popen")
+    def test_archive_page_can_open_local_archive_folder(self, mock_popen):
+        self.login()
+        self.client.post("/", valid_payload())
+        self.client.post("/archivio-report/salva/")
+        folder = CustomerArchiveFolder.objects.get()
+
+        response = self.client.post(f"/archivio-report/cartella/{folder.pk}/apri-cartella/")
+
+        self.assertEqual(response.status_code, 302)
+        mock_popen.assert_called_once()
+        args = mock_popen.call_args[0][0]
+        self.assertTrue(args)
+        self.assertTrue(args[-1].endswith(folder.folder_name))
 
     def test_archive_page_can_replace_archived_report_file(self):
         self.login()
