@@ -1401,7 +1401,12 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Archivio report")
         self.assertContains(response, folder.folder_name)
+        self.assertContains(response, f"report_archive/{folder.folder_name}/")
+        self.assertContains(response, "Report nella cartella")
+        self.assertContains(response, "Aggiungi file")
+        self.assertContains(response, "Sostituisci file")
         self.assertContains(response, report.original_filename)
+        self.assertContains(response, report.report_file.name)
         self.assertContains(response, "Scarica report")
 
         response = self.client.post(
@@ -1441,6 +1446,70 @@ class ConfrontoViewTests(TestCase):
             download_response["Content-Type"],
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+
+    def test_archive_page_can_add_manual_report_file(self):
+        self.login()
+        self.client.post("/", valid_payload())
+        self.client.post("/archivio-report/salva/")
+        folder = CustomerArchiveFolder.objects.get()
+        manual_content = self._comparison_excel(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Nuova 20")
+
+        response = self.client.post(
+            f"/archivio-report/cartella/{folder.pk}/",
+            {
+                "action": "add_archive_report",
+                "add-report-title": "Confronto manuale luglio",
+                "add-report-notes": "File caricato dall'archivio",
+                "add-report-report_file": SimpleUploadedFile(
+                    "manuale-luglio.xlsx",
+                    manual_content,
+                    content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(ComparisonReport.objects.count(), 2)
+        report = ComparisonReport.objects.get(original_filename="manuale-luglio.xlsx")
+        self.assertEqual(report.folder, folder)
+        self.assertEqual(report.title, "Confronto manuale luglio")
+        self.assertEqual(report.notes, "File caricato dall'archivio")
+        self.assertEqual(report.original_filename, "manuale-luglio.xlsx")
+        self.assertEqual(report.created_by, self.staff_user)
+        self.assertIn(folder.folder_name, report.report_file.name)
+        with report.report_file.open("rb") as saved_file:
+            self.assertEqual(saved_file.read(2), b"PK")
+
+    def test_archive_page_can_replace_archived_report_file(self):
+        self.login()
+        self.client.post("/", valid_payload())
+        self.client.post("/archivio-report/salva/")
+        folder = CustomerArchiveFolder.objects.get()
+        report = ComparisonReport.objects.get()
+        old_name = report.report_file.name
+        replacement_content = self._comparison_excel(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Milano 50")
+
+        response = self.client.post(
+            f"/archivio-report/cartella/{folder.pk}/",
+            {
+                "action": "replace_archive_report_file",
+                "report_id": report.pk,
+                f"replace-report-{report.pk}-report_file": SimpleUploadedFile(
+                    "manuale-aggiornato.xlsx",
+                    replacement_content,
+                    content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        report.refresh_from_db()
+        self.assertEqual(report.original_filename, "manuale-aggiornato.xlsx")
+        self.assertIn(folder.folder_name, report.report_file.name)
+        self.assertIn("manuale-aggiornato", report.report_file.name)
+        self.assertFalse(report.report_file.storage.exists(old_name))
+        with report.report_file.open("rb") as saved_file:
+            self.assertEqual(saved_file.read(2), b"PK")
 
     def test_registration_page_prefills_invite_code_from_query_string(self):
         response = self.client.get("/accounts/register/?invite_code=invito-1234")

@@ -176,6 +176,41 @@ class ArchiveReportForm(forms.ModelForm):
         }
 
 
+class ArchiveReportUploadForm(forms.ModelForm):
+    report_file = forms.FileField(
+        label="File Excel report",
+        validators=[FileExtensionValidator(["xlsx"])],
+        widget=forms.ClearableFileInput(attrs={"accept": ".xlsx"}),
+    )
+
+    class Meta:
+        model = ComparisonReport
+        fields = ("title", "report_file", "notes")
+        widgets = {
+            "notes": forms.Textarea(attrs={"rows": 3}),
+        }
+
+    def clean_report_file(self):
+        uploaded_file = self.cleaned_data["report_file"]
+        if uploaded_file.size > 15 * 1024 * 1024:
+            raise forms.ValidationError("Il file Excel supera il limite di 15 MB.")
+        return uploaded_file
+
+
+class ArchiveReportReplaceFileForm(forms.Form):
+    report_file = forms.FileField(
+        label="Nuovo file Excel",
+        validators=[FileExtensionValidator(["xlsx"])],
+        widget=forms.ClearableFileInput(attrs={"accept": ".xlsx"}),
+    )
+
+    def clean_report_file(self):
+        uploaded_file = self.cleaned_data["report_file"]
+        if uploaded_file.size > 15 * 1024 * 1024:
+            raise forms.ValidationError("Il file Excel supera il limite di 15 MB.")
+        return uploaded_file
+
+
 class ConfrontoForm(forms.Form):
     SEGMENTI = [("RESIDENZIALE", "Residenziale"), ("MICROBUSINESS", "Microbusiness"), ("BUSINESS", "Business")]
     COMMODITIES = [("GAS", "Gas"), ("EE", "Luce")]

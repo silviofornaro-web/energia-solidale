@@ -17,6 +17,8 @@ from .bill_parser import parse_uploaded_bill
 from .forms import (
     ArchiveFolderForm,
     ArchiveReportForm,
+    ArchiveReportReplaceFileForm,
+    ArchiveReportUploadForm,
     BillUploadForm,
     ConfrontoForm,
     CustomerInviteForm,
@@ -317,7 +319,60 @@ def _archive_summary(search_query=""):
     }
 
 
-def _archive_context(request, *, selected_folder=None, folder_form=None, active_report_id=None, active_report_form=None):
+def _touch_archive_folder(folder):
+    CustomerArchiveFolder.objects.filter(pk=folder.pk).update(updated_at=timezone.now())
+
+
+def _archive_uploaded_report_title(filename):
+    stem = os.path.splitext(_display_upload_name(filename))[0]
+    normalized = " ".join(stem.replace("_", " ").replace("-", " ").split())
+    return normalized or "Report confronto"
+
+
+def _create_uploaded_archive_report(folder, form, user):
+    uploaded_file = form.cleaned_data["report_file"]
+    report = ComparisonReport(
+        folder=folder,
+        title=str(form.cleaned_data.get("title") or "").strip() or _archive_uploaded_report_title(uploaded_file.name),
+        notes=str(form.cleaned_data.get("notes") or "").strip(),
+        original_filename=_display_upload_name(uploaded_file.name),
+        comparison_datetime=timezone.now(),
+        created_by=user,
+    )
+    report.report_file.save(report.original_filename, uploaded_file, save=False)
+    report.save()
+    _touch_archive_folder(folder)
+    return report
+
+
+def _replace_archive_report_file(report, uploaded_file):
+    old_name = report.report_file.name
+    report.report_file.save(_display_upload_name(uploaded_file.name), uploaded_file, save=False)
+    report.original_filename = _display_upload_name(uploaded_file.name)
+    if not report.title:
+        report.title = _archive_uploaded_report_title(uploaded_file.name)
+    if report.comparison_datetime is None:
+        report.comparison_datetime = timezone.now()
+    report.save()
+    if old_name and old_name != report.report_file.name:
+        try:
+            report.report_file.storage.delete(old_name)
+        except OSError:
+            logger.warning("Impossibile eliminare il vecchio file archivio %s", old_name, exc_info=True)
+    _touch_archive_folder(report.folder)
+
+
+def _archive_context(
+    request,
+    *,
+    selected_folder=None,
+    folder_form=None,
+    add_report_form=None,
+    active_report_id=None,
+    active_report_form=None,
+    active_replace_report_id=None,
+    active_replace_report_form=None,
+):
     search_query = str(request.GET.get("q") or request.POST.get("q") or "").strip()
     folders = list(_archive_report_queryset(search_query))
     report_entries = []
@@ -329,13 +384,20 @@ def _archive_context(request, *, selected_folder=None, folder_form=None, active_
         reports = list(selected_folder.reports.order_by("-comparison_datetime", "-created_at"))
         if folder_form is None:
             folder_form = ArchiveFolderForm(instance=selected_folder)
+        if add_report_form is None:
+            add_report_form = ArchiveReportUploadForm(prefix="add-report")
         for report in reports:
             form = (
                 active_report_form
                 if active_report_id == report.pk and active_report_form is not None
                 else ArchiveReportForm(instance=report, prefix=f"report-{report.pk}")
             )
-            report_entries.append({"report": report, "form": form})
+            replace_form = (
+                active_replace_report_form
+                if active_replace_report_id == report.pk and active_replace_report_form is not None
+                else ArchiveReportReplaceFileForm(prefix=f"replace-report-{report.pk}")
+            )
+            report_entries.append({"report": report, "form": form, "replace_form": replace_form})
     return {
         "brand_home_url": reverse("confronto"),
         "page_title": "Archivio report",
@@ -345,6 +407,7 @@ def _archive_context(request, *, selected_folder=None, folder_form=None, active_
         "archive_folders": folders,
         "selected_folder": selected_folder,
         "folder_form": folder_form,
+        "add_report_form": add_report_form,
         "report_entries": report_entries,
     }
 def _public_access_page(request):
@@ -756,6 +819,7 @@ def archivia_report_corrente(request):
     )
     report.report_file.save(report.original_filename, ContentFile(content), save=False)
     report.save()
+    _touch_archive_folder(folder)
     messages.success(request, f"Report archiviato nella cartella {folder.folder_name}.")
     if _is_archive_admin(request.user):
         return redirect("archivio_report_cartella", folder_id=folder.pk)
@@ -787,11 +851,23 @@ def archivio_report_cartella(request, folder_id):
                 "confronti/archive.html",
                 _archive_context(request, selected_folder=folder, folder_form=folder_form),
             )
+        if action == "add_archive_report":
+            add_report_form = ArchiveReportUploadForm(request.POST, request.FILES, prefix="add-report")
+            if add_report_form.is_valid():
+                _create_uploaded_archive_report(folder, add_report_form, request.user)
+                messages.success(request, f"File aggiunto nella cartella {folder.folder_name}.")
+                return redirect("archivio_report_cartella", folder_id=folder.pk)
+            return render(
+                request,
+                "confronti/archive.html",
+                _archive_context(request, selected_folder=folder, add_report_form=add_report_form),
+            )
         if action == "update_archive_report":
             report = get_object_or_404(ComparisonReport, pk=request.POST.get("report_id"), folder=folder)
             report_form = ArchiveReportForm(request.POST, instance=report, prefix=f"report-{report.pk}")
             if report_form.is_valid():
                 report_form.save()
+                _touch_archive_folder(folder)
                 messages.success(request, "Report archiviato aggiornato.")
                 return redirect("archivio_report_cartella", folder_id=folder.pk)
             return render(
@@ -802,6 +878,23 @@ def archivio_report_cartella(request, folder_id):
                     selected_folder=folder,
                     active_report_id=report.pk,
                     active_report_form=report_form,
+                ),
+            )
+        if action == "replace_archive_report_file":
+            report = get_object_or_404(ComparisonReport, pk=request.POST.get("report_id"), folder=folder)
+            replace_form = ArchiveReportReplaceFileForm(request.POST, request.FILES, prefix=f"replace-report-{report.pk}")
+            if replace_form.is_valid():
+                _replace_archive_report_file(report, replace_form.cleaned_data["report_file"])
+                messages.success(request, "File report sostituito.")
+                return redirect("archivio_report_cartella", folder_id=folder.pk)
+            return render(
+                request,
+                "confronti/archive.html",
+                _archive_context(
+                    request,
+                    selected_folder=folder,
+                    active_replace_report_id=report.pk,
+                    active_replace_report_form=replace_form,
                 ),
             )
     return render(request, "confronti/archive.html", _archive_context(request, selected_folder=folder))

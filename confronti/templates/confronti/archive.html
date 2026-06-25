@@ -54,8 +54,24 @@
             {% for folder in archive_folders %}
             <a href="{% url 'archivio_report_cartella' folder.pk %}{% if archive_query %}?q={{ archive_query|urlencode }}{% endif %}" class="archive-folder-card{% if selected_folder and selected_folder.pk == folder.pk %} is-active{% endif %}">
                 <strong>{{ folder.customer_name }}</strong>
-                <span>{{ folder.folder_name }}</span>
-                <span>{{ folder.report_count }} report</span>
+                <div class="archive-folder-meta-list">
+                    <span>
+                        <span class="archive-meta-label">Cartella fisica</span>
+                        <code class="archive-path">{{ folder.folder_name }}</code>
+                    </span>
+                    <span>
+                        <span class="archive-meta-label">Creata</span>
+                        {{ folder.created_at|date:"d/m/Y H:i" }}
+                    </span>
+                    <span>
+                        <span class="archive-meta-label">Report</span>
+                        {{ folder.report_count }}
+                    </span>
+                    <span>
+                        <span class="archive-meta-label">Ultimo aggiornamento</span>
+                        {{ folder.updated_at|date:"d/m/Y H:i" }}
+                    </span>
+                </div>
             </a>
             {% endfor %}
         </div>
@@ -69,10 +85,31 @@
         <div class="archive-detail-header">
             <div>
                 <h2>{{ selected_folder.customer_name }}</h2>
-                <p class="panel-lead">Cartella: {{ selected_folder.folder_name }} · Creata il {{ selected_folder.created_at|date:"d/m/Y H:i" }}</p>
+                <p class="panel-lead">I file salvati per questo cliente finiscono in <code class="archive-path">report_archive/{{ selected_folder.folder_name }}/</code></p>
             </div>
             <a href="{% url 'archivio_report' %}{% if archive_query %}?q={{ archive_query|urlencode }}{% endif %}" class="action-link action-link-secondary">Torna alla lista</a>
         </div>
+
+        <div class="archive-detail-stats">
+            <div class="archive-detail-stat">
+                <strong>Cartella fisica</strong>
+                <span><code class="archive-path">{{ selected_folder.folder_name }}</code></span>
+            </div>
+            <div class="archive-detail-stat">
+                <strong>Creata il</strong>
+                <span>{{ selected_folder.created_at|date:"d/m/Y H:i" }}</span>
+            </div>
+            <div class="archive-detail-stat">
+                <strong>Report nella cartella</strong>
+                <span>{{ selected_folder.report_count }}</span>
+            </div>
+            <div class="archive-detail-stat">
+                <strong>Ultimo aggiornamento</strong>
+                <span>{{ selected_folder.updated_at|date:"d/m/Y H:i" }}</span>
+            </div>
+        </div>
+
+        <p class="archive-help-text">Da qui puoi aggiornare i dati della cartella, aggiungere nuovi report Excel, sostituire i file gia archiviati e scaricarli quando servono.</p>
 
         <form method="post" class="archive-edit-form">
             {% csrf_token %}
@@ -89,6 +126,24 @@
             </div>
         </form>
 
+        <section class="archive-upload-panel">
+            <h2>Aggiungi file</h2>
+            <form method="post" enctype="multipart/form-data" class="archive-edit-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="add_archive_report">
+                <input type="hidden" name="q" value="{{ archive_query }}">
+                <div class="form-grid form-grid-archive-upload">
+                    <label>{{ add_report_form.title.label }}{{ add_report_form.title }}{{ add_report_form.title.errors }}</label>
+                    <label>{{ add_report_form.report_file.label }}{{ add_report_form.report_file }}{{ add_report_form.report_file.errors }}</label>
+                    <label class="archive-notes-field">{{ add_report_form.notes.label }}{{ add_report_form.notes }}{{ add_report_form.notes.errors }}</label>
+                </div>
+                <p class="archive-help-text archive-help-text-compact">Accetta solo file `.xlsx`. Se il titolo e vuoto, viene usato il nome del file.</p>
+                <div class="form-actions">
+                    <button type="submit">Aggiungi file</button>
+                </div>
+            </form>
+        </section>
+
         <h2>Report archiviati</h2>
         {% if report_entries %}
             {% for entry in report_entries %}
@@ -101,10 +156,24 @@
                             <span>{{ entry.report.bill_period_label|default:"N.D." }}</span>
                             <span>{{ entry.report.comparison_datetime|date:"d/m/Y H:i"|default:"N.D." }}</span>
                             <span>{{ entry.report.original_filename|default:"report.xlsx" }}</span>
+                            <span><code class="archive-path">{{ entry.report.report_file.name }}</code></span>
                         </div>
                     </div>
                     <a href="{% url 'scarica_report_archiviato' entry.report.pk %}" class="action-link">Scarica report</a>
                 </div>
+
+                <form method="post" enctype="multipart/form-data" class="archive-edit-form archive-replace-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="replace_archive_report_file">
+                    <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+                    <input type="hidden" name="q" value="{{ archive_query }}">
+                    <div class="form-grid form-grid-archive-replace">
+                        <label>{{ entry.replace_form.report_file.label }}{{ entry.replace_form.report_file }}{{ entry.replace_form.report_file.errors }}</label>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="secondary">Sostituisci file</button>
+                    </div>
+                </form>
 
                 <form method="post" class="archive-edit-form">
                     {% csrf_token %}
