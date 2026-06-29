@@ -1404,6 +1404,10 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, folder.folder_name)
         self.assertContains(response, f"report_archive/{folder.folder_name}/")
         self.assertContains(response, "Report nella cartella")
+        self.assertContains(response, "Seleziona questa cartella")
+        self.assertContains(response, "La cartella resta evidenziata nella lista a sinistra.")
+        self.assertContains(response, "cartelle selezionate")
+        self.assertContains(response, "Crea sunto cartelle selezionate")
         self.assertContains(response, "Aggiungi file")
         self.assertContains(response, "Sostituisci file")
         self.assertContains(response, "Crea sunto dai selezionati")
@@ -1523,6 +1527,32 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Via Roma 10")
         self.assertNotContains(response, "Viale Milano 20")
         self.assertEqual(self.client.session["last_report_summary"]["count"], 1)
+
+    def test_archive_page_can_build_summary_from_selected_folders(self):
+        self.login()
+        self.client.post("/", valid_payload(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10"))
+        self.client.post("/archivio-report/salva/")
+        self.client.post("/", valid_payload(nome_cliente="Luigi Bianchi", indirizzo_fornitura="Viale Milano 20"))
+        self.client.post("/archivio-report/salva/")
+        folders = list(CustomerArchiveFolder.objects.order_by("customer_name"))
+
+        response = self.client.post(
+            "/archivio-report/",
+            {
+                "action": "build_archive_folder_summary",
+                "selected_folder_ids": [str(folder.pk) for folder in folders],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sunto cartelle selezionate")
+        self.assertContains(response, "Sunto creato per 2 report da 2 cartelle.")
+        self.assertContains(response, "Mario Rossi")
+        self.assertContains(response, "Luigi Bianchi")
+        self.assertContains(response, "Via Roma 10")
+        self.assertContains(response, "Viale Milano 20")
+        self.assertContains(response, "Scarica sunto Excel")
+        self.assertEqual(self.client.session["last_report_summary"]["count"], 2)
 
     def test_archive_page_can_delete_archived_report(self):
         self.login()

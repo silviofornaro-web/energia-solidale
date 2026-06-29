@@ -49,31 +49,65 @@
 
 <section class="archive-layout">
     <section class="panel archive-folder-panel">
-        <h2>Cartelle clienti</h2>
+        <div class="archive-folder-panel-header">
+            <div>
+                <h2>Cartelle clienti</h2>
+                <p class="archive-help-text archive-help-text-compact">Spunta le cartelle che vuoi tenere evidenziate nella lista a sinistra.</p>
+            </div>
+            {% if archive_folders %}
+            <div class="form-actions archive-folder-quick-actions">
+                <button type="button" class="secondary archive-folder-tool-button" data-archive-folder-select="all">Seleziona tutte</button>
+                <button type="button" class="secondary archive-folder-tool-button" data-archive-folder-select="none">Deseleziona tutte</button>
+            </div>
+            {% endif %}
+        </div>
         {% if archive_folders %}
+        <div id="archive-folder-selected-count" class="archive-selection-count archive-folder-selection-count" aria-live="polite">0 cartelle selezionate</div>
+        <form id="archive-folder-summary-form" method="post" action="{% url 'archivio_report' %}" class="archive-summary-builder archive-folder-summary-builder">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="build_archive_folder_summary">
+            <input type="hidden" name="q" value="{{ archive_query }}">
+            <div id="archive-folder-summary-inputs"></div>
+            <div class="form-actions">
+                <button type="submit" id="archive-folder-summary-submit">Crea sunto cartelle selezionate</button>
+                {% if archive_report_summary.rows and archive_report_summary_scope == "folders" %}
+                <a class="download archive-summary-download" href="{% url 'scarica_sunto_report' %}" download>Scarica sunto Excel</a>
+                {% endif %}
+            </div>
+        </form>
         <div class="archive-folder-list">
             {% for folder in archive_folders %}
-            <a href="{% url 'archivio_report_cartella' folder.pk %}{% if archive_query %}?q={{ archive_query|urlencode }}{% endif %}" class="archive-folder-card{% if selected_folder and selected_folder.pk == folder.pk %} is-active{% endif %}">
-                <strong>{{ folder.customer_name }}</strong>
-                <div class="archive-folder-meta-list">
-                    <span>
-                        <span class="archive-meta-label">Cartella fisica</span>
-                        <code class="archive-path">{{ folder.folder_name }}</code>
+            <article class="archive-folder-card{% if selected_folder and selected_folder.pk == folder.pk %} is-active{% endif %}" data-archive-folder-card>
+                <label class="archive-folder-selector">
+                    <input type="checkbox" class="archive-folder-selector-input" value="{{ folder.pk }}" data-archive-folder-checkbox{% if folder.pk in selected_archive_folder_ids %} checked{% endif %}>
+                    <span class="archive-folder-selector-copy">
+                        <strong>Seleziona questa cartella</strong>
+                        <span>La cartella resta evidenziata nella lista a sinistra.</span>
                     </span>
-                    <span>
-                        <span class="archive-meta-label">Creata</span>
-                        {{ folder.created_at|date:"d/m/Y H:i" }}
-                    </span>
-                    <span>
-                        <span class="archive-meta-label">Report</span>
-                        {{ folder.report_count }}
-                    </span>
-                    <span>
-                        <span class="archive-meta-label">Ultimo aggiornamento</span>
-                        {{ folder.updated_at|date:"d/m/Y H:i" }}
-                    </span>
-                </div>
-            </a>
+                </label>
+
+                <a href="{% url 'archivio_report_cartella' folder.pk %}{% if archive_query %}?q={{ archive_query|urlencode }}{% endif %}" class="archive-folder-link">
+                    <strong>{{ folder.customer_name }}</strong>
+                    <div class="archive-folder-meta-list">
+                        <span>
+                            <span class="archive-meta-label">Cartella fisica</span>
+                            <code class="archive-path">{{ folder.folder_name }}</code>
+                        </span>
+                        <span>
+                            <span class="archive-meta-label">Creata</span>
+                            {{ folder.created_at|date:"d/m/Y H:i" }}
+                        </span>
+                        <span>
+                            <span class="archive-meta-label">Report</span>
+                            {{ folder.report_count }}
+                        </span>
+                        <span>
+                            <span class="archive-meta-label">Ultimo aggiornamento</span>
+                            {{ folder.updated_at|date:"d/m/Y H:i" }}
+                        </span>
+                    </div>
+                </a>
+            </article>
             {% endfor %}
         </div>
         {% else %}
@@ -299,6 +333,45 @@
             </div>
         </section>
         {% endif %}
+        {% elif archive_report_summary.rows and archive_report_summary_scope == "folders" %}
+        <h2>Sunto cartelle selezionate</h2>
+        <p class="archive-help-text">Questo riepilogo usa tutti i report presenti nelle cartelle clienti selezionate nella colonna di sinistra.</p>
+        {% if selected_archive_folders %}
+        <div class="archive-selected-folder-list">
+            {% for folder in selected_archive_folders %}
+            <div class="archive-selected-folder-chip">
+                <strong>{{ folder.customer_name }}</strong>
+                <span>{{ folder.report_count }} report</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% for warning in archive_report_summary_warnings %}
+        <div class="validity-warning">{{ warning }}</div>
+        {% endfor %}
+        <section class="archive-summary-results">
+            <div class="extraction-message">Sunto creato per {{ archive_report_summary.count }} report.</div>
+            <div class="summary-table-wrap">
+                <table class="summary-table">
+                    <thead>
+                        <tr>
+                            {% for column in archive_report_summary.columns %}
+                            <th>{{ column }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in archive_report_summary.rows %}
+                        <tr>
+                            {% for column in archive_report_summary.columns %}
+                            <td>{{ row|get_item:column }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
         {% else %}
         <h2>Dettaglio archivio</h2>
         <p class="status-empty">Apri una cartella cliente per consultare e modificare i report salvati.</p>
@@ -310,7 +383,101 @@
 {% block scripts %}
 <script>
     (function () {
+        const folderStorageKey = "energia-solidale-archive-selected-folders";
+        const folderCheckboxes = Array.from(document.querySelectorAll("[data-archive-folder-checkbox]"));
+        const folderCountNode = document.getElementById("archive-folder-selected-count");
+        const selectAllFoldersButton = document.querySelector('[data-archive-folder-select="all"]');
+        const clearFoldersButton = document.querySelector('[data-archive-folder-select="none"]');
+        const folderSummaryInputs = document.getElementById("archive-folder-summary-inputs");
+        const folderSummarySubmit = document.getElementById("archive-folder-summary-submit");
         const form = document.getElementById("archive-summary-form");
+
+        function readSelectedFolderIds() {
+            try {
+                const rawValue = window.localStorage.getItem(folderStorageKey);
+                if (!rawValue) {
+                    return [];
+                }
+                const values = JSON.parse(rawValue);
+                return Array.isArray(values) ? values.map(String) : [];
+            } catch (error) {
+                return [];
+            }
+        }
+
+        function writeSelectedFolderIds(folderIds) {
+            try {
+                window.localStorage.setItem(folderStorageKey, JSON.stringify(folderIds));
+            } catch (error) {
+                return;
+            }
+        }
+
+        function updateFolderSelectionState() {
+            const selectedFolderIds = folderCheckboxes
+                .filter((checkbox) => checkbox.checked)
+                .map((checkbox) => checkbox.value);
+
+            folderCheckboxes.forEach((checkbox) => {
+                const card = checkbox.closest("[data-archive-folder-card]");
+                if (card) {
+                    card.classList.toggle("is-selected", checkbox.checked);
+                }
+            });
+
+            writeSelectedFolderIds(selectedFolderIds);
+
+            if (folderSummaryInputs) {
+                folderSummaryInputs.innerHTML = "";
+                selectedFolderIds.forEach((folderId) => {
+                    const input = document.createElement("input");
+                    input.type = "hidden";
+                    input.name = "selected_folder_ids";
+                    input.value = folderId;
+                    folderSummaryInputs.appendChild(input);
+                });
+            }
+
+            if (folderCountNode) {
+                folderCountNode.textContent = selectedFolderIds.length === 1
+                    ? "1 cartella selezionata"
+                    : selectedFolderIds.length + " cartelle selezionate";
+            }
+
+            if (folderSummarySubmit) {
+                folderSummarySubmit.disabled = selectedFolderIds.length === 0;
+            }
+        }
+
+        function setAllFolderCheckboxes(checked) {
+            folderCheckboxes.forEach((checkbox) => {
+                checkbox.checked = checked;
+            });
+            updateFolderSelectionState();
+        }
+
+        if (folderCheckboxes.length) {
+            const selectedFolderIds = new Set(readSelectedFolderIds());
+            folderCheckboxes.forEach((checkbox) => {
+                checkbox.checked = selectedFolderIds.has(checkbox.value);
+                checkbox.addEventListener("change", updateFolderSelectionState);
+            });
+
+            if (selectAllFoldersButton) {
+                selectAllFoldersButton.addEventListener("click", function () {
+                    setAllFolderCheckboxes(true);
+                });
+            }
+
+            if (clearFoldersButton) {
+                clearFoldersButton.addEventListener("click", function () {
+                    setAllFolderCheckboxes(false);
+                });
+            }
+
+            updateFolderSelectionState();
+        }
+
         if (!form) {
             return;
         }

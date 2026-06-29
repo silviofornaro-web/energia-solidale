@@ -1046,23 +1046,88 @@ th {
     gap: 12px;
 }
 
+.archive-folder-panel-header {
+    align-items: start;
+    display: flex;
+    gap: 14px;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.archive-folder-quick-actions {
+    justify-content: flex-end;
+}
+
+.archive-folder-tool-button {
+    margin-top: 0;
+}
+
+.archive-folder-selection-count {
+    margin-bottom: 12px;
+}
+
+.archive-folder-summary-builder {
+    margin-bottom: 16px;
+    padding: 14px 16px;
+}
+
 .archive-folder-card {
     background: #f8fbfd;
     border: 1px solid #d9e8f2;
     border-radius: 10px;
     color: #1f2937;
     display: grid;
-    gap: 6px;
-    padding: 14px 16px;
-    text-decoration: none;
+    overflow: hidden;
     transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
 
 .archive-folder-card:hover,
+.archive-folder-card.is-selected,
 .archive-folder-card.is-active {
     border-color: #1597d3;
     box-shadow: 0 14px 28px rgba(21, 151, 211, 0.12);
     transform: translateY(-1px);
+}
+
+.archive-folder-selector {
+    align-items: center;
+    background: #ffffff;
+    border-bottom: 1px solid #d9e8f2;
+    cursor: pointer;
+    display: flex;
+    gap: 12px;
+    padding: 12px 16px;
+}
+
+.archive-folder-selector-input {
+    flex: 0 0 auto;
+    height: 22px;
+    min-height: 0;
+    width: 22px;
+}
+
+.archive-folder-selector-copy {
+    display: grid;
+    gap: 2px;
+}
+
+.archive-folder-selector-copy strong {
+    color: #0f172a;
+    font-size: 14px;
+}
+
+.archive-folder-selector-copy span {
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.archive-folder-link {
+    color: inherit;
+    display: grid;
+    gap: 6px;
+    padding: 14px 16px;
+    text-decoration: none;
 }
 
 .archive-folder-card strong {
@@ -1306,6 +1371,33 @@ th {
     justify-items: end;
 }
 
+.archive-selected-folder-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.archive-selected-folder-chip {
+    background: #eef6fb;
+    border: 1px solid #cfe0ee;
+    border-radius: 999px;
+    color: #1f5f7a;
+    display: inline-flex;
+    gap: 8px;
+    padding: 8px 12px;
+}
+
+.archive-selected-folder-chip strong {
+    color: #0f172a;
+    font-size: 13px;
+}
+
+.archive-selected-folder-chip span {
+    color: #64748b;
+    font-size: 13px;
+}
+
 .archive-summary-results {
     margin-top: 18px;
 }
@@ -1375,6 +1467,7 @@ footer strong {
         grid-template-columns: 1fr;
     }
 
+    .archive-folder-panel-header,
     .archive-detail-header,
     .archive-report-meta {
         align-items: stretch;

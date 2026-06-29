@@ -444,6 +444,35 @@ def _build_reports_summary_from_archived_reports(reports):
             stream.close()
 
 
+def _selected_archive_folder_ids(values):
+    selected_ids = []
+    seen_ids = set()
+    for value in values:
+        if not str(value).isdigit():
+            continue
+        folder_id = int(value)
+        if folder_id in seen_ids:
+            continue
+        seen_ids.add(folder_id)
+        selected_ids.append(folder_id)
+    return selected_ids
+
+
+def _selected_archive_folders_and_reports(folder_ids):
+    folders = list(
+        CustomerArchiveFolder.objects.filter(pk__in=folder_ids)
+        .annotate(report_count=Count("reports"))
+        .order_by("customer_name", "-updated_at", "-created_at")
+    )
+    reports = list(
+        ComparisonReport.objects.filter(folder_id__in=[folder.pk for folder in folders])
+        .select_related("folder")
+        .order_by("folder__customer_name", "-comparison_datetime", "-created_at")
+    )
+    empty_folders = [folder for folder in folders if not folder.report_count]
+    return folders, reports, empty_folders
+
+
 def _archive_context(
     request,
     *,
@@ -451,8 +480,11 @@ def _archive_context(
     folder_form=None,
     add_report_form=None,
     selected_report_ids=None,
+    selected_archive_folder_ids=None,
+    selected_archive_folders=None,
     report_summary=None,
     report_summary_warnings=None,
+    report_summary_scope="reports",
     active_report_id=None,
     active_report_form=None,
     active_replace_report_id=None,
@@ -462,6 +494,8 @@ def _archive_context(
     folders = list(_archive_report_queryset(search_query))
     report_entries = []
     selected_report_ids = [int(report_id) for report_id in (selected_report_ids or [])]
+    selected_archive_folder_ids = [int(folder_id) for folder_id in (selected_archive_folder_ids or [])]
+    selected_archive_folders = list(selected_archive_folders or [])
     report_summary_warnings = list(report_summary_warnings or [])
     archive_folder_absolute_path = ""
     archive_local_open_available = False
@@ -510,8 +544,11 @@ def _archive_context(
         "archive_folder_absolute_path": archive_folder_absolute_path,
         "archive_local_open_available": archive_local_open_available,
         "selected_report_ids": selected_report_ids,
+        "selected_archive_folder_ids": selected_archive_folder_ids,
+        "selected_archive_folders": selected_archive_folders,
         "archive_report_summary": report_summary,
         "archive_report_summary_warnings": report_summary_warnings,
+        "archive_report_summary_scope": report_summary_scope,
         "report_entries": report_entries,
     }
 
@@ -931,6 +968,62 @@ def archivia_report_corrente(request):
 def archivio_report(request):
     if not _is_archive_admin(request.user):
         return _redirect_for_non_archive_admin(request)
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "build_archive_folder_summary":
+            selected_folder_ids = _selected_archive_folder_ids(request.POST.getlist("selected_folder_ids"))
+            if not selected_folder_ids:
+                messages.error(request, "Seleziona almeno una cartella cliente da includere nel sunto.")
+                return render(
+                    request,
+                    "confronti/archive.html",
+                    _archive_context(request, selected_archive_folder_ids=selected_folder_ids, report_summary_scope="folders"),
+                )
+            selected_folders, selected_reports, empty_folders = _selected_archive_folders_and_reports(selected_folder_ids)
+            if not selected_folders:
+                messages.error(request, "Le cartelle selezionate non sono disponibili nell'archivio.")
+                return render(
+                    request,
+                    "confronti/archive.html",
+                    _archive_context(request, selected_archive_folder_ids=selected_folder_ids, report_summary_scope="folders"),
+                )
+            if not selected_reports:
+                messages.error(request, "Le cartelle selezionate non contengono report da usare nel sunto.")
+                return render(
+                    request,
+                    "confronti/archive.html",
+                    _archive_context(
+                        request,
+                        selected_archive_folder_ids=selected_folder_ids,
+                        selected_archive_folders=selected_folders,
+                        report_summary_scope="folders",
+                    ),
+                )
+            report_summary = _build_reports_summary_from_archived_reports(selected_reports)
+            report_summary_warnings = report_summary.get("warnings", [])
+            if empty_folders:
+                folder_labels = ", ".join(folder.customer_name for folder in empty_folders)
+                report_summary_warnings = [
+                    f"Queste cartelle non contenevano report e sono state saltate: {folder_labels}.",
+                    *report_summary_warnings,
+                ]
+            _store_report_summary_session(request, report_summary)
+            messages.success(
+                request,
+                f"Sunto creato per {report_summary.get('count', 0)} report da {len(selected_folders)} cartelle.",
+            )
+            return render(
+                request,
+                "confronti/archive.html",
+                _archive_context(
+                    request,
+                    selected_archive_folder_ids=selected_folder_ids,
+                    selected_archive_folders=selected_folders,
+                    report_summary=report_summary,
+                    report_summary_warnings=report_summary_warnings,
+                    report_summary_scope="folders",
+                ),
+            )
     return render(request, "confronti/archive.html", _archive_context(request))
 
 
