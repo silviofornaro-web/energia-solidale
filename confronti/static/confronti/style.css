@@ -1238,6 +1238,49 @@ th {
     padding: 16px;
 }
 
+.archive-report-card:has(.archive-report-selector-input:checked) {
+    border-color: #1597d3;
+    box-shadow: 0 12px 24px rgba(21, 151, 211, 0.12);
+}
+
+.archive-report-selector {
+    margin-bottom: 14px;
+}
+
+.archive-report-selector-label {
+    align-items: center;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    gap: 12px;
+    padding: 12px 14px;
+}
+
+.archive-report-selector-input {
+    flex: 0 0 auto;
+    height: 22px;
+    min-height: 0;
+    width: 22px;
+}
+
+.archive-report-selector-copy {
+    display: grid;
+    gap: 2px;
+}
+
+.archive-report-selector-copy strong {
+    color: #0f172a;
+    font-size: 14px;
+}
+
+.archive-report-selector-copy span {
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
 .archive-report-meta {
     align-items: start;
     display: flex;
@@ -1261,10 +1304,6 @@ th {
     display: grid;
     gap: 10px;
     justify-items: end;
-}
-
-.archive-summary-checkbox {
-    margin: 0;
 }
 
 .archive-summary-results {

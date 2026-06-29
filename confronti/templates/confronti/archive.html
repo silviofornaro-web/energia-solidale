@@ -193,6 +193,23 @@
         {% if report_entries %}
             {% for entry in report_entries %}
             <article class="archive-report-card">
+                <div class="archive-report-selector">
+                    <label class="archive-report-selector-label">
+                        <input
+                            type="checkbox"
+                            name="selected_reports"
+                            value="{{ entry.report.pk }}"
+                            form="archive-summary-form"
+                            class="archive-report-selector-input"
+                            {% if entry.report.pk in selected_report_ids %}checked{% endif %}
+                        >
+                        <span class="archive-report-selector-copy">
+                            <strong>Seleziona questo file</strong>
+                            <span>Spunta il checkbox per includerlo nel sunto.</span>
+                        </span>
+                    </label>
+                </div>
+
                 <div class="archive-report-meta">
                     <div>
                         <strong>{{ entry.report.title|default:"Report confronto" }}</strong>
@@ -208,16 +225,6 @@
                         </div>
                     </div>
                     <div class="archive-report-actions">
-                        <label class="checkbox-field archive-summary-checkbox">
-                            <input
-                                type="checkbox"
-                                name="selected_reports"
-                                value="{{ entry.report.pk }}"
-                                form="archive-summary-form"
-                                {% if entry.report.pk in selected_report_ids %}checked{% endif %}
-                            >
-                            <span>Inserisci nel sunto</span>
-                        </label>
                         <a href="{% url 'scarica_report_archiviato' entry.report.pk %}" class="action-link">Scarica report</a>
                     </div>
                 </div>
