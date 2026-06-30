@@ -107,6 +107,15 @@
                         </span>
                     </div>
                 </a>
+                <form method="post" class="archive-folder-delete-form" onsubmit="return window.confirm('Eliminare la cartella cliente e tutti i report contenuti?');">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="delete_archive_folder">
+                    <input type="hidden" name="folder_id" value="{{ folder.pk }}">
+                    <input type="hidden" name="q" value="{{ archive_query }}">
+                    <div class="form-actions">
+                        <button type="submit" class="archive-delete-button">Elimina cartella</button>
+                    </div>
+                </form>
             </article>
             {% endfor %}
         </div>
@@ -163,6 +172,12 @@
             {% else %}
             <span class="archive-open-folder-note">Su Render i file restano nel cloud dell'app. Per modificarli usa `Aggiungi file`, `Sostituisci file` ed `Elimina report` direttamente da questa pagina.</span>
             {% endif %}
+            <form method="post" class="inline-form" onsubmit="return window.confirm('Eliminare la cartella cliente e tutti i report contenuti?');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete_archive_folder">
+                <input type="hidden" name="q" value="{{ archive_query }}">
+                <button type="submit" class="archive-delete-button">Elimina cartella cliente</button>
+            </form>
         </div>
 
         <p class="archive-help-text">Da qui puoi aggiornare i dati della cartella, aggiungere nuovi report Excel, sostituire i file gia archiviati e scaricarli quando servono.</p>
@@ -400,6 +415,13 @@
                     <div class="archive-report-actions">
                         <a href="{% url 'archivio_report_cartella' entry.report.folder.pk %}{% if archive_query %}?q={{ archive_query|urlencode }}{% endif %}" class="action-link action-link-secondary">Apri cartella cliente</a>
                         <a href="{% url 'scarica_report_archiviato' entry.report.pk %}" class="action-link">Scarica report</a>
+                        <form method="post" class="archive-delete-form" onsubmit="return window.confirm('Eliminare questo report dall\\'archivio?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete_archive_report_global">
+                            <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+                            <input type="hidden" name="q" value="{{ archive_query }}">
+                            <button type="submit" class="archive-delete-button">Elimina report</button>
+                        </form>
                     </div>
                 </div>
             </article>

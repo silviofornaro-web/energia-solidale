@@ -1417,6 +1417,8 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Deseleziona tutti")
         self.assertContains(response, "file selezionati")
         self.assertContains(response, "Elimina report")
+        self.assertContains(response, "Elimina cartella")
+        self.assertContains(response, "Elimina cartella cliente")
         self.assertContains(response, "Dove sono i file")
         self.assertContains(response, "Percorso locale reale")
         self.assertContains(response, self.media_root)
@@ -1580,6 +1582,8 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Tutti i confronti archiviati")
         self.assertContains(response, "Apri cartella cliente")
+        self.assertContains(response, "Elimina report")
+        self.assertContains(response, "Elimina cartella")
         self.assertContains(response, folder.customer_name)
         self.assertContains(response, folder.folder_name)
         self.assertContains(response, reports[0].original_filename)
@@ -1605,6 +1609,60 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(ComparisonReport.objects.filter(pk=report.pk).exists())
         self.assertFalse(default_storage.exists(stored_name))
+
+    def test_archive_root_page_can_delete_archived_report(self):
+        self.login()
+        self.client.post("/", valid_payload())
+        self.client.post("/archivio-report/salva/")
+        folder = CustomerArchiveFolder.objects.get()
+        report = ComparisonReport.objects.get()
+        stored_name = report.report_file.name
+
+        response = self.client.post(
+            "/archivio-report/",
+            {
+                "action": "delete_archive_report_global",
+                "report_id": report.pk,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/archivio-report/")
+        self.assertFalse(ComparisonReport.objects.filter(pk=report.pk).exists())
+        self.assertTrue(CustomerArchiveFolder.objects.filter(pk=folder.pk).exists())
+        self.assertFalse(default_storage.exists(stored_name))
+
+    def test_archive_page_can_delete_archive_folder_and_all_reports(self):
+        self.login()
+        self.client.post("/", valid_payload(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10"))
+        self.client.post("/archivio-report/salva/")
+        self.client.post(
+            "/",
+            valid_payload(
+                nome_cliente="Mario Rossi",
+                indirizzo_fornitura="Viale Milano 20",
+                providers=["ILLUMIA", "EON"],
+                offer_var_choice_eon="E.ON Flex Luce Casa",
+                offer_fix_choice_eon="E.ON Luce Tua",
+            ),
+        )
+        self.client.post("/archivio-report/salva/")
+        folder = CustomerArchiveFolder.objects.get()
+        stored_names = list(ComparisonReport.objects.values_list("report_file", flat=True))
+
+        response = self.client.post(
+            f"/archivio-report/cartella/{folder.pk}/",
+            {
+                "action": "delete_archive_folder",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/archivio-report/")
+        self.assertFalse(CustomerArchiveFolder.objects.filter(pk=folder.pk).exists())
+        self.assertEqual(ComparisonReport.objects.count(), 0)
+        for stored_name in stored_names:
+            self.assertFalse(default_storage.exists(stored_name))
 
     @patch("confronti.views.subprocess.Popen")
     def test_archive_page_can_open_local_archive_folder(self, mock_popen):

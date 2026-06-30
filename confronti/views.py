@@ -434,6 +434,19 @@ def _delete_archive_report(report):
     _touch_archive_folder(folder)
 
 
+def _delete_archive_folder(folder):
+    reports = list(folder.reports.all())
+    folder_name = folder.folder_name
+    folder_path = _archive_folder_absolute_path(folder)
+    report_count = len(reports)
+    for report in reports:
+        _delete_archive_report(report)
+    folder.delete()
+    if os.path.isdir(folder_path):
+        shutil.rmtree(folder_path, ignore_errors=True)
+    return {"folder_name": folder_name, "report_count": report_count}
+
+
 def _build_reports_summary_from_archived_reports(reports):
     summary_files = []
     try:
@@ -568,6 +581,17 @@ def _archive_context(
         "report_entries": report_entries,
         "all_report_entries": all_report_entries,
     }
+
+
+def _archive_redirect_url(search_query="", *, folder_id=None):
+    if folder_id is not None:
+        base_url = reverse("archivio_report_cartella", kwargs={"folder_id": folder_id})
+    else:
+        base_url = reverse("archivio_report")
+    query = str(search_query or "").strip()
+    if not query:
+        return base_url
+    return f"{base_url}?{urlencode({'q': query})}"
 
 
 def _public_access_page(request):
@@ -987,6 +1011,21 @@ def archivio_report(request):
         return _redirect_for_non_archive_admin(request)
     if request.method == "POST":
         action = request.POST.get("action")
+        search_query = request.POST.get("q")
+        if action == "delete_archive_report_global":
+            report = get_object_or_404(ComparisonReport.objects.select_related("folder"), pk=request.POST.get("report_id"))
+            folder_name = report.folder.folder_name
+            _delete_archive_report(report)
+            messages.success(request, f"Report eliminato dall'archivio della cartella {folder_name}.")
+            return redirect(_archive_redirect_url(search_query))
+        if action == "delete_archive_folder":
+            folder = get_object_or_404(CustomerArchiveFolder, pk=request.POST.get("folder_id"))
+            deleted = _delete_archive_folder(folder)
+            messages.success(
+                request,
+                f"Cartella {deleted['folder_name']} eliminata con {deleted['report_count']} report.",
+            )
+            return redirect(_archive_redirect_url(search_query))
         if action == "build_archive_folder_summary":
             selected_folder_ids = _selected_archive_folder_ids(request.POST.getlist("selected_folder_ids"))
             if not selected_folder_ids:
@@ -1051,12 +1090,13 @@ def archivio_report_cartella(request, folder_id):
     folder = get_object_or_404(CustomerArchiveFolder, pk=folder_id)
     if request.method == "POST":
         action = request.POST.get("action")
+        search_query = request.POST.get("q")
         if action == "update_archive_folder":
             folder_form = ArchiveFolderForm(request.POST, instance=folder)
             if folder_form.is_valid():
                 folder_form.save()
                 messages.success(request, "Dati cartella archivio aggiornati.")
-                return redirect("archivio_report_cartella", folder_id=folder.pk)
+                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk))
             return render(
                 request,
                 "confronti/archive.html",
@@ -1067,7 +1107,7 @@ def archivio_report_cartella(request, folder_id):
             if add_report_form.is_valid():
                 _create_uploaded_archive_report(folder, add_report_form, request.user)
                 messages.success(request, f"File aggiunto nella cartella {folder.folder_name}.")
-                return redirect("archivio_report_cartella", folder_id=folder.pk)
+                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk))
             return render(
                 request,
                 "confronti/archive.html",
@@ -1114,7 +1154,7 @@ def archivio_report_cartella(request, folder_id):
                 report_form.save()
                 _touch_archive_folder(folder)
                 messages.success(request, "Report archiviato aggiornato.")
-                return redirect("archivio_report_cartella", folder_id=folder.pk)
+                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk))
             return render(
                 request,
                 "confronti/archive.html",
@@ -1131,7 +1171,7 @@ def archivio_report_cartella(request, folder_id):
             if replace_form.is_valid():
                 _replace_archive_report_file(report, replace_form.cleaned_data["report_file"])
                 messages.success(request, "File report sostituito.")
-                return redirect("archivio_report_cartella", folder_id=folder.pk)
+                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk))
             return render(
                 request,
                 "confronti/archive.html",
@@ -1146,7 +1186,14 @@ def archivio_report_cartella(request, folder_id):
             report = get_object_or_404(ComparisonReport, pk=request.POST.get("report_id"), folder=folder)
             _delete_archive_report(report)
             messages.success(request, "Report archiviato eliminato.")
-            return redirect("archivio_report_cartella", folder_id=folder.pk)
+            return redirect(_archive_redirect_url(search_query, folder_id=folder.pk))
+        if action == "delete_archive_folder":
+            deleted = _delete_archive_folder(folder)
+            messages.success(
+                request,
+                f"Cartella {deleted['folder_name']} eliminata con {deleted['report_count']} report.",
+            )
+            return redirect(_archive_redirect_url(search_query))
     return render(request, "confronti/archive.html", _archive_context(request, selected_folder=folder))
 
 
