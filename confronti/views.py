@@ -304,18 +304,26 @@ def _archive_report_queryset(search_query=""):
     return folders.order_by("-updated_at", "-created_at")
 
 
-def _archive_summary(search_query=""):
-    report_qs = ComparisonReport.objects.all()
+def _archive_reports_queryset(search_query=""):
+    reports = ComparisonReport.objects.select_related("folder")
     query = str(search_query or "").strip()
     if query:
-        report_qs = report_qs.filter(
+        reports = reports.filter(
             Q(folder__customer_name__icontains=query)
             | Q(folder__customer_email__icontains=query)
             | Q(folder__customer_phone__icontains=query)
             | Q(folder__folder_name__icontains=query)
             | Q(title__icontains=query)
             | Q(providers_label__icontains=query)
+            | Q(original_filename__icontains=query)
+            | Q(bill_period_label__icontains=query)
         )
+    return reports.order_by("-comparison_datetime", "-created_at")
+
+
+def _archive_summary(search_query=""):
+    report_qs = _archive_reports_queryset(search_query)
+    query = str(search_query or "").strip()
     return {
         "folder_count": _archive_report_queryset(query).count(),
         "report_count": report_qs.count(),
@@ -493,19 +501,19 @@ def _archive_context(
     search_query = str(request.GET.get("q") or request.POST.get("q") or "").strip()
     folders = list(_archive_report_queryset(search_query))
     report_entries = []
+    all_report_entries = []
     selected_report_ids = [int(report_id) for report_id in (selected_report_ids or [])]
     selected_archive_folder_ids = [int(folder_id) for folder_id in (selected_archive_folder_ids or [])]
     selected_archive_folders = list(selected_archive_folders or [])
     report_summary_warnings = list(report_summary_warnings or [])
     archive_folder_absolute_path = ""
-    archive_local_open_available = False
+    archive_local_open_available = _can_open_local_archive_path()
     if selected_folder is not None:
         selected_folder = get_object_or_404(
             CustomerArchiveFolder.objects.prefetch_related("reports").annotate(report_count=Count("reports")),
             pk=selected_folder.pk,
         )
         archive_folder_absolute_path = _archive_folder_absolute_path(selected_folder)
-        archive_local_open_available = _can_open_local_archive_path()
         reports = list(selected_folder.reports.order_by("-comparison_datetime", "-created_at"))
         if folder_form is None:
             folder_form = ArchiveFolderForm(instance=selected_folder)
@@ -530,6 +538,14 @@ def _archive_context(
                     "absolute_path": _archive_report_absolute_path(report),
                 }
             )
+    else:
+        for report in _archive_reports_queryset(search_query):
+            all_report_entries.append(
+                {
+                    "report": report,
+                    "absolute_path": _archive_report_absolute_path(report),
+                }
+            )
     return {
         "brand_home_url": reverse("confronto"),
         "page_title": "Archivio report",
@@ -550,6 +566,7 @@ def _archive_context(
         "archive_report_summary_warnings": report_summary_warnings,
         "archive_report_summary_scope": report_summary_scope,
         "report_entries": report_entries,
+        "all_report_entries": all_report_entries,
     }
 
 

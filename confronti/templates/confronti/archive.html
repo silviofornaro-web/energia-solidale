@@ -333,7 +333,8 @@
             </div>
         </section>
         {% endif %}
-        {% elif archive_report_summary.rows and archive_report_summary_scope == "folders" %}
+        {% else %}
+        {% if archive_report_summary.rows and archive_report_summary_scope == "folders" %}
         <h2>Sunto cartelle selezionate</h2>
         <p class="archive-help-text">Questo riepilogo usa tutti i report presenti nelle cartelle clienti selezionate nella colonna di sinistra.</p>
         {% if selected_archive_folders %}
@@ -372,9 +373,41 @@
                 </table>
             </div>
         </section>
+        {% endif %}
+
+        <h2>Tutti i confronti archiviati</h2>
+        <p class="archive-help-text">Qui trovi l'elenco completo dei confronti salvati nell'app, anche se sono distribuiti in poche cartelle cliente.</p>
+        {% if all_report_entries %}
+        <div class="archive-global-report-list">
+            {% for entry in all_report_entries %}
+            <article class="archive-report-card archive-global-report-card">
+                <div class="archive-report-meta">
+                    <div>
+                        <strong>{{ entry.report.title|default:"Report confronto" }}</strong>
+                        <div class="archive-report-submeta">
+                            <span><strong>Cliente:</strong> {{ entry.report.folder.customer_name }}</span>
+                            <span><strong>Cartella:</strong> {{ entry.report.folder.folder_name }}</span>
+                            <span>{{ entry.report.providers_label|default:"N.D." }}</span>
+                            <span>{{ entry.report.bill_period_label|default:"N.D." }}</span>
+                            <span>{{ entry.report.comparison_datetime|date:"d/m/Y H:i"|default:"N.D." }}</span>
+                            <span>{{ entry.report.original_filename|default:"report.xlsx" }}</span>
+                            <span><code class="archive-path">{{ entry.report.report_file.name }}</code></span>
+                            {% if archive_local_open_available %}
+                            <span><code class="archive-path">{{ entry.absolute_path }}</code></span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="archive-report-actions">
+                        <a href="{% url 'archivio_report_cartella' entry.report.folder.pk %}{% if archive_query %}?q={{ archive_query|urlencode }}{% endif %}" class="action-link action-link-secondary">Apri cartella cliente</a>
+                        <a href="{% url 'scarica_report_archiviato' entry.report.pk %}" class="action-link">Scarica report</a>
+                    </div>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
         {% else %}
-        <h2>Dettaglio archivio</h2>
-        <p class="status-empty">Apri una cartella cliente per consultare e modificare i report salvati.</p>
+        <p class="status-empty">Nessun confronto archiviato con i filtri attuali.</p>
+        {% endif %}
         {% endif %}
     </section>
 </section>

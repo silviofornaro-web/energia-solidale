@@ -1554,6 +1554,38 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Scarica sunto Excel")
         self.assertEqual(self.client.session["last_report_summary"]["count"], 2)
 
+    def test_archive_root_page_lists_all_archived_reports(self):
+        self.login()
+        self.client.post("/", valid_payload(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10"))
+        self.client.post("/archivio-report/salva/")
+        self.client.post(
+            "/",
+            valid_payload(
+                nome_cliente="Mario Rossi",
+                indirizzo_fornitura="Viale Milano 20",
+                providers=["ILLUMIA", "EON"],
+                offer_var_choice_eon="E.ON Flex Luce Casa",
+                offer_fix_choice_eon="E.ON Luce Tua",
+            ),
+        )
+        self.client.post("/archivio-report/salva/")
+
+        self.assertEqual(CustomerArchiveFolder.objects.count(), 1)
+        self.assertEqual(ComparisonReport.objects.count(), 2)
+        folder = CustomerArchiveFolder.objects.get()
+        reports = list(ComparisonReport.objects.order_by("-comparison_datetime", "-created_at"))
+
+        response = self.client.get("/archivio-report/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Tutti i confronti archiviati")
+        self.assertContains(response, "Apri cartella cliente")
+        self.assertContains(response, folder.customer_name)
+        self.assertContains(response, folder.folder_name)
+        self.assertContains(response, reports[0].original_filename)
+        self.assertContains(response, reports[1].original_filename)
+        self.assertNotContains(response, "Apri una cartella cliente per consultare e modificare i report salvati.")
+
     def test_archive_page_can_delete_archived_report(self):
         self.login()
         self.client.post("/", valid_payload())

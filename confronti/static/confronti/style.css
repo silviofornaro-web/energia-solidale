@@ -1398,6 +1398,15 @@ th {
     font-size: 13px;
 }
 
+.archive-global-report-list {
+    display: grid;
+    gap: 14px;
+}
+
+.archive-global-report-card {
+    margin-top: 0;
+}
+
 .archive-summary-results {
     margin-top: 18px;
 }
