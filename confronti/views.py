@@ -1131,6 +1131,46 @@ def archivio_report(request):
                 f"Cartella {deleted['folder_name']} eliminata con {deleted['report_count']} report.",
             )
             return redirect(_archive_redirect_url(search_query))
+        if action == "merge_selected_archive_folders":
+            selected_folder_ids = _selected_archive_folder_ids(request.POST.getlist("selected_folder_ids"))
+            if len(selected_folder_ids) != 2:
+                messages.error(request, "Seleziona esattamente 2 cartelle cliente da unire.")
+                return render(
+                    request,
+                    "confronti/archive.html",
+                    _archive_context(request, selected_archive_folder_ids=selected_folder_ids),
+                )
+            try:
+                target_folder_id = int(request.POST.get("merge_target_folder_id"))
+            except (TypeError, ValueError):
+                target_folder_id = 0
+            if target_folder_id not in selected_folder_ids:
+                messages.error(request, "Scegli quale delle 2 cartelle selezionate deve restare attiva.")
+                return render(
+                    request,
+                    "confronti/archive.html",
+                    _archive_context(request, selected_archive_folder_ids=selected_folder_ids),
+                )
+            folders_by_id = CustomerArchiveFolder.objects.in_bulk(selected_folder_ids)
+            if len(folders_by_id) != 2:
+                messages.error(request, "Le cartelle selezionate non sono piu disponibili nell'archivio.")
+                return render(
+                    request,
+                    "confronti/archive.html",
+                    _archive_context(request, selected_archive_folder_ids=selected_folder_ids),
+                )
+            target_folder = folders_by_id[target_folder_id]
+            source_folder_id = next(folder_id for folder_id in selected_folder_ids if folder_id != target_folder_id)
+            source_folder = folders_by_id[source_folder_id]
+            merged = _merge_archive_folders(target_folder, source_folder)
+            messages.success(
+                request,
+                (
+                    f"Cartella {merged['source_folder_name']} unita in {merged['target_folder_name']} "
+                    f"con {merged['moved_report_count']} report spostati."
+                ),
+            )
+            return redirect(_archive_redirect_url(search_query, folder_id=target_folder.pk))
         if action == "build_archive_folder_summary":
             selected_folder_ids = _selected_archive_folder_ids(request.POST.getlist("selected_folder_ids"))
             if not selected_folder_ids:

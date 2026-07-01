@@ -65,11 +65,22 @@
         <div id="archive-folder-selected-count" class="archive-selection-count archive-folder-selection-count" aria-live="polite">0 cartelle selezionate</div>
         <form id="archive-folder-summary-form" method="post" action="{% url 'archivio_report' %}" class="archive-summary-builder archive-folder-summary-builder">
             {% csrf_token %}
-            <input type="hidden" name="action" value="build_archive_folder_summary">
             <input type="hidden" name="q" value="{{ archive_query }}">
             <div id="archive-folder-summary-inputs"></div>
+            <div class="archive-folder-merge-controls">
+                <div class="form-grid form-grid-archive-merge">
+                    <label>
+                        Tieni questa cartella
+                        <select id="archive-folder-merge-target" name="merge_target_folder_id" disabled>
+                            <option value="">Seleziona 2 cartelle prima</option>
+                        </select>
+                    </label>
+                </div>
+                <p id="archive-folder-merge-help" class="archive-help-text archive-help-text-compact">Seleziona 2 cartelle dalla lista e scegli quale mantenere: l'altra verra assorbita e poi eliminata.</p>
+            </div>
             <div class="form-actions">
-                <button type="submit" id="archive-folder-summary-submit">Crea sunto cartelle selezionate</button>
+                <button type="submit" id="archive-folder-summary-submit" name="action" value="build_archive_folder_summary">Crea sunto cartelle selezionate</button>
+                <button type="submit" id="archive-folder-merge-submit" class="secondary" name="action" value="merge_selected_archive_folders" disabled>Unisci 2 cartelle selezionate</button>
                 {% if archive_report_summary.rows and archive_report_summary_scope == "folders" %}
                 <a class="download archive-summary-download" href="{% url 'scarica_sunto_report' %}" download>Scarica sunto Excel</a>
                 {% endif %}
@@ -79,7 +90,7 @@
             {% for folder in archive_folders %}
             <article class="archive-folder-card{% if selected_folder and selected_folder.pk == folder.pk %} is-active{% endif %}" data-archive-folder-card>
                 <label class="archive-folder-selector">
-                    <input type="checkbox" class="archive-folder-selector-input" value="{{ folder.pk }}" data-archive-folder-checkbox{% if folder.pk in selected_archive_folder_ids %} checked{% endif %}>
+                    <input type="checkbox" class="archive-folder-selector-input" value="{{ folder.pk }}" data-archive-folder-checkbox data-archive-folder-label="{{ folder.customer_name|escape }}"{% if folder.pk in selected_archive_folder_ids %} checked{% endif %}>
                     <span class="archive-folder-selector-copy">
                         <strong>Seleziona questa cartella</strong>
                         <span>La cartella resta evidenziata nella lista a sinistra.</span>
@@ -465,7 +476,55 @@
         const clearFoldersButton = document.querySelector('[data-archive-folder-select="none"]');
         const folderSummaryInputs = document.getElementById("archive-folder-summary-inputs");
         const folderSummarySubmit = document.getElementById("archive-folder-summary-submit");
+        const folderMergeTarget = document.getElementById("archive-folder-merge-target");
+        const folderMergeSubmit = document.getElementById("archive-folder-merge-submit");
+        const folderMergeHelp = document.getElementById("archive-folder-merge-help");
         const form = document.getElementById("archive-summary-form");
+
+        function updateFolderMergeState(selectedFolders) {
+            if (!folderMergeTarget || !folderMergeSubmit || !folderMergeHelp) {
+                return;
+            }
+
+            const previouslySelectedTarget = folderMergeTarget.value;
+            folderMergeTarget.innerHTML = "";
+
+            if (selectedFolders.length !== 2) {
+                const placeholder = document.createElement("option");
+                placeholder.value = "";
+                placeholder.textContent = selectedFolders.length > 2
+                    ? "Seleziona solo 2 cartelle"
+                    : "Seleziona 2 cartelle prima";
+                folderMergeTarget.appendChild(placeholder);
+                folderMergeTarget.disabled = true;
+                folderMergeSubmit.disabled = true;
+                folderMergeHelp.textContent = "Seleziona 2 cartelle dalla lista e scegli quale mantenere: l'altra verra assorbita e poi eliminata.";
+                return;
+            }
+
+            selectedFolders.forEach((folder) => {
+                const option = document.createElement("option");
+                option.value = folder.id;
+                option.textContent = folder.label;
+                if (folder.id === previouslySelectedTarget) {
+                    option.selected = true;
+                }
+                folderMergeTarget.appendChild(option);
+            });
+
+            if (!folderMergeTarget.value && selectedFolders.length) {
+                folderMergeTarget.value = selectedFolders[0].id;
+            }
+
+            const targetFolder = selectedFolders.find((folder) => folder.id === folderMergeTarget.value) || selectedFolders[0];
+            const sourceFolder = selectedFolders.find((folder) => folder.id !== targetFolder.id);
+
+            folderMergeTarget.disabled = false;
+            folderMergeSubmit.disabled = !folderMergeTarget.value;
+            folderMergeHelp.textContent = sourceFolder
+                ? "Resta attiva: " + targetFolder.label + ". Viene assorbita: " + sourceFolder.label + "."
+                : "Scegli quale cartella mantenere.";
+        }
 
         function readSelectedFolderIds() {
             try {
@@ -492,6 +551,12 @@
             const selectedFolderIds = folderCheckboxes
                 .filter((checkbox) => checkbox.checked)
                 .map((checkbox) => checkbox.value);
+            const selectedFolders = folderCheckboxes
+                .filter((checkbox) => checkbox.checked)
+                .map((checkbox) => ({
+                    id: checkbox.value,
+                    label: checkbox.dataset.archiveFolderLabel || ("Cartella " + checkbox.value),
+                }));
 
             folderCheckboxes.forEach((checkbox) => {
                 const card = checkbox.closest("[data-archive-folder-card]");
@@ -522,6 +587,8 @@
             if (folderSummarySubmit) {
                 folderSummarySubmit.disabled = selectedFolderIds.length === 0;
             }
+
+            updateFolderMergeState(selectedFolders);
         }
 
         function setAllFolderCheckboxes(checked) {
@@ -547,6 +614,18 @@
             if (clearFoldersButton) {
                 clearFoldersButton.addEventListener("click", function () {
                     setAllFolderCheckboxes(false);
+                });
+            }
+
+            if (folderMergeTarget) {
+                folderMergeTarget.addEventListener("change", function () {
+                    const selectedFolders = folderCheckboxes
+                        .filter((checkbox) => checkbox.checked)
+                        .map((checkbox) => ({
+                            id: checkbox.value,
+                            label: checkbox.dataset.archiveFolderLabel || ("Cartella " + checkbox.value),
+                        }));
+                    updateFolderMergeState(selectedFolders);
                 });
             }
 

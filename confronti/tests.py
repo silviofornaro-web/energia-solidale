@@ -1588,6 +1588,8 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Via Roma 10")
         self.assertContains(response, "Viale Milano 20")
         self.assertContains(response, "Scarica sunto Excel")
+        self.assertContains(response, "Tieni questa cartella")
+        self.assertContains(response, "Unisci 2 cartelle selezionate")
         self.assertEqual(self.client.session["last_report_summary"]["count"], 2)
 
     def test_archive_page_can_merge_two_archive_folders(self):
@@ -1637,6 +1639,40 @@ class ConfrontoViewTests(TestCase):
         self.assertFalse(default_storage.exists(source_stored_name))
         self.assertFalse(os.path.isdir(os.path.join(self.media_root, "report_archive", source_folder_name)))
 
+    def test_archive_root_page_can_merge_two_selected_folders(self):
+        self.login()
+        self.client.post("/", valid_payload(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10"))
+        self.client.post("/archivio-report/salva/")
+        self.client.post("/", valid_payload(nome_cliente="Luigi Bianchi", indirizzo_fornitura="Viale Milano 20"))
+        self.client.post("/archivio-report/salva/")
+
+        target_folder = CustomerArchiveFolder.objects.get(customer_name="Mario Rossi")
+        source_folder = CustomerArchiveFolder.objects.get(customer_name="Luigi Bianchi")
+        source_report = source_folder.reports.get()
+        source_stored_name = source_report.report_file.name
+        source_folder_name = source_folder.folder_name
+
+        response = self.client.post(
+            "/archivio-report/",
+            {
+                "action": "merge_selected_archive_folders",
+                "selected_folder_ids": [str(target_folder.pk), str(source_folder.pk)],
+                "merge_target_folder_id": str(target_folder.pk),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], f"/archivio-report/cartella/{target_folder.pk}/")
+        self.assertFalse(CustomerArchiveFolder.objects.filter(pk=source_folder.pk).exists())
+        self.assertEqual(target_folder.reports.count(), 2)
+
+        moved_report = ComparisonReport.objects.get(pk=source_report.pk)
+        self.assertEqual(moved_report.folder_id, target_folder.pk)
+        self.assertIn(target_folder.folder_name, moved_report.report_file.name)
+        self.assertTrue(default_storage.exists(moved_report.report_file.name))
+        self.assertFalse(default_storage.exists(source_stored_name))
+        self.assertFalse(os.path.isdir(os.path.join(self.media_root, "report_archive", source_folder_name)))
+
     def test_archive_root_page_lists_all_archived_reports(self):
         self.login()
         self.client.post("/", valid_payload(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10"))
@@ -1665,6 +1701,8 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Apri cartella cliente")
         self.assertContains(response, "Elimina report")
         self.assertContains(response, "Elimina cartella")
+        self.assertContains(response, "Tieni questa cartella")
+        self.assertContains(response, "Unisci 2 cartelle selezionate")
         self.assertContains(response, folder.customer_name)
         self.assertContains(response, folder.folder_name)
         self.assertContains(response, reports[0].original_filename)
