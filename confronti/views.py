@@ -783,6 +783,19 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
             admin_focus_panel = "status-clienti"
             customer_status = _customer_status_snapshot()
             form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
+        elif action == "delete_customer_user" and not customer_mode and not operator_mode:
+            admin_focus_panel = "status-clienti"
+            form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)
+            customer_user = get_object_or_404(
+                get_user_model(),
+                pk=request.POST.get("customer_user_id"),
+                is_staff=False,
+                is_superuser=False,
+            )
+            deleted_label = customer_user.email or customer_user.get_username() or f"cliente #{customer_user.pk}"
+            customer_user.delete()
+            messages.success(request, f"Cliente registrato eliminato: {deleted_label}.")
+            customer_status = _customer_status_snapshot()
         elif action == "build_report_summary" and not customer_mode:
             admin_focus_panel = "sunto-report"
             form = _comparison_form(customer_mode=customer_mode, operator_mode=operator_mode)

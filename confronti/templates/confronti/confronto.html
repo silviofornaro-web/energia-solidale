@@ -77,9 +77,17 @@
                 {% if customer_status.users %}
                 <ul class="status-list">
                     {% for customer_user in customer_status.users %}
-                    <li>
-                        <strong>{{ customer_user.email }}</strong>
-                        <span>{{ customer_user.first_name }} {{ customer_user.last_name|default:"" }}</span>
+                    <li class="status-list-item-with-action">
+                        <div class="status-list-copy">
+                            <strong>{{ customer_user.email }}</strong>
+                            <span>{{ customer_user.first_name }} {{ customer_user.last_name|default:"" }}</span>
+                        </div>
+                        <form method="post" class="archive-delete-form status-delete-form" onsubmit="return window.confirm('Eliminare questo cliente registrato?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete_customer_user">
+                            <input type="hidden" name="customer_user_id" value="{{ customer_user.pk }}">
+                            <button type="submit" class="archive-delete-button">Elimina cliente</button>
+                        </form>
                     </li>
                     {% endfor %}
                 </ul>

@@ -502,6 +502,11 @@ h2 span {
     padding-top: 10px;
 }
 
+.status-list-item-with-action {
+    align-items: start;
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .status-list li:first-child {
     border-top: 0;
     padding-top: 0;
@@ -517,6 +522,19 @@ h2 span {
     color: #64748b;
     font-size: 13px;
     line-height: 1.4;
+}
+
+.status-list-copy {
+    min-width: 0;
+}
+
+.status-delete-form {
+    margin-top: 0;
+}
+
+.status-delete-form .archive-delete-button {
+    padding: 8px 12px;
+    white-space: nowrap;
 }
 
 .invite-result {

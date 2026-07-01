@@ -1338,6 +1338,38 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(response.context["customer_status"]["user_count"], 2)
         self.assertEqual(response.context["customer_status"]["available_count"], 1)
         self.assertEqual(response.context["customer_status"]["used_count"], 1)
+        self.assertContains(response, "Elimina cliente")
+
+    def test_internal_dashboard_can_delete_single_customer_from_status_panel(self):
+        self.login()
+        User = get_user_model()
+        customer = User.objects.create_user(
+            username="cliente-da-eliminare@example.com",
+            email="cliente-da-eliminare@example.com",
+            password="secret",
+            first_name="Cliente",
+            last_name="Da Eliminare",
+        )
+        initial_count = User.objects.filter(is_staff=False, is_superuser=False).count()
+
+        response = self.client.post(
+            "/",
+            {
+                "action": "delete_customer_user",
+                "customer_user_id": str(customer.pk),
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(pk=customer.pk).exists())
+        self.assertEqual(response.context["admin_focus_panel"], "status-clienti")
+        self.assertEqual(response.context["customer_status"]["user_count"], initial_count - 1)
+        self.assertContains(response, "Cliente registrato eliminato: cliente-da-eliminare@example.com.")
+        self.assertNotIn(
+            customer.email,
+            [registered_user.email for registered_user in response.context["customer_status"]["users"]],
+        )
 
     def test_archive_page_requires_internal_user(self):
         self.login_customer()
