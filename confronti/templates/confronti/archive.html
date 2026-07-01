@@ -199,6 +199,26 @@
         </form>
 
         <section class="archive-upload-panel">
+            <h2>Unisci cartella</h2>
+            {% if merge_form.fields.source_folder.queryset.exists %}
+            <form method="post" class="archive-edit-form" onsubmit="return window.confirm('I report della cartella selezionata verranno spostati qui e l\\'altra cartella verra eliminata. Continuare?');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="merge_archive_folder">
+                <input type="hidden" name="q" value="{{ archive_query }}">
+                <div class="form-grid form-grid-archive-merge">
+                    <label>{{ merge_form.source_folder.label }}{{ merge_form.source_folder }}{{ merge_form.source_folder.errors }}</label>
+                </div>
+                <p class="archive-help-text archive-help-text-compact">La cartella aperta resta attiva. L'altra cartella viene assorbita e poi eliminata.</p>
+                <div class="form-actions">
+                    <button type="submit" class="secondary">Unisci in questa cartella</button>
+                </div>
+            </form>
+            {% else %}
+            <p class="archive-help-text archive-help-text-compact">Non ci sono altre cartelle archivio da unire a questa.</p>
+            {% endif %}
+        </section>
+
+        <section class="archive-upload-panel">
             <h2>Aggiungi file</h2>
             <form method="post" enctype="multipart/form-data" class="archive-edit-form">
                 {% csrf_token %}

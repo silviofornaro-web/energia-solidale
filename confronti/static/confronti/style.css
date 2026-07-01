@@ -1268,6 +1268,10 @@ th {
     grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
 }
 
+.form-grid-archive-merge {
+    grid-template-columns: minmax(260px, 1fr);
+}
+
 .form-grid-archive-report {
     grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
 }
@@ -1475,6 +1479,7 @@ footer strong {
     .archive-search-form,
     .archive-layout,
     .archive-detail-stats,
+    .form-grid-archive-merge,
     .form-grid-archive-upload,
     .form-grid-archive-folder,
     .form-grid-archive-replace,

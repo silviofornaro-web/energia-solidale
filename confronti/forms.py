@@ -167,6 +167,28 @@ class ArchiveFolderForm(forms.ModelForm):
         }
 
 
+class ArchiveFolderMergeForm(forms.Form):
+    source_folder = forms.ModelChoiceField(
+        label="Cartella da assorbire",
+        queryset=CustomerArchiveFolder.objects.none(),
+        empty_label="Seleziona una cartella",
+    )
+
+    def __init__(self, *args, target_folder=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        queryset = CustomerArchiveFolder.objects.order_by("customer_name", "created_at")
+        if target_folder is not None:
+            queryset = queryset.exclude(pk=target_folder.pk)
+        self.fields["source_folder"].queryset = queryset
+        self.target_folder = target_folder
+
+    def clean_source_folder(self):
+        source_folder = self.cleaned_data["source_folder"]
+        if self.target_folder is not None and source_folder.pk == self.target_folder.pk:
+            raise forms.ValidationError("Seleziona una cartella diversa da quella aperta.")
+        return source_folder
+
+
 class ArchiveReportForm(forms.ModelForm):
     class Meta:
         model = ComparisonReport

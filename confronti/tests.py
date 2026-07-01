@@ -1455,6 +1455,8 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Percorso locale reale")
         self.assertContains(response, self.media_root)
         self.assertContains(response, "Apri cartella file")
+        self.assertContains(response, "Unisci cartella")
+        self.assertContains(response, "Non ci sono altre cartelle archivio da unire a questa.")
         self.assertContains(response, report.original_filename)
         self.assertContains(response, report.report_file.name)
         self.assertContains(response, "Scarica report")
@@ -1587,6 +1589,53 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Viale Milano 20")
         self.assertContains(response, "Scarica sunto Excel")
         self.assertEqual(self.client.session["last_report_summary"]["count"], 2)
+
+    def test_archive_page_can_merge_two_archive_folders(self):
+        self.login()
+        self.client.post("/", valid_payload(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10"))
+        self.client.post("/archivio-report/salva/")
+        self.client.post("/", valid_payload(nome_cliente="Luigi Bianchi", indirizzo_fornitura="Viale Milano 20"))
+        self.client.post("/archivio-report/salva/")
+
+        target_folder = CustomerArchiveFolder.objects.get(customer_name="Mario Rossi")
+        source_folder = CustomerArchiveFolder.objects.get(customer_name="Luigi Bianchi")
+        target_folder.notes = "Cartella principale"
+        target_folder.save(update_fields=["notes"])
+        source_folder.customer_email = "luigi@example.com"
+        source_folder.customer_phone = "3331234567"
+        source_folder.notes = "Storico da unire"
+        source_folder.save(update_fields=["customer_email", "customer_phone", "notes"])
+        source_report = source_folder.reports.get()
+        source_stored_name = source_report.report_file.name
+        source_folder_name = source_folder.folder_name
+
+        response = self.client.post(
+            f"/archivio-report/cartella/{target_folder.pk}/",
+            {
+                "action": "merge_archive_folder",
+                "merge-folder-source_folder": str(source_folder.pk),
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f"Cartella {source_folder_name} unita in {target_folder.folder_name} con 1 report spostati.",
+        )
+        self.assertFalse(CustomerArchiveFolder.objects.filter(pk=source_folder.pk).exists())
+        target_folder.refresh_from_db()
+        self.assertEqual(target_folder.customer_email, "luigi@example.com")
+        self.assertEqual(target_folder.customer_phone, "3331234567")
+        self.assertIn("Storico da unire", target_folder.notes)
+        self.assertEqual(target_folder.reports.count(), 2)
+
+        moved_report = ComparisonReport.objects.get(pk=source_report.pk)
+        self.assertEqual(moved_report.folder_id, target_folder.pk)
+        self.assertIn(target_folder.folder_name, moved_report.report_file.name)
+        self.assertTrue(default_storage.exists(moved_report.report_file.name))
+        self.assertFalse(default_storage.exists(source_stored_name))
+        self.assertFalse(os.path.isdir(os.path.join(self.media_root, "report_archive", source_folder_name)))
 
     def test_archive_root_page_lists_all_archived_reports(self):
         self.login()

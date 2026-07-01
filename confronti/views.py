@@ -20,6 +20,7 @@ from django.utils import timezone
 from .bill_parser import parse_uploaded_bill
 from .forms import (
     ArchiveFolderForm,
+    ArchiveFolderMergeForm,
     ArchiveReportForm,
     ArchiveReportReplaceFileForm,
     ArchiveReportUploadForm,
@@ -29,7 +30,7 @@ from .forms import (
     ReportSummaryUploadForm,
     session_to_service_data,
 )
-from .models import ComparisonReport, CustomerArchiveFolder, InviteCode
+from .models import ComparisonReport, CustomerArchiveFolder, InviteCode, archive_report_upload_to
 from .roles import is_illumia_operator, is_internal_user
 from .services import (
     build_excel_bytes,
@@ -405,6 +406,93 @@ def _create_uploaded_archive_report(folder, form, user):
     return report
 
 
+def _archive_unique_storage_name(folder, filename, storage, *, reserved_names=None):
+    normalized_filename = _display_upload_name(filename) or "report.xlsx"
+    reserved_names = reserved_names if reserved_names is not None else set()
+    temp_report = ComparisonReport(folder=folder)
+    stem, ext = os.path.splitext(normalized_filename)
+    suffix = 1
+    while True:
+        candidate_filename = normalized_filename if suffix == 1 else f"{stem}-{suffix}{ext}"
+        candidate_name = archive_report_upload_to(temp_report, candidate_filename)
+        if candidate_name not in reserved_names and not storage.exists(candidate_name):
+            reserved_names.add(candidate_name)
+            return candidate_name
+        suffix += 1
+
+
+def _move_archive_report_to_folder(report, target_folder, *, reserved_names=None):
+    old_name = report.report_file.name
+    storage = report.report_file.storage
+    source_name = report.original_filename or os.path.basename(old_name) or f"report-{report.pk}.xlsx"
+    target_name = _archive_unique_storage_name(target_folder, source_name, storage, reserved_names=reserved_names)
+    report.report_file.open("rb")
+    try:
+        content = report.report_file.read()
+    finally:
+        report.report_file.close()
+    saved_name = storage.save(target_name, ContentFile(content))
+    report.folder = target_folder
+    report.report_file.name = saved_name
+    report.save(update_fields=["folder", "report_file", "updated_at"])
+    if old_name and old_name != saved_name:
+        try:
+            storage.delete(old_name)
+        except OSError:
+            logger.warning("Impossibile eliminare il vecchio file archivio %s", old_name, exc_info=True)
+    return saved_name
+
+
+def _merge_archive_folder_notes(target_notes, source_notes, source_folder_name):
+    normalized_target = str(target_notes or "").strip()
+    normalized_source = str(source_notes or "").strip()
+    if not normalized_source:
+        return normalized_target
+    if not normalized_target:
+        return normalized_source
+    if normalized_source in normalized_target:
+        return normalized_target
+    return f"{normalized_target}\n\nDa cartella unita {source_folder_name}:\n{normalized_source}"
+
+
+def _merge_archive_folders(target_folder, source_folder):
+    if target_folder.pk == source_folder.pk:
+        raise ValueError("La cartella sorgente deve essere diversa da quella di destinazione.")
+    source_folder_name = source_folder.folder_name
+    source_folder_path = _archive_folder_absolute_path(source_folder)
+    reserved_names = set(target_folder.reports.values_list("report_file", flat=True))
+    moved_reports = []
+    source_reports = list(source_folder.reports.order_by("-comparison_datetime", "-created_at"))
+    for report in source_reports:
+        _move_archive_report_to_folder(report, target_folder, reserved_names=reserved_names)
+        moved_reports.append(report.pk)
+
+    changed_fields = []
+    if not target_folder.customer_email and source_folder.customer_email:
+        target_folder.customer_email = source_folder.customer_email
+        changed_fields.append("customer_email")
+    if not target_folder.customer_phone and source_folder.customer_phone:
+        target_folder.customer_phone = source_folder.customer_phone
+        changed_fields.append("customer_phone")
+    merged_notes = _merge_archive_folder_notes(target_folder.notes, source_folder.notes, source_folder.folder_name)
+    if merged_notes != target_folder.notes:
+        target_folder.notes = merged_notes
+        changed_fields.append("notes")
+    if changed_fields:
+        target_folder.save(update_fields=changed_fields + ["updated_at"])
+    else:
+        _touch_archive_folder(target_folder)
+
+    source_folder.delete()
+    if os.path.isdir(source_folder_path):
+        shutil.rmtree(source_folder_path, ignore_errors=True)
+    return {
+        "target_folder_name": target_folder.folder_name,
+        "source_folder_name": source_folder_name,
+        "moved_report_count": len(moved_reports),
+    }
+
+
 def _replace_archive_report_file(report, uploaded_file):
     old_name = report.report_file.name
     report.report_file.save(_display_upload_name(uploaded_file.name), uploaded_file, save=False)
@@ -499,6 +587,7 @@ def _archive_context(
     *,
     selected_folder=None,
     folder_form=None,
+    merge_form=None,
     add_report_form=None,
     selected_report_ids=None,
     selected_archive_folder_ids=None,
@@ -530,6 +619,8 @@ def _archive_context(
         reports = list(selected_folder.reports.order_by("-comparison_datetime", "-created_at"))
         if folder_form is None:
             folder_form = ArchiveFolderForm(instance=selected_folder)
+        if merge_form is None:
+            merge_form = ArchiveFolderMergeForm(prefix="merge-folder", target_folder=selected_folder)
         if add_report_form is None:
             add_report_form = ArchiveReportUploadForm(prefix="add-report")
         for report in reports:
@@ -568,6 +659,7 @@ def _archive_context(
         "archive_folders": folders,
         "selected_folder": selected_folder,
         "folder_form": folder_form,
+        "merge_form": merge_form,
         "add_report_form": add_report_form,
         "archive_storage_label": _archive_storage_label(),
         "archive_folder_absolute_path": archive_folder_absolute_path,
@@ -1114,6 +1206,24 @@ def archivio_report_cartella(request, folder_id):
                 request,
                 "confronti/archive.html",
                 _archive_context(request, selected_folder=folder, folder_form=folder_form),
+            )
+        if action == "merge_archive_folder":
+            merge_form = ArchiveFolderMergeForm(request.POST, prefix="merge-folder", target_folder=folder)
+            if merge_form.is_valid():
+                source_folder = merge_form.cleaned_data["source_folder"]
+                merged = _merge_archive_folders(folder, source_folder)
+                messages.success(
+                    request,
+                    (
+                        f"Cartella {merged['source_folder_name']} unita in {merged['target_folder_name']} "
+                        f"con {merged['moved_report_count']} report spostati."
+                    ),
+                )
+                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk))
+            return render(
+                request,
+                "confronti/archive.html",
+                _archive_context(request, selected_folder=folder, merge_form=merge_form),
             )
         if action == "add_archive_report":
             add_report_form = ArchiveReportUploadForm(request.POST, request.FILES, prefix="add-report")
