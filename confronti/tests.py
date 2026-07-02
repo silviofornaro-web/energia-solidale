@@ -1474,6 +1474,31 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(folder.customer_phone, "3331234567")
         self.assertEqual(folder.notes, "Cartella creata manualmente")
 
+    def test_archive_root_page_keeps_selected_report_after_creating_folder(self):
+        self.login()
+        self.client.post("/", valid_payload(nome_cliente="Giulia Verdi", indirizzo_fornitura="Via Torino 44"))
+        self._archive_current_report()
+        report = ComparisonReport.objects.get(folder__isnull=True)
+
+        response = self.client.post(
+            "/archivio-report/",
+            {
+                "action": "create_archive_folder",
+                "selected_report_id": str(report.pk),
+                "create-folder-customer_name": "Cartella Giulia",
+                "create-folder-customer_email": "giulia@example.com",
+                "create-folder-customer_phone": "3331234567",
+                "create-folder-notes": "Da compilare",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], f"/archivio-report/?report_id={report.pk}")
+        folder = CustomerArchiveFolder.objects.get(customer_name="Cartella Giulia")
+        self.assertEqual(folder.customer_email, "giulia@example.com")
+        self.assertEqual(folder.customer_phone, "3331234567")
+        self.assertEqual(folder.notes, "Da compilare")
+
     def test_archive_root_page_can_assign_unassigned_report_to_existing_folder(self):
         self.login()
         folder = self._create_archive_folder("Dossier Carmela")
@@ -1820,25 +1845,25 @@ class ConfrontoViewTests(TestCase):
 
         self.assertEqual(CustomerArchiveFolder.objects.count(), 1)
         self.assertEqual(ComparisonReport.objects.count(), 3)
-        unassigned_report = ComparisonReport.objects.get(folder__isnull=True)
-
         response = self.client.get("/archivio-report/")
         content = response.content.decode()
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Cartelle create")
-        self.assertContains(response, "Confronti singoli senza cartella")
+        self.assertContains(response, "Tutti i confronti archiviati")
         self.assertContains(response, "Elimina cartella")
         self.assertContains(response, "Crea cartella")
         self.assertContains(response, "Tieni questa cartella")
         self.assertContains(response, "Unisci 2 cartelle selezionate")
         self.assertContains(response, folder.customer_name)
         self.assertContains(response, folder.folder_name)
+        self.assertContains(response, "Illumia + E.ON")
+        self.assertContains(response, "IT001E12345678")
         self.assertContains(response, "Giulia Verdi")
         self.assertContains(response, "00881906523889")
         self.assertContains(response, "Luce")
-        self.assertContains(response, unassigned_report.original_filename)
-        self.assertLess(content.index("Cartelle create"), content.index("Confronti singoli senza cartella"))
+        self.assertContains(response, "Senza cartella")
+        self.assertLess(content.index("Cartelle create"), content.index("Tutti i confronti archiviati"))
 
     def test_archive_root_page_can_show_selected_unassigned_report_detail(self):
         self.login()

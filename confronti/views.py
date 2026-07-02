@@ -784,8 +784,7 @@ def _archive_context(
     search_query = str(request.GET.get("q") or request.POST.get("q") or "").strip()
     folders = list(_archive_report_queryset(search_query))
     report_entries = []
-    assigned_report_entries = []
-    unassigned_report_entries = []
+    archived_report_entries = []
     selected_report_entry = None
     selected_report_ids = [int(report_id) for report_id in (selected_report_ids or [])]
     selected_archive_folder_ids = [int(folder_id) for folder_id in (selected_archive_folder_ids or [])]
@@ -800,6 +799,20 @@ def _archive_context(
             selected_report_lookup_id = int(raw_selected_report_id)
     if create_folder_form is None:
         create_folder_form = ArchiveFolderCreateForm(prefix="create-folder")
+    for report in _archive_reports_queryset(search_query):
+        entry = _archive_report_entry(
+            report,
+            active_move_report_id=active_move_report_id,
+            active_move_form=active_move_report_form,
+            active_report_id=active_report_id,
+            active_report_form=active_report_form,
+            active_replace_report_id=active_replace_report_id,
+            active_replace_report_form=active_replace_report_form,
+        )
+        archived_report_entries.append(entry)
+        if selected_folder is None and selected_report_lookup_id == report.pk:
+            selected_report = report
+            selected_report_entry = entry
     if selected_folder is not None:
         selected_folder = get_object_or_404(
             CustomerArchiveFolder.objects.prefetch_related("reports").annotate(report_count=Count("reports")),
@@ -827,34 +840,16 @@ def _archive_context(
             if selected_report_lookup_id == report.pk:
                 selected_report = report
                 selected_report_entry = entry
-    else:
-        for report in _archive_reports_queryset(search_query):
-            entry = _archive_report_entry(
-                report,
-                active_move_report_id=active_move_report_id,
-                active_move_form=active_move_report_form,
-                active_report_id=active_report_id,
-                active_report_form=active_report_form,
-                active_replace_report_id=active_replace_report_id,
-                active_replace_report_form=active_replace_report_form,
-            )
-            if report.folder_id:
-                assigned_report_entries.append(entry)
-            else:
-                unassigned_report_entries.append(entry)
-                if selected_report_lookup_id == report.pk:
-                    selected_report = report
-                    selected_report_entry = entry
-        if selected_report is not None and selected_report.folder_id is None and selected_report_entry is None:
-            selected_report_entry = _archive_report_entry(
-                selected_report,
-                active_move_report_id=active_move_report_id,
-                active_move_form=active_move_report_form,
-                active_report_id=active_report_id,
-                active_report_form=active_report_form,
-                active_replace_report_id=active_replace_report_id,
-                active_replace_report_form=active_replace_report_form,
-            )
+    elif selected_report is not None and selected_report_entry is None:
+        selected_report_entry = _archive_report_entry(
+            selected_report,
+            active_move_report_id=active_move_report_id,
+            active_move_form=active_move_report_form,
+            active_report_id=active_report_id,
+            active_report_form=active_report_form,
+            active_replace_report_id=active_replace_report_id,
+            active_replace_report_form=active_replace_report_form,
+        )
     return {
         "brand_home_url": reverse("confronto"),
         "page_title": "Archivio report",
@@ -879,8 +874,7 @@ def _archive_context(
         "archive_report_summary_warnings": report_summary_warnings,
         "archive_report_summary_scope": report_summary_scope,
         "report_entries": report_entries,
-        "assigned_report_entries": assigned_report_entries,
-        "unassigned_report_entries": unassigned_report_entries,
+        "archived_report_entries": archived_report_entries,
     }
 
 
@@ -1370,12 +1364,23 @@ def archivio_report(request):
         search_query = request.POST.get("q")
         selected_report_id = request.POST.get("selected_report_id")
         if action == "create_archive_folder":
+            selected_report = ComparisonReport.objects.select_related("folder").filter(pk=selected_report_id).first()
             create_folder_form = ArchiveFolderCreateForm(request.POST, prefix="create-folder")
             if create_folder_form.is_valid():
                 folder = create_folder_form.save(commit=False)
                 folder.created_by = request.user
                 folder.save()
                 messages.success(request, f"Cartella {folder.customer_name} creata.")
+                if selected_report is not None:
+                    if selected_report.folder_id is not None:
+                        return redirect(
+                            _archive_redirect_url(
+                                search_query,
+                                folder_id=selected_report.folder_id,
+                                report_id=selected_report.pk,
+                            )
+                        )
+                    return redirect(_archive_redirect_url(search_query, report_id=selected_report.pk))
                 return redirect(_archive_redirect_url(search_query, folder_id=folder.pk))
             return render(
                 request,
@@ -1383,7 +1388,8 @@ def archivio_report(request):
                 _archive_context(
                     request,
                     create_folder_form=create_folder_form,
-                    selected_report=ComparisonReport.objects.filter(pk=selected_report_id, folder__isnull=True).first(),
+                    selected_folder=selected_report.folder if selected_report and selected_report.folder_id else None,
+                    selected_report=selected_report,
                 ),
             )
         if action == "delete_archive_report_global":

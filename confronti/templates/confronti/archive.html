@@ -56,7 +56,7 @@
         <div class="archive-folder-panel-header">
             <div>
                 <h2>Naviga archivio</h2>
-                <p class="archive-help-text archive-help-text-compact">A sinistra trovi prima le cartelle create e sotto i confronti singoli non ancora assegnati a una cartella.</p>
+                <p class="archive-help-text archive-help-text-compact">A sinistra trovi prima le cartelle create e sotto tutti i confronti archiviati, anche se sono gia dentro una cartella.</p>
             </div>
             {% if archive_folders %}
             <div class="form-actions archive-folder-quick-actions">
@@ -68,7 +68,7 @@
 
         <section class="archive-upload-panel archive-folder-create-panel">
             <h2>Crea cartella</h2>
-            <form method="post" class="archive-edit-form">
+            <form method="post" action="{% url 'archivio_report' %}" class="archive-edit-form">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="create_archive_folder">
                 <input type="hidden" name="q" value="{{ archive_query }}">
@@ -82,6 +82,7 @@
                     <label class="archive-notes-field">{{ create_folder_form.notes.label }}{{ create_folder_form.notes }}{{ create_folder_form.notes.errors }}</label>
                 </div>
                 <p class="archive-help-text archive-help-text-compact">Puoi creare una cartella vuota e poi spostarci dentro uno o piu confronti.</p>
+                <p class="archive-help-text archive-help-text-compact">I report restano visibili nella colonna di sinistra: dopo la creazione scegli il file e usa `Sposta in cartella` oppure `Sposta file`.</p>
                 <div class="form-actions">
                     <button type="submit">Crea cartella</button>
                 </div>
@@ -178,15 +179,15 @@
 
         <section class="archive-browser-section">
             <div class="archive-browser-section-header">
-                <h2>Confronti singoli senza cartella</h2>
-                <span class="archive-browser-count">{{ unassigned_report_entries|length }}</span>
+                <h2>Tutti i confronti archiviati</h2>
+                <span class="archive-browser-count">{{ archived_report_entries|length }}</span>
             </div>
-            <p class="archive-help-text archive-help-text-compact">Ogni riga mostra cliente, POD/PDR, fornitura e data del confronto. Clicca il file per aprirlo nel pannello di destra.</p>
-            {% if unassigned_report_entries %}
+            <p class="archive-help-text archive-help-text-compact">Ogni riga mostra cliente, POD/PDR, fornitura, data del confronto e cartella attuale. Clicca il file per aprire il dettaglio o la cartella che lo contiene.</p>
+            {% if archived_report_entries %}
             <div class="archive-single-report-list">
-                {% for entry in unassigned_report_entries %}
+                {% for entry in archived_report_entries %}
                 <a
-                    href="{% url 'archivio_report' %}?{% if archive_query %}q={{ archive_query|urlencode }}&amp;{% endif %}report_id={{ entry.report.pk }}"
+                    href="{% if entry.report.folder_id %}{% url 'archivio_report_cartella' entry.report.folder_id %}{% else %}{% url 'archivio_report' %}{% endif %}?{% if archive_query %}q={{ archive_query|urlencode }}&amp;{% endif %}report_id={{ entry.report.pk }}"
                     class="archive-single-report-card{% if selected_report_entry and selected_report_entry.report.pk == entry.report.pk %} is-active{% endif %}"
                 >
                     <strong>{{ entry.customer_name_display }}</strong>
@@ -205,15 +206,19 @@
                             {{ entry.reference_datetime|date:"d/m/Y H:i"|default:"N.D." }}
                         </span>
                         <span>
-                            <span class="archive-meta-label">File</span>
-                            {{ entry.report.original_filename|default:"report.xlsx" }}
+                            <span class="archive-meta-label">Cartella</span>
+                            {% if entry.report.folder_id %}
+                            {{ entry.report.folder.customer_name }}
+                            {% else %}
+                            Senza cartella
+                            {% endif %}
                         </span>
                     </div>
                 </a>
                 {% endfor %}
             </div>
             {% else %}
-            <p class="status-empty">Nessun confronto singolo con i filtri attuali.</p>
+            <p class="status-empty">Nessun confronto archiviato con i filtri attuali.</p>
             {% endif %}
         </section>
     </section>
@@ -713,7 +718,7 @@
 
         <div class="archive-empty-state">
             <h2>Seleziona una cartella o un confronto singolo</h2>
-            <p>Quando clicchi una cartella a sinistra vedi tutti i file che contiene. Quando clicchi un confronto singolo senza cartella, qui trovi le azioni per aprirlo, aggiornarlo, cancellarlo o metterlo dentro una cartella.</p>
+            <p>Quando clicchi una cartella a sinistra vedi tutti i file che contiene. Quando clicchi un confronto dalla lista completa qui a sinistra, apri il suo dettaglio e puoi spostarlo manualmente nella cartella che vuoi.</p>
         </div>
         {% endif %}
     </section>
