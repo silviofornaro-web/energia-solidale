@@ -308,8 +308,6 @@
         <label>{{ form.b_ricalcoli.label }}{{ form.b_ricalcoli }}{{ form.b_ricalcoli.errors }}</label>
     </div>
 
-    <h3 class="customer-section-heading">Scelta offerta Illumia</h3>
-    <p class="panel-lead">Puoi lasciare <strong>Automatica</strong> se non vuoi scegliere manualmente un'offerta specifica.</p>
     {% else %}
     <div class="form-grid top">
         <label>{{ form.nome_cliente.label }}{{ form.nome_cliente }}{{ form.nome_cliente.errors }}</label>
@@ -350,6 +348,7 @@
 
     <h2>Offerte confronto</h2>
     {% endif %}
+    {% if not customer_mode %}
     <div class="form-grid">
         <div class="offer-provider" data-provider-panel="ILLUMIA">
             <h3>Illumia</h3>
@@ -371,6 +370,7 @@
         {% endif %}
         {% endif %}
     </div>
+    {% endif %}
 
     {% if customer_mode %}
     <details class="customer-optional-panel" {% if customer_optional_open %}open{% endif %}>
