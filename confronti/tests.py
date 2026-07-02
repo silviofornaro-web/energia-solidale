@@ -1393,7 +1393,11 @@ class ConfrontoViewTests(TestCase):
                 offer_fix_choice_eon="E.ON Luce Tua",
             ),
         )
-        self.assertContains(comparison_response, "Archivia report")
+        self.assertContains(comparison_response, "Questo confronto e gia stato archiviato automaticamente")
+        auto_report = ComparisonReport.objects.get()
+        self.assertEqual(auto_report.created_by, self.operator_user)
+        self.assertEqual(auto_report.providers_label, "E.ON")
+        self.assertIsNotNone(auto_report.folder)
 
         response = self._archive_current_report()
 
@@ -1406,7 +1410,15 @@ class ConfrontoViewTests(TestCase):
 
     def test_internal_dashboard_can_archive_current_report(self):
         self.login()
-        self.client.post("/", valid_payload())
+        response = self.client.post("/", valid_payload())
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Questo confronto e gia stato archiviato automaticamente")
+        auto_report = ComparisonReport.objects.get()
+        self.assertEqual(auto_report.created_by, self.staff_user)
+        self.assertEqual(auto_report.providers_label, "Illumia")
+        self.assertIsNotNone(auto_report.folder)
+        self.assertEqual(auto_report.folder.customer_name, "Mario Rossi")
+        self.assertEqual(self.client.session["last_archived_report_id"], auto_report.pk)
 
         response = self._archive_current_report()
 
@@ -1426,6 +1438,7 @@ class ConfrontoViewTests(TestCase):
     def test_internal_dashboard_can_archive_current_report_into_new_folder(self):
         self.login()
         self.client.post("/", valid_payload())
+        auto_folder = CustomerArchiveFolder.objects.get()
 
         response = self._archive_current_report(new_folder_name="Mario Rossi Dossier")
 
@@ -1433,6 +1446,7 @@ class ConfrontoViewTests(TestCase):
         folder = CustomerArchiveFolder.objects.get()
         report = ComparisonReport.objects.get()
         self.assertEqual(response["Location"], f"/archivio-report/cartella/{folder.pk}/")
+        self.assertFalse(CustomerArchiveFolder.objects.filter(pk=auto_folder.pk).exists())
         self.assertEqual(folder.customer_name, "Mario Rossi Dossier")
         self.assertRegex(folder.folder_name, r"^\d{4}-\d{2}-\d{2}__mario-rossi-dossier")
         self.assertEqual(report.folder, folder)
@@ -2166,6 +2180,13 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["telefono_cliente"], "3331234567")
         self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["pod_pdr"], "")
         self.assertEqual(self.client.session["last_confronto_cliente_illumia"]["tariff_selection_mode"], "LATEST")
+        report = ComparisonReport.objects.get()
+        self.assertEqual(self.client.session["last_archived_report_id_cliente_illumia"], report.pk)
+        self.assertEqual(report.created_by, self.staff_user)
+        self.assertEqual(report.providers_label, "Illumia")
+        self.assertEqual(report.folder.customer_name, "Mario Rossi")
+        self.assertEqual(report.comparison_data["customer_email"], "mario@example.com")
+        self.assertEqual(report.comparison_data["customer_phone"], "3331234567")
 
     def test_customer_page_hides_technical_fields_inside_optional_panel(self):
         self.login()
@@ -2321,10 +2342,11 @@ class ConfrontoViewTests(TestCase):
 
 
     def _comparison_excel(self, **payload_overrides):
-        self.client.post("/", valid_payload(**payload_overrides))
-        response = self.client.get("/scarica-excel/")
-        self.assertEqual(response.status_code, 200)
-        return response.content
+        form = ConfrontoForm(data=valid_payload(**payload_overrides))
+        self.assertTrue(form.is_valid(), form.errors)
+        data = form.service_data()
+        prepared = services.prepare_comparison(data)
+        return services.build_excel_bytes(data, prepared)
 
     def _create_archive_folder(self, customer_name="Mario Rossi", customer_email="", customer_phone="", notes=""):
         return CustomerArchiveFolder.objects.create(

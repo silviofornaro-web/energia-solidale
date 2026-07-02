@@ -515,24 +515,22 @@
 
     <div class="form-actions">
         <a class="download" href="{% url download_url_name %}" download data-download-excel>Scarica Excel</a>
-        {% if not customer_mode %}
-        <form method="post" action="{% url 'archivia_report_corrente' %}" class="archive-current-save-form">
-            {% csrf_token %}
-            <div class="form-grid form-grid-archive-current-save">
-                <label>
-                    {{ archive_current_report_form.existing_folder.label }}
-                    {{ archive_current_report_form.existing_folder }}
-                </label>
-                <label>
-                    {{ archive_current_report_form.new_folder_name.label }}
-                    {{ archive_current_report_form.new_folder_name }}
-                </label>
-            </div>
-            <p class="archive-help-text archive-help-text-compact">Puoi archiviarlo in una cartella esistente, crearne una nuova oppure lasciarlo senza cartella e assegnarlo dopo.</p>
-            <button type="submit" class="secondary">Archivia report</button>
-        </form>
-        {% endif %}
     </div>
+    {% if archived_report %}
+    <div class="archive-current-save-form auto-archive-note">
+        <p class="archive-help-text archive-help-text-compact">
+            Questo confronto e gia stato archiviato automaticamente
+            {% if archived_report.folder %}nella cartella <strong>{{ archived_report.folder.customer_name }}</strong>{% else %}senza cartella{% endif %}.
+            {% if can_view_archive %}
+                {% if archived_report.folder %}
+                    <a href="{% url 'archivio_report_cartella' archived_report.folder.pk %}">Apri archivio</a>
+                {% else %}
+                    <a href="{% url 'archivio_report' %}?report_id={{ archived_report.pk }}">Apri archivio</a>
+                {% endif %}
+            {% endif %}
+        </p>
+    </div>
+    {% endif %}
 </section>
 {% endif %}
 {% endif %}

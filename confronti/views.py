@@ -52,6 +52,8 @@ LAST_UPLOADED_BILL_NAME_KEY = "last_uploaded_bill_name"
 LAST_UPLOADED_BILL_NAME_CLIENT_KEY = "last_uploaded_bill_name_cliente_illumia"
 LAST_COMPARISON_KEY = "last_confronto"
 LAST_COMPARISON_CLIENT_KEY = "last_confronto_cliente_illumia"
+LAST_ARCHIVED_REPORT_KEY = "last_archived_report_id"
+LAST_ARCHIVED_REPORT_CLIENT_KEY = "last_archived_report_id_cliente_illumia"
 LAST_REPORT_SUMMARY_KEY = "last_report_summary"
 WHATSAPP_SENDER_NUMBER = os.environ.get("WHATSAPP_SENDER_NUMBER", "3271044102")
 WHATSAPP_WEB_HOME_URL = "https://web.whatsapp.com/"
@@ -100,6 +102,7 @@ def _mode_config(customer_mode=False, operator_mode=False):
     if customer_mode:
         return {
             "comparison_session_key": LAST_COMPARISON_CLIENT_KEY,
+            "archive_report_session_key": LAST_ARCHIVED_REPORT_CLIENT_KEY,
             "upload_name_session_key": LAST_UPLOADED_BILL_NAME_CLIENT_KEY,
             "page_title": "Confronto bolletta con Illumia",
             "page_intro": (
@@ -111,6 +114,7 @@ def _mode_config(customer_mode=False, operator_mode=False):
     if operator_mode:
         return {
             "comparison_session_key": LAST_COMPARISON_KEY,
+            "archive_report_session_key": LAST_ARCHIVED_REPORT_KEY,
             "upload_name_session_key": LAST_UPLOADED_BILL_NAME_KEY,
             "page_title": "Confronto bollette",
             "page_intro": "",
@@ -118,6 +122,7 @@ def _mode_config(customer_mode=False, operator_mode=False):
         }
     return {
         "comparison_session_key": LAST_COMPARISON_KEY,
+        "archive_report_session_key": LAST_ARCHIVED_REPORT_KEY,
         "upload_name_session_key": LAST_UPLOADED_BILL_NAME_KEY,
         "page_title": "Confronto bollette",
         "page_intro": "",
@@ -556,6 +561,15 @@ def _replace_archive_report_file(report, uploaded_file):
     _touch_archive_folder(report.folder)
 
 
+def _delete_empty_archive_folder_if_needed(folder):
+    if folder is None or folder.reports.exists():
+        return
+    folder_path = _archive_folder_absolute_path(folder)
+    folder.delete()
+    if os.path.isdir(folder_path):
+        shutil.rmtree(folder_path, ignore_errors=True)
+
+
 def _delete_archive_report(report):
     stored_name = report.report_file.name
     folder = report.folder
@@ -604,6 +618,35 @@ def _build_reports_summary_from_archived_reports(reports):
     finally:
         for stream in summary_files:
             stream.close()
+
+
+def _create_archived_comparison_report(data, prepared, user, *, folder="__AUTO__"):
+    target_folder = _get_or_create_archive_folder(data, user) if folder == "__AUTO__" else folder
+    content = build_excel_bytes(data, prepared)
+    report = ComparisonReport(
+        folder=target_folder,
+        title=_archive_report_title(data, prepared),
+        commodity=data.get("commodity", ""),
+        providers_label=prepared["calc"].get("providers_label", ""),
+        bill_period_label=prepared["calc"].get("period_label", ""),
+        comparison_datetime=_parse_comparison_datetime(data.get("comparison_datetime")),
+        original_filename=_archive_report_filename(data),
+        comparison_data=_archive_report_payload(data, prepared),
+        created_by=user,
+    )
+    report.report_file.save(report.original_filename, ContentFile(content), save=False)
+    report.save()
+    _touch_archive_folder(target_folder)
+    return report
+
+
+def _archive_report_source_data(report):
+    comparison_data = report.comparison_data if isinstance(report.comparison_data, dict) else {}
+    return {
+        "nome_cliente": comparison_data.get("customer_name") or (report.folder.customer_name if report.folder_id else ""),
+        "email_cliente": comparison_data.get("customer_email", ""),
+        "telefono_cliente": comparison_data.get("customer_phone", ""),
+    }
 
 
 def _selected_archive_folder_ids(values):
@@ -1005,10 +1048,10 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
     customer_invite_form = CustomerInviteForm()
     customer_invite_result = None
     customer_status = None
-    archive_current_report_form = ArchiveCurrentReportSaveForm() if not customer_mode else None
     report_summary_form = ReportSummaryUploadForm()
     report_summary = None
     report_summary_warnings = []
+    archived_report = None
     admin_focus_panel = "confronto" if not customer_mode else ""
     uploaded_bill_name = request.session.get(mode["upload_name_session_key"], "")
     upload_form = BillUploadForm()
@@ -1073,6 +1116,7 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
             if not customer_mode:
                 admin_focus_panel = "confronto"
             request.session.pop(mode["comparison_session_key"], None)
+            request.session.pop(mode["archive_report_session_key"], None)
             upload_form = BillUploadForm(request.POST, request.FILES)
             uploaded_file = request.FILES.get("bill_pdf")
             if uploaded_file:
@@ -1110,6 +1154,7 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
             if not customer_mode:
                 admin_focus_panel = "confronto"
             request.session.pop(mode["comparison_session_key"], None)
+            request.session.pop(mode["archive_report_session_key"], None)
             request.session.pop(mode["upload_name_session_key"], None)
             uploaded_bill_name = ""
             providers = ["ILLUMIA"] if customer_mode else (request.POST.getlist("providers") or [request.POST.get("provider") or ""])
@@ -1162,11 +1207,9 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
                     session_data = _force_operator_mode_data(session_data)
                 session_data["comparison_datetime"] = data["comparison_datetime"]
                 request.session[mode["comparison_session_key"]] = session_data
+                archived_report = _create_archived_comparison_report(data, prepared, request.user)
+                request.session[mode["archive_report_session_key"]] = archived_report.pk
                 form = _comparison_form(initial=data, customer_mode=customer_mode, operator_mode=operator_mode)
-                if not customer_mode:
-                    archive_current_report_form = ArchiveCurrentReportSaveForm(
-                        default_folder_name=data.get("nome_cliente", "")
-                    )
     else:
         if not customer_mode:
             requested_panel = _normalize_admin_focus_panel(request.GET.get("panel"))
@@ -1215,7 +1258,8 @@ def _confronto_page(request, *, customer_mode=False, operator_mode=False):
             "customer_invite_form": customer_invite_form,
             "customer_invite_result": customer_invite_result,
             "customer_status": customer_status,
-            "archive_current_report_form": archive_current_report_form,
+            "archived_report": archived_report,
+            "can_view_archive": _is_archive_admin(request.user),
             "report_summary_form": report_summary_form,
             "report_summary": report_summary,
             "report_summary_warnings": report_summary_warnings,
@@ -1260,41 +1304,58 @@ def archivia_report_corrente(request):
     if request.method != "POST":
         return redirect("confronto")
     raw = request.session.get(LAST_COMPARISON_KEY)
+    archived_report = None
+    archived_report_id = request.session.get(LAST_ARCHIVED_REPORT_KEY)
+    if archived_report_id:
+        archived_report = ComparisonReport.objects.select_related("folder").filter(pk=archived_report_id).first()
+    default_folder_name = ""
+    if archived_report is not None:
+        default_folder_name = _archive_report_source_data(archived_report).get("nome_cliente", "")
+    elif raw:
+        default_folder_name = session_to_service_data(raw).get("nome_cliente", "")
+    save_form = ArchiveCurrentReportSaveForm(request.POST, default_folder_name=default_folder_name)
+    if not save_form.is_valid():
+        messages.error(request, "Non sono riuscito a leggere la destinazione archivio del report.")
+        return redirect(f"{reverse('confronto')}?panel=confronto")
+    folder = save_form.cleaned_data.get("existing_folder")
+    if save_form.cleaned_data.get("new_folder_name"):
+        source_data = _archive_report_source_data(archived_report) if archived_report is not None else {}
+        if not source_data and raw:
+            source_data = session_to_service_data(raw)
+        folder = _create_archive_folder_from_report_data(data=source_data, user=request.user, folder_name=save_form.cleaned_data["new_folder_name"])
+
+    if archived_report is not None:
+        previous_folder = archived_report.folder
+        if previous_folder is None and folder is None:
+            messages.success(request, "Report gia archiviato senza cartella.")
+        elif previous_folder is not None and folder is not None and previous_folder.pk == folder.pk:
+            messages.success(request, f"Report gia archiviato nella cartella {folder.customer_name}.")
+        else:
+            _move_archive_report_to_folder(archived_report, folder)
+            _delete_empty_archive_folder_if_needed(previous_folder)
+            if folder is not None:
+                messages.success(request, f"Report archiviato nella cartella {folder.customer_name}.")
+            else:
+                messages.success(request, "Report archiviato senza cartella. Puoi assegnarlo dopo dall'archivio.")
+        if _is_archive_admin(request.user) and folder is not None:
+            return redirect("archivio_report_cartella", folder_id=folder.pk)
+        if _is_archive_admin(request.user):
+            return redirect("archivio_report")
+        return redirect(f"{reverse('confronto')}?panel=confronto")
+
     if not raw:
         messages.error(request, "Non c'e nessun confronto interno pronto da archiviare.")
         return redirect(f"{reverse('confronto')}?panel=confronto")
     data = session_to_service_data(raw)
     prepared = prepare_comparison(data)
-    content = build_excel_bytes(data, prepared)
-    save_form = ArchiveCurrentReportSaveForm(request.POST, default_folder_name=data.get("nome_cliente", ""))
-    if not save_form.is_valid():
-        messages.error(request, "Non sono riuscito a leggere la destinazione archivio del report.")
-        return redirect(f"{reverse('confronto')}?panel=confronto")
-    folder = None
-    if save_form.cleaned_data.get("new_folder_name"):
-        folder = _create_archive_folder_from_report_data(data, request.user, save_form.cleaned_data["new_folder_name"])
-    elif save_form.cleaned_data.get("existing_folder") is not None:
-        folder = save_form.cleaned_data["existing_folder"]
-    report = ComparisonReport(
-        folder=folder,
-        title=_archive_report_title(data, prepared),
-        commodity=data.get("commodity", ""),
-        providers_label=prepared["calc"].get("providers_label", ""),
-        bill_period_label=prepared["calc"].get("period_label", ""),
-        comparison_datetime=_parse_comparison_datetime(data.get("comparison_datetime")),
-        original_filename=_archive_report_filename(data),
-        comparison_data=_archive_report_payload(data, prepared),
-        created_by=request.user,
-    )
-    report.report_file.save(report.original_filename, ContentFile(content), save=False)
-    report.save()
+    report = _create_archived_comparison_report(data, prepared, request.user, folder=folder)
+    request.session[LAST_ARCHIVED_REPORT_KEY] = report.pk
     if folder is not None:
-        _touch_archive_folder(folder)
         messages.success(request, f"Report archiviato nella cartella {folder.customer_name}.")
     else:
         messages.success(request, "Report archiviato senza cartella. Puoi assegnarlo dopo dall'archivio.")
-    if _is_archive_admin(request.user) and folder is not None:
-        return redirect("archivio_report_cartella", folder_id=folder.pk)
+    if _is_archive_admin(request.user) and report.folder_id is not None:
+        return redirect("archivio_report_cartella", folder_id=report.folder_id)
     if _is_archive_admin(request.user):
         return redirect("archivio_report")
     return redirect(f"{reverse('confronto')}?panel=confronto")
