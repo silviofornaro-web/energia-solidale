@@ -219,51 +219,6 @@ def _parse_comparison_datetime(value):
     return parsed
 
 
-def _archive_match_folder(customer_name, customer_email="", customer_phone=""):
-    normalized_name = CustomerArchiveFolder.normalize_customer_name(customer_name)
-    normalized_email = CustomerArchiveFolder.normalize_customer_email(customer_email)
-    normalized_phone = CustomerArchiveFolder.normalize_customer_phone(customer_phone)
-    folders = CustomerArchiveFolder.objects.all()
-    if normalized_email:
-        folder = folders.filter(customer_email=normalized_email).order_by("-updated_at", "-created_at").first()
-        if folder:
-            return folder
-    if normalized_phone:
-        folder = folders.filter(customer_phone=normalized_phone).order_by("-updated_at", "-created_at").first()
-        if folder:
-            return folder
-    if normalized_name:
-        return folders.filter(customer_name__iexact=normalized_name).order_by("-updated_at", "-created_at").first()
-    return None
-
-
-def _get_or_create_archive_folder(data, user):
-    customer_name = CustomerArchiveFolder.normalize_customer_name(data.get("nome_cliente")) or "Cliente senza nome"
-    customer_email = CustomerArchiveFolder.normalize_customer_email(data.get("email_cliente"))
-    customer_phone = CustomerArchiveFolder.normalize_customer_phone(data.get("telefono_cliente"))
-    folder = _archive_match_folder(customer_name, customer_email, customer_phone)
-    if folder is None:
-        return CustomerArchiveFolder.objects.create(
-            customer_name=customer_name,
-            customer_email=customer_email,
-            customer_phone=customer_phone,
-            created_by=user,
-        )
-    changed_fields = []
-    if customer_name and folder.customer_name != customer_name:
-        folder.customer_name = customer_name
-        changed_fields.append("customer_name")
-    if customer_email and folder.customer_email != customer_email:
-        folder.customer_email = customer_email
-        changed_fields.append("customer_email")
-    if customer_phone and folder.customer_phone != customer_phone:
-        folder.customer_phone = customer_phone
-        changed_fields.append("customer_phone")
-    if changed_fields:
-        folder.save(update_fields=changed_fields + ["updated_at"])
-    return folder
-
-
 def _create_archive_folder(customer_name, user, *, customer_email="", customer_phone="", notes=""):
     folder_label = CustomerArchiveFolder.normalize_customer_name(customer_name) or "Nuova cartella"
     return CustomerArchiveFolder.objects.create(
@@ -620,8 +575,8 @@ def _build_reports_summary_from_archived_reports(reports):
             stream.close()
 
 
-def _create_archived_comparison_report(data, prepared, user, *, folder="__AUTO__"):
-    target_folder = _get_or_create_archive_folder(data, user) if folder == "__AUTO__" else folder
+def _create_archived_comparison_report(data, prepared, user, *, folder=None):
+    target_folder = folder
     content = build_excel_bytes(data, prepared)
     report = ComparisonReport(
         folder=target_folder,

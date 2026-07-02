@@ -1397,7 +1397,7 @@ class ConfrontoViewTests(TestCase):
         auto_report = ComparisonReport.objects.get()
         self.assertEqual(auto_report.created_by, self.operator_user)
         self.assertEqual(auto_report.providers_label, "E.ON")
-        self.assertIsNotNone(auto_report.folder)
+        self.assertIsNone(auto_report.folder)
 
         response = self._archive_current_report()
 
@@ -1416,8 +1416,8 @@ class ConfrontoViewTests(TestCase):
         auto_report = ComparisonReport.objects.get()
         self.assertEqual(auto_report.created_by, self.staff_user)
         self.assertEqual(auto_report.providers_label, "Illumia")
-        self.assertIsNotNone(auto_report.folder)
-        self.assertEqual(auto_report.folder.customer_name, "Mario Rossi")
+        self.assertIsNone(auto_report.folder)
+        self.assertEqual(CustomerArchiveFolder.objects.count(), 0)
         self.assertEqual(self.client.session["last_archived_report_id"], auto_report.pk)
 
         response = self._archive_current_report()
@@ -2213,7 +2213,8 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(self.client.session["last_archived_report_id_cliente_illumia"], report.pk)
         self.assertEqual(report.created_by, self.staff_user)
         self.assertEqual(report.providers_label, "Illumia")
-        self.assertEqual(report.folder.customer_name, "Mario Rossi")
+        self.assertIsNone(report.folder)
+        self.assertEqual(CustomerArchiveFolder.objects.count(), 0)
         self.assertEqual(report.comparison_data["customer_email"], "mario@example.com")
         self.assertEqual(report.comparison_data["customer_phone"], "3331234567")
 
