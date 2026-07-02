@@ -1059,6 +1059,28 @@ th {
     min-height: 320px;
 }
 
+.archive-browser-section {
+    margin-top: 18px;
+}
+
+.archive-browser-section-header {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.archive-browser-count {
+    background: #eef6fb;
+    border: 1px solid #cfe0ee;
+    border-radius: 999px;
+    color: #0f4a68;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 6px 10px;
+}
+
 .archive-folder-list {
     display: grid;
     gap: 12px;
@@ -1167,6 +1189,40 @@ th {
     gap: 8px;
 }
 
+.archive-single-report-list {
+    display: grid;
+    gap: 12px;
+}
+
+.archive-single-report-card {
+    background: #f8fbfd;
+    border: 1px solid #d9e8f2;
+    border-radius: 10px;
+    color: inherit;
+    display: grid;
+    gap: 8px;
+    padding: 14px 16px;
+    text-decoration: none;
+    transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.archive-single-report-card:hover,
+.archive-single-report-card.is-active {
+    border-color: #1597d3;
+    box-shadow: 0 14px 28px rgba(21, 151, 211, 0.12);
+    transform: translateY(-1px);
+}
+
+.archive-single-report-card strong {
+    color: #0f172a;
+}
+
+.archive-single-report-title {
+    color: #1f5f7a;
+    font-size: 14px;
+    font-weight: 700;
+}
+
 .archive-meta-label {
     color: #475569;
     display: block;
@@ -1260,8 +1316,20 @@ th {
     margin-bottom: 20px;
 }
 
+.archive-current-save-form {
+    background: #f8fbfd;
+    border: 1px solid #d9e8f2;
+    border-radius: 12px;
+    margin-top: 14px;
+    padding: 14px 16px;
+}
+
 .form-grid-archive-folder {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.form-grid-archive-current-save {
+    grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
 }
 
 .form-grid-archive-upload {
@@ -1269,6 +1337,10 @@ th {
 }
 
 .form-grid-archive-merge {
+    grid-template-columns: minmax(260px, 1fr);
+}
+
+.form-grid-archive-move {
     grid-template-columns: minmax(260px, 1fr);
 }
 
@@ -1438,6 +1510,26 @@ th {
     margin-top: 18px;
 }
 
+.archive-empty-state {
+    align-items: start;
+    background: linear-gradient(180deg, #f8fbfd 0%, #ffffff 100%);
+    border: 1px dashed #cfe0ee;
+    border-radius: 14px;
+    display: grid;
+    gap: 10px;
+    margin-top: 18px;
+    padding: 24px;
+}
+
+.archive-empty-state h2 {
+    margin: 0;
+}
+
+.archive-empty-state p {
+    color: #475569;
+    margin: 0;
+}
+
 .archive-delete-form {
     margin-top: 6px;
 }
@@ -1479,7 +1571,9 @@ footer strong {
     .archive-search-form,
     .archive-layout,
     .archive-detail-stats,
+    .form-grid-archive-current-save,
     .form-grid-archive-merge,
+    .form-grid-archive-move,
     .form-grid-archive-upload,
     .form-grid-archive-folder,
     .form-grid-archive-replace,

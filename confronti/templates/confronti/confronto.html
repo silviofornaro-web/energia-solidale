@@ -516,8 +516,19 @@
     <div class="form-actions">
         <a class="download" href="{% url download_url_name %}" download data-download-excel>Scarica Excel</a>
         {% if not customer_mode %}
-        <form method="post" action="{% url 'archivia_report_corrente' %}" class="inline-form">
+        <form method="post" action="{% url 'archivia_report_corrente' %}" class="archive-current-save-form">
             {% csrf_token %}
+            <div class="form-grid form-grid-archive-current-save">
+                <label>
+                    {{ archive_current_report_form.existing_folder.label }}
+                    {{ archive_current_report_form.existing_folder }}
+                </label>
+                <label>
+                    {{ archive_current_report_form.new_folder_name.label }}
+                    {{ archive_current_report_form.new_folder_name }}
+                </label>
+            </div>
+            <p class="archive-help-text archive-help-text-compact">Puoi archiviarlo in una cartella esistente, crearne una nuova oppure lasciarlo senza cartella e assegnarlo dopo.</p>
             <button type="submit" class="secondary">Archivia report</button>
         </form>
         {% endif %}

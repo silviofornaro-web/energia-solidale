@@ -1395,38 +1395,125 @@ class ConfrontoViewTests(TestCase):
         )
         self.assertContains(comparison_response, "Archivia report")
 
-        response = self.client.post("/archivio-report/salva/")
+        response = self._archive_current_report()
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/?panel=confronto")
         report = ComparisonReport.objects.get()
         self.assertEqual(report.created_by, self.operator_user)
         self.assertEqual(report.providers_label, "E.ON")
+        self.assertIsNone(report.folder)
 
     def test_internal_dashboard_can_archive_current_report(self):
         self.login()
         self.client.post("/", valid_payload())
 
-        response = self.client.post("/archivio-report/salva/")
+        response = self._archive_current_report()
+
+        self.assertEqual(response.status_code, 302)
+        report = ComparisonReport.objects.get()
+        self.assertEqual(response["Location"], "/archivio-report/")
+        self.assertEqual(CustomerArchiveFolder.objects.count(), 0)
+        self.assertIsNone(report.folder)
+        self.assertEqual(report.providers_label, "Illumia")
+        self.assertIn("confronto_illumia_Mario_Rossi_EE.xlsx", report.original_filename)
+        self.assertTrue(report.report_file.name.startswith("report_archive/non-assegnati/"))
+        self.assertEqual(report.comparison_data["customer_name"], "Mario Rossi")
+        self.assertEqual(report.comparison_data["pod_pdr"], "IT001E12345678")
+        with report.report_file.open("rb") as saved_file:
+            self.assertEqual(saved_file.read(2), b"PK")
+
+    def test_internal_dashboard_can_archive_current_report_into_new_folder(self):
+        self.login()
+        self.client.post("/", valid_payload())
+
+        response = self._archive_current_report(new_folder_name="Mario Rossi Dossier")
 
         self.assertEqual(response.status_code, 302)
         folder = CustomerArchiveFolder.objects.get()
         report = ComparisonReport.objects.get()
         self.assertEqual(response["Location"], f"/archivio-report/cartella/{folder.pk}/")
-        self.assertEqual(folder.customer_name, "Mario Rossi")
-        self.assertRegex(folder.folder_name, r"^\d{4}-\d{2}-\d{2}__mario-rossi")
+        self.assertEqual(folder.customer_name, "Mario Rossi Dossier")
+        self.assertRegex(folder.folder_name, r"^\d{4}-\d{2}-\d{2}__mario-rossi-dossier")
         self.assertEqual(report.folder, folder)
-        self.assertEqual(report.providers_label, "Illumia")
-        self.assertIn("confronto_illumia_Mario_Rossi_EE.xlsx", report.original_filename)
-        self.assertTrue(report.report_file.name.startswith("report_archive/"))
-        with report.report_file.open("rb") as saved_file:
-            self.assertEqual(saved_file.read(2), b"PK")
+        self.assertIn(folder.folder_name, report.report_file.name)
+
+    def test_archive_root_page_can_create_empty_folder(self):
+        self.login()
+
+        response = self.client.post(
+            "/archivio-report/",
+            {
+                "action": "create_archive_folder",
+                "create-folder-customer_name": "Dossier Carmela",
+                "create-folder-customer_email": "carmela@example.com",
+                "create-folder-customer_phone": "3331234567",
+                "create-folder-notes": "Cartella creata manualmente",
+            },
+        )
+
+        folder = CustomerArchiveFolder.objects.get()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], f"/archivio-report/cartella/{folder.pk}/")
+        self.assertEqual(folder.customer_name, "Dossier Carmela")
+        self.assertEqual(folder.customer_email, "carmela@example.com")
+        self.assertEqual(folder.customer_phone, "3331234567")
+        self.assertEqual(folder.notes, "Cartella creata manualmente")
+
+    def test_archive_root_page_can_assign_unassigned_report_to_existing_folder(self):
+        self.login()
+        folder = self._create_archive_folder("Dossier Carmela")
+        self.client.post("/", valid_payload(nome_cliente="Carmela Muglia"))
+        self._archive_current_report()
+        report = ComparisonReport.objects.get()
+        old_name = report.report_file.name
+
+        response = self.client.post(
+            "/archivio-report/",
+            {
+                "action": "move_archive_report_global",
+                "report_id": report.pk,
+                f"move-report-{report.pk}-destination_folder": str(folder.pk),
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], f"/archivio-report/cartella/{folder.pk}/")
+        report.refresh_from_db()
+        self.assertEqual(report.folder, folder)
+        self.assertIn(folder.folder_name, report.report_file.name)
+        self.assertFalse(default_storage.exists(old_name))
+
+    def test_archive_page_can_remove_report_from_folder_without_deleting_it(self):
+        self.login()
+        folder = self._create_archive_folder("Dossier Carmela")
+        self.client.post("/", valid_payload(nome_cliente="Carmela Muglia"))
+        self._archive_current_report(existing_folder=folder)
+        report = ComparisonReport.objects.get()
+        old_name = report.report_file.name
+
+        response = self.client.post(
+            f"/archivio-report/cartella/{folder.pk}/",
+            {
+                "action": "move_archive_report",
+                "report_id": report.pk,
+                f"move-report-{report.pk}-destination_folder": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], f"/archivio-report/cartella/{folder.pk}/")
+        report.refresh_from_db()
+        self.assertIsNone(report.folder)
+        self.assertIn("report_archive/non-assegnati/", report.report_file.name)
+        self.assertFalse(default_storage.exists(old_name))
 
     def test_archive_page_lists_and_updates_saved_reports(self):
         self.login()
+        folder = self._create_archive_folder("Mario Rossi Dossier")
         self.client.post("/", valid_payload())
-        self.client.post("/archivio-report/salva/")
-        folder = CustomerArchiveFolder.objects.get()
+        self._archive_current_report(existing_folder=folder)
+        folder.refresh_from_db()
         report = ComparisonReport.objects.get()
 
         response = self.client.get(f"/archivio-report/cartella/{folder.pk}/")
@@ -1448,7 +1535,7 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Seleziona tutti")
         self.assertContains(response, "Deseleziona tutti")
         self.assertContains(response, "file selezionati")
-        self.assertContains(response, "Elimina report")
+        self.assertContains(response, "Elimina file")
         self.assertContains(response, "Elimina cartella")
         self.assertContains(response, "Elimina cartella cliente")
         self.assertContains(response, "Dove sono i file")
@@ -1457,9 +1544,10 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Apri cartella file")
         self.assertContains(response, "Unisci cartella")
         self.assertContains(response, "Non ci sono altre cartelle archivio da unire a questa.")
+        self.assertContains(response, "Sposta file")
         self.assertContains(response, report.original_filename)
         self.assertContains(response, report.report_file.name)
-        self.assertContains(response, "Scarica report")
+        self.assertContains(response, "Apri / scarica file")
 
         response = self.client.post(
             f"/archivio-report/cartella/{folder.pk}/",
@@ -1501,9 +1589,9 @@ class ConfrontoViewTests(TestCase):
 
     def test_archive_page_can_add_manual_report_file(self):
         self.login()
+        folder = self._create_archive_folder("Mario Rossi Dossier")
         self.client.post("/", valid_payload())
-        self.client.post("/archivio-report/salva/")
-        folder = CustomerArchiveFolder.objects.get()
+        self._archive_current_report(existing_folder=folder)
         manual_content = self._comparison_excel(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Nuova 20")
 
         response = self.client.post(
@@ -1534,8 +1622,9 @@ class ConfrontoViewTests(TestCase):
 
     def test_archive_page_can_build_summary_from_selected_reports(self):
         self.login()
+        folder = self._create_archive_folder("Mario Rossi Dossier")
         self.client.post("/", valid_payload(indirizzo_fornitura="Via Roma 10"))
-        self.client.post("/archivio-report/salva/")
+        self._archive_current_report(existing_folder=folder)
         self.client.post(
             "/",
             valid_payload(
@@ -1545,8 +1634,7 @@ class ConfrontoViewTests(TestCase):
                 offer_fix_choice_eon="E.ON Luce Tua",
             ),
         )
-        self.client.post("/archivio-report/salva/")
-        folder = CustomerArchiveFolder.objects.get()
+        self._archive_current_report(existing_folder=folder)
         selected_report = folder.reports.order_by("created_at").first()
 
         response = self.client.post(
@@ -1566,10 +1654,12 @@ class ConfrontoViewTests(TestCase):
 
     def test_archive_page_can_build_summary_from_selected_folders(self):
         self.login()
+        first_folder = self._create_archive_folder("Mario Rossi")
+        second_folder = self._create_archive_folder("Luigi Bianchi")
         self.client.post("/", valid_payload(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10"))
-        self.client.post("/archivio-report/salva/")
+        self._archive_current_report(existing_folder=first_folder)
         self.client.post("/", valid_payload(nome_cliente="Luigi Bianchi", indirizzo_fornitura="Viale Milano 20"))
-        self.client.post("/archivio-report/salva/")
+        self._archive_current_report(existing_folder=second_folder)
         folders = list(CustomerArchiveFolder.objects.order_by("customer_name"))
 
         response = self.client.post(
@@ -1594,13 +1684,12 @@ class ConfrontoViewTests(TestCase):
 
     def test_archive_page_can_merge_two_archive_folders(self):
         self.login()
+        target_folder = self._create_archive_folder("Mario Rossi")
+        source_folder = self._create_archive_folder("Luigi Bianchi")
         self.client.post("/", valid_payload(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10"))
-        self.client.post("/archivio-report/salva/")
+        self._archive_current_report(existing_folder=target_folder)
         self.client.post("/", valid_payload(nome_cliente="Luigi Bianchi", indirizzo_fornitura="Viale Milano 20"))
-        self.client.post("/archivio-report/salva/")
-
-        target_folder = CustomerArchiveFolder.objects.get(customer_name="Mario Rossi")
-        source_folder = CustomerArchiveFolder.objects.get(customer_name="Luigi Bianchi")
+        self._archive_current_report(existing_folder=source_folder)
         target_folder.notes = "Cartella principale"
         target_folder.save(update_fields=["notes"])
         source_folder.customer_email = "luigi@example.com"
@@ -1641,13 +1730,12 @@ class ConfrontoViewTests(TestCase):
 
     def test_archive_root_page_can_merge_two_selected_folders(self):
         self.login()
+        target_folder = self._create_archive_folder("Mario Rossi")
+        source_folder = self._create_archive_folder("Luigi Bianchi")
         self.client.post("/", valid_payload(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10"))
-        self.client.post("/archivio-report/salva/")
+        self._archive_current_report(existing_folder=target_folder)
         self.client.post("/", valid_payload(nome_cliente="Luigi Bianchi", indirizzo_fornitura="Viale Milano 20"))
-        self.client.post("/archivio-report/salva/")
-
-        target_folder = CustomerArchiveFolder.objects.get(customer_name="Mario Rossi")
-        source_folder = CustomerArchiveFolder.objects.get(customer_name="Luigi Bianchi")
+        self._archive_current_report(existing_folder=source_folder)
         source_report = source_folder.reports.get()
         source_stored_name = source_report.report_file.name
         source_folder_name = source_folder.folder_name
@@ -1675,8 +1763,9 @@ class ConfrontoViewTests(TestCase):
 
     def test_archive_root_page_lists_all_archived_reports(self):
         self.login()
+        folder = self._create_archive_folder("Mario Rossi")
         self.client.post("/", valid_payload(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10"))
-        self.client.post("/archivio-report/salva/")
+        self._archive_current_report(existing_folder=folder)
         self.client.post(
             "/",
             valid_payload(
@@ -1687,33 +1776,93 @@ class ConfrontoViewTests(TestCase):
                 offer_fix_choice_eon="E.ON Luce Tua",
             ),
         )
-        self.client.post("/archivio-report/salva/")
+        self._archive_current_report(existing_folder=folder)
+        self.client.post(
+            "/",
+            valid_payload(
+                nome_cliente="Giulia Verdi",
+                indirizzo_fornitura="Via Torino 44",
+                pod_pdr="00881906523889",
+            ),
+        )
+        self._archive_current_report()
 
         self.assertEqual(CustomerArchiveFolder.objects.count(), 1)
-        self.assertEqual(ComparisonReport.objects.count(), 2)
-        folder = CustomerArchiveFolder.objects.get()
-        reports = list(ComparisonReport.objects.order_by("-comparison_datetime", "-created_at"))
+        self.assertEqual(ComparisonReport.objects.count(), 3)
+        unassigned_report = ComparisonReport.objects.get(folder__isnull=True)
 
         response = self.client.get("/archivio-report/")
+        content = response.content.decode()
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Tutti i confronti archiviati")
-        self.assertContains(response, "Apri cartella cliente")
-        self.assertContains(response, "Elimina report")
+        self.assertContains(response, "Cartelle create")
+        self.assertContains(response, "Confronti singoli senza cartella")
         self.assertContains(response, "Elimina cartella")
+        self.assertContains(response, "Crea cartella")
         self.assertContains(response, "Tieni questa cartella")
         self.assertContains(response, "Unisci 2 cartelle selezionate")
         self.assertContains(response, folder.customer_name)
         self.assertContains(response, folder.folder_name)
-        self.assertContains(response, reports[0].original_filename)
-        self.assertContains(response, reports[1].original_filename)
-        self.assertNotContains(response, "Apri una cartella cliente per consultare e modificare i report salvati.")
+        self.assertContains(response, "Giulia Verdi")
+        self.assertContains(response, "00881906523889")
+        self.assertContains(response, "Luce")
+        self.assertContains(response, unassigned_report.original_filename)
+        self.assertLess(content.index("Cartelle create"), content.index("Confronti singoli senza cartella"))
+
+    def test_archive_root_page_can_show_selected_unassigned_report_detail(self):
+        self.login()
+        self.client.post(
+            "/",
+            valid_payload(
+                nome_cliente="Giulia Verdi",
+                indirizzo_fornitura="Via Torino 44",
+                pod_pdr="00881906523889",
+            ),
+        )
+        self._archive_current_report()
+        report = ComparisonReport.objects.get(folder__isnull=True)
+
+        response = self.client.get(f"/archivio-report/?report_id={report.pk}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Giulia Verdi")
+        self.assertContains(response, "00881906523889")
+        self.assertContains(response, "Fornitura")
+        self.assertContains(response, "Luce")
+        self.assertContains(response, "Apri / scarica file")
+        self.assertContains(response, "Metti in cartella")
+        self.assertContains(response, "Sostituisci file")
+        self.assertContains(response, "Aggiorna file")
+        self.assertContains(response, "Elimina file")
+        self.assertContains(response, report.report_file.name)
+
+    def test_archive_root_page_can_update_selected_unassigned_report(self):
+        self.login()
+        self.client.post("/", valid_payload(nome_cliente="Giulia Verdi"))
+        self._archive_current_report()
+        report = ComparisonReport.objects.get(folder__isnull=True)
+
+        response = self.client.post(
+            "/archivio-report/",
+            {
+                "action": "update_archive_report_global",
+                "report_id": report.pk,
+                f"report-{report.pk}-title": "Confronto Giulia Verdi",
+                f"report-{report.pk}-notes": "Cliente richiamare a settembre",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], f"/archivio-report/?report_id={report.pk}")
+        report.refresh_from_db()
+        self.assertEqual(report.title, "Confronto Giulia Verdi")
+        self.assertEqual(report.notes, "Cliente richiamare a settembre")
 
     def test_archive_page_can_delete_archived_report(self):
         self.login()
+        folder = self._create_archive_folder("Mario Rossi Dossier")
         self.client.post("/", valid_payload())
-        self.client.post("/archivio-report/salva/")
-        folder = CustomerArchiveFolder.objects.get()
+        self._archive_current_report(existing_folder=folder)
         report = ComparisonReport.objects.get()
         stored_name = report.report_file.name
 
@@ -1731,9 +1880,9 @@ class ConfrontoViewTests(TestCase):
 
     def test_archive_root_page_can_delete_archived_report(self):
         self.login()
+        folder = self._create_archive_folder("Mario Rossi Dossier")
         self.client.post("/", valid_payload())
-        self.client.post("/archivio-report/salva/")
-        folder = CustomerArchiveFolder.objects.get()
+        self._archive_current_report(existing_folder=folder)
         report = ComparisonReport.objects.get()
         stored_name = report.report_file.name
 
@@ -1753,8 +1902,9 @@ class ConfrontoViewTests(TestCase):
 
     def test_archive_page_can_delete_archive_folder_and_all_reports(self):
         self.login()
+        folder = self._create_archive_folder("Mario Rossi Dossier")
         self.client.post("/", valid_payload(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Roma 10"))
-        self.client.post("/archivio-report/salva/")
+        self._archive_current_report(existing_folder=folder)
         self.client.post(
             "/",
             valid_payload(
@@ -1765,8 +1915,7 @@ class ConfrontoViewTests(TestCase):
                 offer_fix_choice_eon="E.ON Luce Tua",
             ),
         )
-        self.client.post("/archivio-report/salva/")
-        folder = CustomerArchiveFolder.objects.get()
+        self._archive_current_report(existing_folder=folder)
         stored_names = list(ComparisonReport.objects.values_list("report_file", flat=True))
 
         response = self.client.post(
@@ -1779,16 +1928,17 @@ class ConfrontoViewTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], "/archivio-report/")
         self.assertFalse(CustomerArchiveFolder.objects.filter(pk=folder.pk).exists())
-        self.assertEqual(ComparisonReport.objects.count(), 0)
+        self.assertEqual(ComparisonReport.objects.count(), 2)
+        self.assertEqual(ComparisonReport.objects.filter(folder__isnull=True).count(), 2)
         for stored_name in stored_names:
             self.assertFalse(default_storage.exists(stored_name))
 
     @patch("confronti.views.subprocess.Popen")
     def test_archive_page_can_open_local_archive_folder(self, mock_popen):
         self.login()
+        folder = self._create_archive_folder("Mario Rossi Dossier")
         self.client.post("/", valid_payload())
-        self.client.post("/archivio-report/salva/")
-        folder = CustomerArchiveFolder.objects.get()
+        self._archive_current_report(existing_folder=folder)
 
         response = self.client.post(f"/archivio-report/cartella/{folder.pk}/apri-cartella/")
 
@@ -1800,9 +1950,9 @@ class ConfrontoViewTests(TestCase):
 
     def test_archive_page_can_replace_archived_report_file(self):
         self.login()
+        folder = self._create_archive_folder("Mario Rossi Dossier")
         self.client.post("/", valid_payload())
-        self.client.post("/archivio-report/salva/")
-        folder = CustomerArchiveFolder.objects.get()
+        self._archive_current_report(existing_folder=folder)
         report = ComparisonReport.objects.get()
         old_name = report.report_file.name
         replacement_content = self._comparison_excel(nome_cliente="Mario Rossi", indirizzo_fornitura="Via Milano 50")
@@ -2159,6 +2309,23 @@ class ConfrontoViewTests(TestCase):
         response = self.client.get("/scarica-excel/")
         self.assertEqual(response.status_code, 200)
         return response.content
+
+    def _create_archive_folder(self, customer_name="Mario Rossi", customer_email="", customer_phone="", notes=""):
+        return CustomerArchiveFolder.objects.create(
+            customer_name=customer_name,
+            customer_email=customer_email,
+            customer_phone=customer_phone,
+            notes=notes,
+            created_by=self.staff_user,
+        )
+
+    def _archive_current_report(self, existing_folder=None, new_folder_name=""):
+        payload = {}
+        if existing_folder is not None:
+            payload["existing_folder"] = str(existing_folder.pk)
+        if new_folder_name:
+            payload["new_folder_name"] = new_folder_name
+        return self.client.post("/archivio-report/salva/", payload)
 
     def test_internal_report_summary_uploads_multiple_comparison_excels(self):
         self.login()

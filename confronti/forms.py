@@ -165,6 +165,16 @@ class ArchiveFolderForm(forms.ModelForm):
         widgets = {
             "notes": forms.Textarea(attrs={"rows": 4}),
         }
+        labels = {
+            "customer_name": "Nome cartella",
+            "customer_email": "Email cliente (opzionale)",
+            "customer_phone": "Telefono cliente (opzionale)",
+            "notes": "Note cartella",
+        }
+
+
+class ArchiveFolderCreateForm(ArchiveFolderForm):
+    pass
 
 
 class ArchiveFolderMergeForm(forms.Form):
@@ -187,6 +197,51 @@ class ArchiveFolderMergeForm(forms.Form):
         if self.target_folder is not None and source_folder.pk == self.target_folder.pk:
             raise forms.ValidationError("Seleziona una cartella diversa da quella aperta.")
         return source_folder
+
+
+class ArchiveCurrentReportSaveForm(forms.Form):
+    existing_folder = forms.ModelChoiceField(
+        label="Aggiungi a cartella esistente",
+        queryset=CustomerArchiveFolder.objects.none(),
+        required=False,
+        empty_label="Senza cartella",
+    )
+    new_folder_name = forms.CharField(
+        label="Oppure crea nuova cartella",
+        max_length=160,
+        required=False,
+    )
+
+    def __init__(self, *args, default_folder_name="", **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["existing_folder"].queryset = CustomerArchiveFolder.objects.order_by("customer_name", "created_at")
+        self.fields["new_folder_name"].widget.attrs.setdefault("placeholder", "Es. Carmela Muglia")
+        if default_folder_name and not self.is_bound and not self.initial.get("new_folder_name"):
+            self.initial["new_folder_name"] = default_folder_name
+
+    def clean_new_folder_name(self):
+        return CustomerArchiveFolder.normalize_customer_name(self.cleaned_data.get("new_folder_name"))
+
+
+class ArchiveReportMoveForm(forms.Form):
+    destination_folder = forms.ModelChoiceField(
+        label="Sposta in cartella",
+        queryset=CustomerArchiveFolder.objects.none(),
+        required=False,
+        empty_label="Senza cartella",
+    )
+
+    def __init__(self, *args, current_folder=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        queryset = CustomerArchiveFolder.objects.order_by("customer_name", "created_at")
+        if current_folder is not None:
+            queryset = queryset.exclude(pk=current_folder.pk)
+        self.fields["destination_folder"].queryset = queryset
+        self.fields["destination_folder"].help_text = (
+            "Lascia vuoto per tenere il report senza cartella."
+            if current_folder is None
+            else "Lascia vuoto per togliere il report da questa cartella."
+        )
 
 
 class ArchiveReportForm(forms.ModelForm):

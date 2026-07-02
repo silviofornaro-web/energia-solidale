@@ -20,12 +20,16 @@
 <section class="panel archive-summary-panel">
     <div class="status-cards archive-status-cards">
         <div class="status-card">
-            <strong>Cartelle clienti</strong>
+            <strong>Cartelle create</strong>
             <span>{{ archive_summary.folder_count }}</span>
         </div>
         <div class="status-card">
             <strong>Report archiviati</strong>
             <span>{{ archive_summary.report_count }}</span>
+        </div>
+        <div class="status-card">
+            <strong>Report senza cartella</strong>
+            <span>{{ archive_summary.unassigned_count }}</span>
         </div>
         <div class="status-card">
             <strong>Ultimo salvataggio</strong>
@@ -51,8 +55,8 @@
     <section class="panel archive-folder-panel">
         <div class="archive-folder-panel-header">
             <div>
-                <h2>Cartelle clienti</h2>
-                <p class="archive-help-text archive-help-text-compact">Spunta le cartelle che vuoi tenere evidenziate nella lista a sinistra.</p>
+                <h2>Naviga archivio</h2>
+                <p class="archive-help-text archive-help-text-compact">A sinistra trovi prima le cartelle create e sotto i confronti singoli non ancora assegnati a una cartella.</p>
             </div>
             {% if archive_folders %}
             <div class="form-actions archive-folder-quick-actions">
@@ -61,11 +65,37 @@
             </div>
             {% endif %}
         </div>
+
+        <section class="archive-upload-panel archive-folder-create-panel">
+            <h2>Crea cartella</h2>
+            <form method="post" class="archive-edit-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="create_archive_folder">
+                <input type="hidden" name="q" value="{{ archive_query }}">
+                {% if selected_report_entry %}
+                <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
+                {% endif %}
+                <div class="form-grid form-grid-archive-folder">
+                    <label>{{ create_folder_form.customer_name.label }}{{ create_folder_form.customer_name }}{{ create_folder_form.customer_name.errors }}</label>
+                    <label>{{ create_folder_form.customer_email.label }}{{ create_folder_form.customer_email }}{{ create_folder_form.customer_email.errors }}</label>
+                    <label>{{ create_folder_form.customer_phone.label }}{{ create_folder_form.customer_phone }}{{ create_folder_form.customer_phone.errors }}</label>
+                    <label class="archive-notes-field">{{ create_folder_form.notes.label }}{{ create_folder_form.notes }}{{ create_folder_form.notes.errors }}</label>
+                </div>
+                <p class="archive-help-text archive-help-text-compact">Puoi creare una cartella vuota e poi spostarci dentro uno o piu confronti.</p>
+                <div class="form-actions">
+                    <button type="submit">Crea cartella</button>
+                </div>
+            </form>
+        </section>
+
         {% if archive_folders %}
         <div id="archive-folder-selected-count" class="archive-selection-count archive-folder-selection-count" aria-live="polite">0 cartelle selezionate</div>
         <form id="archive-folder-summary-form" method="post" action="{% url 'archivio_report' %}" class="archive-summary-builder archive-folder-summary-builder">
             {% csrf_token %}
             <input type="hidden" name="q" value="{{ archive_query }}">
+            {% if selected_report_entry %}
+            <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
+            {% endif %}
             <div id="archive-folder-summary-inputs"></div>
             <div class="archive-folder-merge-controls">
                 <div class="form-grid form-grid-archive-merge">
@@ -86,53 +116,106 @@
                 {% endif %}
             </div>
         </form>
-        <div class="archive-folder-list">
-            {% for folder in archive_folders %}
-            <article class="archive-folder-card{% if selected_folder and selected_folder.pk == folder.pk %} is-active{% endif %}" data-archive-folder-card>
-                <label class="archive-folder-selector">
-                    <input type="checkbox" class="archive-folder-selector-input" value="{{ folder.pk }}" data-archive-folder-checkbox data-archive-folder-label="{{ folder.customer_name|escape }}"{% if folder.pk in selected_archive_folder_ids %} checked{% endif %}>
-                    <span class="archive-folder-selector-copy">
-                        <strong>Seleziona questa cartella</strong>
-                        <span>La cartella resta evidenziata nella lista a sinistra.</span>
-                    </span>
-                </label>
+        {% endif %}
 
-                <a href="{% url 'archivio_report_cartella' folder.pk %}{% if archive_query %}?q={{ archive_query|urlencode }}{% endif %}" class="archive-folder-link">
-                    <strong>{{ folder.customer_name }}</strong>
+        <section class="archive-browser-section">
+            <div class="archive-browser-section-header">
+                <h2>Cartelle create</h2>
+                <span class="archive-browser-count">{{ archive_folders|length }}</span>
+            </div>
+            {% if archive_folders %}
+            <div class="archive-folder-list">
+                {% for folder in archive_folders %}
+                <article class="archive-folder-card{% if selected_folder and selected_folder.pk == folder.pk %} is-active{% endif %}" data-archive-folder-card>
+                    <label class="archive-folder-selector">
+                        <input type="checkbox" class="archive-folder-selector-input" value="{{ folder.pk }}" data-archive-folder-checkbox data-archive-folder-label="{{ folder.customer_name|escape }}"{% if folder.pk in selected_archive_folder_ids %} checked{% endif %}>
+                        <span class="archive-folder-selector-copy">
+                            <strong>Seleziona questa cartella</strong>
+                            <span>La cartella resta evidenziata nella lista a sinistra.</span>
+                        </span>
+                    </label>
+
+                    <a href="{% url 'archivio_report_cartella' folder.pk %}{% if archive_query %}?q={{ archive_query|urlencode }}{% endif %}" class="archive-folder-link">
+                        <strong>{{ folder.customer_name }}</strong>
+                        <div class="archive-folder-meta-list">
+                            <span>
+                                <span class="archive-meta-label">Cartella fisica</span>
+                                <code class="archive-path">{{ folder.folder_name }}</code>
+                            </span>
+                            <span>
+                                <span class="archive-meta-label">Creata</span>
+                                {{ folder.created_at|date:"d/m/Y H:i" }}
+                            </span>
+                            <span>
+                                <span class="archive-meta-label">Report</span>
+                                {{ folder.report_count }}
+                            </span>
+                            <span>
+                                <span class="archive-meta-label">Ultimo aggiornamento</span>
+                                {{ folder.updated_at|date:"d/m/Y H:i" }}
+                            </span>
+                        </div>
+                    </a>
+                    <form method="post" class="archive-folder-delete-form" onsubmit="return window.confirm('Eliminare la cartella? I report contenuti resteranno nell\\'archivio senza cartella.');">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="delete_archive_folder">
+                        <input type="hidden" name="folder_id" value="{{ folder.pk }}">
+                        <input type="hidden" name="q" value="{{ archive_query }}">
+                        {% if selected_report_entry %}
+                        <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
+                        {% endif %}
+                        <div class="form-actions">
+                            <button type="submit" class="archive-delete-button">Elimina cartella</button>
+                        </div>
+                    </form>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="status-empty">Nessuna cartella creata con i filtri attuali.</p>
+            {% endif %}
+        </section>
+
+        <section class="archive-browser-section">
+            <div class="archive-browser-section-header">
+                <h2>Confronti singoli senza cartella</h2>
+                <span class="archive-browser-count">{{ unassigned_report_entries|length }}</span>
+            </div>
+            <p class="archive-help-text archive-help-text-compact">Ogni riga mostra cliente, POD/PDR, fornitura e data del confronto. Clicca il file per aprirlo nel pannello di destra.</p>
+            {% if unassigned_report_entries %}
+            <div class="archive-single-report-list">
+                {% for entry in unassigned_report_entries %}
+                <a
+                    href="{% url 'archivio_report' %}?{% if archive_query %}q={{ archive_query|urlencode }}&amp;{% endif %}report_id={{ entry.report.pk }}"
+                    class="archive-single-report-card{% if selected_report_entry and selected_report_entry.report.pk == entry.report.pk %} is-active{% endif %}"
+                >
+                    <strong>{{ entry.customer_name_display }}</strong>
+                    <span class="archive-single-report-title">{{ entry.display_title }}</span>
                     <div class="archive-folder-meta-list">
                         <span>
-                            <span class="archive-meta-label">Cartella fisica</span>
-                            <code class="archive-path">{{ folder.folder_name }}</code>
+                            <span class="archive-meta-label">POD / PDR</span>
+                            {{ entry.pod_pdr_display }}
                         </span>
                         <span>
-                            <span class="archive-meta-label">Creata</span>
-                            {{ folder.created_at|date:"d/m/Y H:i" }}
+                            <span class="archive-meta-label">Fornitura</span>
+                            {{ entry.commodity_label }}
                         </span>
                         <span>
-                            <span class="archive-meta-label">Report</span>
-                            {{ folder.report_count }}
+                            <span class="archive-meta-label">Data confronto</span>
+                            {{ entry.reference_datetime|date:"d/m/Y H:i"|default:"N.D." }}
                         </span>
                         <span>
-                            <span class="archive-meta-label">Ultimo aggiornamento</span>
-                            {{ folder.updated_at|date:"d/m/Y H:i" }}
+                            <span class="archive-meta-label">File</span>
+                            {{ entry.report.original_filename|default:"report.xlsx" }}
                         </span>
                     </div>
                 </a>
-                <form method="post" class="archive-folder-delete-form" onsubmit="return window.confirm('Eliminare la cartella cliente e tutti i report contenuti?');">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="delete_archive_folder">
-                    <input type="hidden" name="folder_id" value="{{ folder.pk }}">
-                    <input type="hidden" name="q" value="{{ archive_query }}">
-                    <div class="form-actions">
-                        <button type="submit" class="archive-delete-button">Elimina cartella</button>
-                    </div>
-                </form>
-            </article>
-            {% endfor %}
-        </div>
-        {% else %}
-        <p class="status-empty">Nessun report archiviato con i filtri attuali.</p>
-        {% endif %}
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="status-empty">Nessun confronto singolo con i filtri attuali.</p>
+            {% endif %}
+        </section>
     </section>
 
     <section class="panel archive-detail-panel">
@@ -181,9 +264,9 @@
                 <button type="submit" class="secondary">Apri cartella file</button>
             </form>
             {% else %}
-            <span class="archive-open-folder-note">Su Render i file restano nel cloud dell'app. Per modificarli usa `Aggiungi file`, `Sostituisci file` ed `Elimina report` direttamente da questa pagina.</span>
+            <span class="archive-open-folder-note">Su Render i file restano nel cloud dell'app. Per modificarli usa `Aggiungi file`, `Sostituisci file` ed `Elimina file` direttamente da questa pagina.</span>
             {% endif %}
-            <form method="post" class="inline-form" onsubmit="return window.confirm('Eliminare la cartella cliente e tutti i report contenuti?');">
+            <form method="post" class="inline-form" onsubmit="return window.confirm('Eliminare la cartella? I report contenuti resteranno nell\\'archivio senza cartella.');">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="delete_archive_folder">
                 <input type="hidden" name="q" value="{{ archive_query }}">
@@ -191,8 +274,8 @@
             </form>
         </div>
 
-        <p class="archive-help-text">Da qui puoi aggiornare i dati della cartella, aggiungere nuovi report Excel, sostituire i file gia archiviati e scaricarli quando servono.</p>
-        <p class="archive-help-text archive-help-text-compact">Se modifichi direttamente un file nella cartella locale, mantieni lo stesso nome. Se vuoi cambiare file o nome, usa `Sostituisci file` oppure `Elimina report` + `Aggiungi file`.</p>
+        <p class="archive-help-text">Da qui puoi aggiornare la cartella, aggiungere file Excel, spostare i report in un'altra cartella oppure lasciarli senza cartella.</p>
+        <p class="archive-help-text archive-help-text-compact">Se modifichi direttamente un file nella cartella locale, mantieni lo stesso nome. Se vuoi cambiare file o nome, usa `Sostituisci file` oppure `Elimina file` + `Aggiungi file`.</p>
 
         <form method="post" class="archive-edit-form">
             {% csrf_token %}
@@ -247,7 +330,7 @@
             </form>
         </section>
 
-        <h2>Report archiviati</h2>
+        <h2>File nella cartella</h2>
         {% if report_entries %}
         <form id="archive-summary-form" method="post" class="archive-summary-builder">
             {% csrf_token %}
@@ -268,87 +351,107 @@
                 {% endif %}
             </div>
         </form>
-        {% endif %}
 
-        {% if report_entries %}
-            {% for entry in report_entries %}
-            <article class="archive-report-card">
-                <div class="archive-report-selector">
-                    <label class="archive-report-selector-label">
-                        <input
-                            type="checkbox"
-                            name="selected_reports"
-                            value="{{ entry.report.pk }}"
-                            form="archive-summary-form"
-                            class="archive-report-selector-input"
-                            {% if entry.report.pk in selected_report_ids %}checked{% endif %}
-                        >
-                        <span class="archive-report-selector-copy">
-                            <strong>Seleziona questo file</strong>
-                            <span>Spunta il checkbox per includerlo nel sunto.</span>
-                        </span>
+        {% for entry in report_entries %}
+        <article class="archive-report-card">
+            <div class="archive-report-selector">
+                <label class="archive-report-selector-label">
+                    <input
+                        type="checkbox"
+                        name="selected_reports"
+                        value="{{ entry.report.pk }}"
+                        form="archive-summary-form"
+                        class="archive-report-selector-input"
+                        {% if entry.report.pk in selected_report_ids %}checked{% endif %}
+                    >
+                    <span class="archive-report-selector-copy">
+                        <strong>Seleziona questo file</strong>
+                        <span>Spunta il checkbox per includerlo nel sunto.</span>
+                    </span>
+                </label>
+            </div>
+
+            <div class="archive-report-meta">
+                <div>
+                    <strong>{{ entry.display_title }}</strong>
+                    <div class="archive-report-submeta">
+                        <span><strong>Cliente:</strong> {{ entry.customer_name_display }}</span>
+                        <span><strong>POD/PDR:</strong> {{ entry.pod_pdr_display }}</span>
+                        <span><strong>Data:</strong> {{ entry.reference_datetime|date:"d/m/Y H:i"|default:"N.D." }}</span>
+                        <span><strong>Fornitori:</strong> {{ entry.report.providers_label|default:"N.D." }}</span>
+                        <span><strong>Periodo:</strong> {{ entry.report.bill_period_label|default:"N.D." }}</span>
+                        <span><strong>File:</strong> {{ entry.report.original_filename|default:"report.xlsx" }}</span>
+                        <span><code class="archive-path">{{ entry.report.report_file.name }}</code></span>
+                        {% if archive_local_open_available %}
+                        <span><code class="archive-path">{{ entry.absolute_path }}</code></span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="archive-report-actions">
+                    <a href="{% url 'scarica_report_archiviato' entry.report.pk %}" class="action-link">Apri / scarica file</a>
+                </div>
+            </div>
+
+            <form method="post" class="archive-edit-form archive-move-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="move_archive_report">
+                <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+                <input type="hidden" name="q" value="{{ archive_query }}">
+                <div class="form-grid form-grid-archive-move">
+                    <label>
+                        {{ entry.move_form.destination_folder.label }}
+                        {{ entry.move_form.destination_folder }}
+                        {{ entry.move_form.destination_folder.errors }}
+                        {% if entry.move_form.destination_folder.help_text %}
+                        <span class="field-help">{{ entry.move_form.destination_folder.help_text }}</span>
+                        {% endif %}
                     </label>
                 </div>
-
-                <div class="archive-report-meta">
-                    <div>
-                        <strong>{{ entry.report.title|default:"Report confronto" }}</strong>
-                        <div class="archive-report-submeta">
-                            <span>{{ entry.report.providers_label|default:"N.D." }}</span>
-                            <span>{{ entry.report.bill_period_label|default:"N.D." }}</span>
-                            <span>{{ entry.report.comparison_datetime|date:"d/m/Y H:i"|default:"N.D." }}</span>
-                            <span>{{ entry.report.original_filename|default:"report.xlsx" }}</span>
-                            <span><code class="archive-path">{{ entry.report.report_file.name }}</code></span>
-                            {% if archive_local_open_available %}
-                            <span><code class="archive-path">{{ entry.absolute_path }}</code></span>
-                            {% endif %}
-                        </div>
-                    </div>
-                    <div class="archive-report-actions">
-                        <a href="{% url 'scarica_report_archiviato' entry.report.pk %}" class="action-link">Scarica report</a>
-                    </div>
+                <div class="form-actions">
+                    <button type="submit" class="secondary">Sposta file</button>
                 </div>
+            </form>
 
-                <form method="post" enctype="multipart/form-data" class="archive-edit-form archive-replace-form">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="replace_archive_report_file">
-                    <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
-                    <input type="hidden" name="q" value="{{ archive_query }}">
-                    <div class="form-grid form-grid-archive-replace">
-                        <label>{{ entry.replace_form.report_file.label }}{{ entry.replace_form.report_file }}{{ entry.replace_form.report_file.errors }}</label>
-                    </div>
-                    <div class="form-actions">
-                        <button type="submit" class="secondary">Sostituisci file</button>
-                    </div>
-                </form>
+            <form method="post" enctype="multipart/form-data" class="archive-edit-form archive-replace-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="replace_archive_report_file">
+                <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+                <input type="hidden" name="q" value="{{ archive_query }}">
+                <div class="form-grid form-grid-archive-replace">
+                    <label>{{ entry.replace_form.report_file.label }}{{ entry.replace_form.report_file }}{{ entry.replace_form.report_file.errors }}</label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="secondary">Sostituisci file</button>
+                </div>
+            </form>
 
-                <form method="post" class="archive-edit-form">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="update_archive_report">
-                    <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
-                    <input type="hidden" name="q" value="{{ archive_query }}">
-                    <div class="form-grid form-grid-archive-report">
-                        <label>{{ entry.form.title.label }}{{ entry.form.title }}{{ entry.form.title.errors }}</label>
-                        <label class="archive-notes-field">{{ entry.form.notes.label }}{{ entry.form.notes }}{{ entry.form.notes.errors }}</label>
-                    </div>
-                    <div class="form-actions">
-                        <button type="submit" class="secondary">Aggiorna report</button>
-                    </div>
-                </form>
+            <form method="post" class="archive-edit-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="update_archive_report">
+                <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+                <input type="hidden" name="q" value="{{ archive_query }}">
+                <div class="form-grid form-grid-archive-report">
+                    <label>{{ entry.form.title.label }}{{ entry.form.title }}{{ entry.form.title.errors }}</label>
+                    <label class="archive-notes-field">{{ entry.form.notes.label }}{{ entry.form.notes }}{{ entry.form.notes.errors }}</label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="secondary">Aggiorna file</button>
+                </div>
+            </form>
 
-                <form method="post" class="archive-delete-form" onsubmit="return window.confirm('Eliminare questo report dall\\'archivio?');">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="delete_archive_report">
-                    <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
-                    <input type="hidden" name="q" value="{{ archive_query }}">
-                    <div class="form-actions">
-                        <button type="submit" class="archive-delete-button">Elimina report</button>
-                    </div>
-                </form>
-            </article>
-            {% endfor %}
+            <form method="post" class="archive-delete-form" onsubmit="return window.confirm('Eliminare questo file dall\\'archivio?');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete_archive_report">
+                <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+                <input type="hidden" name="q" value="{{ archive_query }}">
+                <div class="form-actions">
+                    <button type="submit" class="archive-delete-button">Elimina file</button>
+                </div>
+            </form>
+        </article>
+        {% endfor %}
         {% else %}
-        <p class="status-empty">Questa cartella non contiene ancora report.</p>
+        <p class="status-empty">Questa cartella non contiene ancora file.</p>
         {% endif %}
 
         {% for warning in archive_report_summary_warnings %}
@@ -379,6 +482,120 @@
             </div>
         </section>
         {% endif %}
+        {% elif selected_report_entry %}
+        {% with entry=selected_report_entry %}
+        <div class="archive-detail-header">
+            <div>
+                <h2>{{ entry.customer_name_display }}</h2>
+                <p class="panel-lead">{{ entry.display_title }}. Questo file e salvato in <code class="archive-path">report_archive/non-assegnati/</code> finche non lo metti in una cartella.</p>
+            </div>
+            <a href="{% url 'archivio_report' %}{% if archive_query %}?q={{ archive_query|urlencode }}{% endif %}" class="action-link action-link-secondary">Torna alla lista</a>
+        </div>
+
+        <div class="archive-detail-stats">
+            <div class="archive-detail-stat">
+                <strong>Cliente</strong>
+                <span>{{ entry.customer_name_display }}</span>
+            </div>
+            <div class="archive-detail-stat">
+                <strong>POD / PDR</strong>
+                <span>{{ entry.pod_pdr_display }}</span>
+            </div>
+            <div class="archive-detail-stat">
+                <strong>Fornitura</strong>
+                <span>{{ entry.commodity_label }}</span>
+            </div>
+            <div class="archive-detail-stat">
+                <strong>Data confronto</strong>
+                <span>{{ entry.reference_datetime|date:"d/m/Y H:i"|default:"N.D." }}</span>
+            </div>
+            <div class="archive-detail-stat">
+                <strong>Fornitori</strong>
+                <span>{{ entry.report.providers_label|default:"N.D." }}</span>
+            </div>
+            <div class="archive-detail-stat">
+                <strong>Periodo bolletta</strong>
+                <span>{{ entry.report.bill_period_label|default:"N.D." }}</span>
+            </div>
+            <div class="archive-detail-stat">
+                <strong>Dove si trova</strong>
+                <span>Senza cartella</span>
+            </div>
+            <div class="archive-detail-stat archive-detail-stat-wide">
+                <strong>Percorso archivio app</strong>
+                <span><code class="archive-path">{{ entry.report.report_file.name }}</code></span>
+            </div>
+            {% if archive_local_open_available %}
+            <div class="archive-detail-stat archive-detail-stat-wide">
+                <strong>Percorso locale reale</strong>
+                <span><code class="archive-path">{{ entry.absolute_path }}</code></span>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="form-actions archive-open-folder-actions">
+            <a href="{% url 'scarica_report_archiviato' entry.report.pk %}" class="action-link">Apri / scarica file</a>
+        </div>
+
+        <p class="archive-help-text">Da qui puoi aggiornare il nome del file, sostituire l'Excel, cancellarlo oppure assegnarlo a una cartella cliente gia creata.</p>
+
+        <form method="post" class="archive-edit-form archive-move-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="move_archive_report_global">
+            <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+            <input type="hidden" name="q" value="{{ archive_query }}">
+            <div class="form-grid form-grid-archive-move">
+                <label>
+                    {{ entry.move_form.destination_folder.label }}
+                    {{ entry.move_form.destination_folder }}
+                    {{ entry.move_form.destination_folder.errors }}
+                    {% if entry.move_form.destination_folder.help_text %}
+                    <span class="field-help">{{ entry.move_form.destination_folder.help_text }}</span>
+                    {% endif %}
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit">Metti in cartella</button>
+            </div>
+        </form>
+
+        <form method="post" enctype="multipart/form-data" class="archive-edit-form archive-replace-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="replace_archive_report_file_global">
+            <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+            <input type="hidden" name="q" value="{{ archive_query }}">
+            <div class="form-grid form-grid-archive-replace">
+                <label>{{ entry.replace_form.report_file.label }}{{ entry.replace_form.report_file }}{{ entry.replace_form.report_file.errors }}</label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="secondary">Sostituisci file</button>
+            </div>
+        </form>
+
+        <form method="post" class="archive-edit-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="update_archive_report_global">
+            <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+            <input type="hidden" name="q" value="{{ archive_query }}">
+            <div class="form-grid form-grid-archive-report">
+                <label>{{ entry.form.title.label }}{{ entry.form.title }}{{ entry.form.title.errors }}</label>
+                <label class="archive-notes-field">{{ entry.form.notes.label }}{{ entry.form.notes }}{{ entry.form.notes.errors }}</label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="secondary">Aggiorna file</button>
+            </div>
+        </form>
+
+        <form method="post" class="archive-delete-form" onsubmit="return window.confirm('Eliminare questo file dall\\'archivio?');">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete_archive_report_global">
+            <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+            <input type="hidden" name="q" value="{{ archive_query }}">
+            <div class="form-actions">
+                <button type="submit" class="archive-delete-button">Elimina file</button>
+            </div>
+        </form>
+        {% endwith %}
         {% else %}
         {% if archive_report_summary.rows and archive_report_summary_scope == "folders" %}
         <h2>Sunto cartelle selezionate</h2>
@@ -421,46 +638,10 @@
         </section>
         {% endif %}
 
-        <h2>Tutti i confronti archiviati</h2>
-        <p class="archive-help-text">Qui trovi l'elenco completo dei confronti salvati nell'app, anche se sono distribuiti in poche cartelle cliente.</p>
-        {% if all_report_entries %}
-        <div class="archive-global-report-list">
-            {% for entry in all_report_entries %}
-            <article class="archive-report-card archive-global-report-card">
-                <div class="archive-report-meta">
-                    <div>
-                        <strong>{{ entry.report.title|default:"Report confronto" }}</strong>
-                        <div class="archive-report-submeta">
-                            <span><strong>Cliente:</strong> {{ entry.report.folder.customer_name }}</span>
-                            <span><strong>Cartella:</strong> {{ entry.report.folder.folder_name }}</span>
-                            <span>{{ entry.report.providers_label|default:"N.D." }}</span>
-                            <span>{{ entry.report.bill_period_label|default:"N.D." }}</span>
-                            <span>{{ entry.report.comparison_datetime|date:"d/m/Y H:i"|default:"N.D." }}</span>
-                            <span>{{ entry.report.original_filename|default:"report.xlsx" }}</span>
-                            <span><code class="archive-path">{{ entry.report.report_file.name }}</code></span>
-                            {% if archive_local_open_available %}
-                            <span><code class="archive-path">{{ entry.absolute_path }}</code></span>
-                            {% endif %}
-                        </div>
-                    </div>
-                    <div class="archive-report-actions">
-                        <a href="{% url 'archivio_report_cartella' entry.report.folder.pk %}{% if archive_query %}?q={{ archive_query|urlencode }}{% endif %}" class="action-link action-link-secondary">Apri cartella cliente</a>
-                        <a href="{% url 'scarica_report_archiviato' entry.report.pk %}" class="action-link">Scarica report</a>
-                        <form method="post" class="archive-delete-form" onsubmit="return window.confirm('Eliminare questo report dall\\'archivio?');">
-                            {% csrf_token %}
-                            <input type="hidden" name="action" value="delete_archive_report_global">
-                            <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
-                            <input type="hidden" name="q" value="{{ archive_query }}">
-                            <button type="submit" class="archive-delete-button">Elimina report</button>
-                        </form>
-                    </div>
-                </div>
-            </article>
-            {% endfor %}
+        <div class="archive-empty-state">
+            <h2>Seleziona una cartella o un confronto singolo</h2>
+            <p>Quando clicchi una cartella a sinistra vedi tutti i file che contiene. Quando clicchi un confronto singolo senza cartella, qui trovi le azioni per aprirlo, aggiornarlo, cancellarlo o metterlo dentro una cartella.</p>
         </div>
-        {% else %}
-        <p class="status-empty">Nessun confronto archiviato con i filtri attuali.</p>
-        {% endif %}
         {% endif %}
     </section>
 </section>

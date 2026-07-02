@@ -69,7 +69,8 @@ def _archive_storage_filename(filename):
 
 
 def archive_report_upload_to(instance, filename):
-    return f"report_archive/{instance.folder.folder_name}/{_archive_storage_filename(filename)}"
+    folder_name = instance.folder.folder_name if getattr(instance, "folder", None) else "non-assegnati"
+    return f"report_archive/{folder_name}/{_archive_storage_filename(filename)}"
 
 
 class CustomerArchiveFolder(models.Model):
@@ -137,7 +138,9 @@ class CustomerArchiveFolder(models.Model):
 class ComparisonReport(models.Model):
     folder = models.ForeignKey(
         CustomerArchiveFolder,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="reports",
         verbose_name="Cartella cliente",
     )
