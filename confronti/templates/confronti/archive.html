@@ -387,6 +387,13 @@
                 <span><strong>Fornitura:</strong> {{ entry.commodity_label }}</span>
                 <span><strong>Indirizzo fornitura:</strong> {{ entry.supply_address_display }}</span>
             </a>
+            <form method="post" class="archive-folder-report-inline-actions" onsubmit="return window.confirm('Eliminare questo file dall\\'archivio?');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete_archive_report">
+                <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+                <input type="hidden" name="q" value="{{ archive_query }}">
+                <button type="submit" class="archive-delete-button">Elimina file</button>
+            </form>
         </article>
         {% endfor %}
         </div>

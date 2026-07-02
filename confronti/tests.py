@@ -1547,6 +1547,7 @@ class ConfrontoViewTests(TestCase):
         self.assertContains(response, "Mario Rossi")
         self.assertContains(response, "Luce")
         self.assertContains(response, "Via Roma 10, Chioggia VE")
+        self.assertContains(response, "Elimina file")
         self.assertContains(response, "Seleziona un confronto")
         self.assertNotContains(response, "Apri / scarica file")
 

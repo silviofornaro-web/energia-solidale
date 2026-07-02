@@ -1515,7 +1515,7 @@ th {
     border-radius: 10px;
     display: grid;
     gap: 0;
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
     overflow: hidden;
 }
 
@@ -1556,6 +1556,19 @@ th {
 
 .archive-folder-report-link strong {
     color: #0f172a;
+}
+
+.archive-folder-report-inline-actions {
+    align-items: center;
+    border-left: 1px solid #d9e8f2;
+    display: flex;
+    justify-content: center;
+    margin: 0;
+    padding: 14px 16px;
+}
+
+.archive-folder-report-inline-actions .archive-delete-button {
+    white-space: nowrap;
 }
 
 .archive-selected-report-detail {
