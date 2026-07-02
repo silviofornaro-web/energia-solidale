@@ -270,6 +270,9 @@
                 {% csrf_token %}
                 <input type="hidden" name="action" value="delete_archive_folder">
                 <input type="hidden" name="q" value="{{ archive_query }}">
+                {% if selected_report_entry %}
+                <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
+                {% endif %}
                 <button type="submit" class="archive-delete-button">Elimina cartella cliente</button>
             </form>
         </div>
@@ -281,6 +284,9 @@
             {% csrf_token %}
             <input type="hidden" name="action" value="update_archive_folder">
             <input type="hidden" name="q" value="{{ archive_query }}">
+            {% if selected_report_entry %}
+            <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
+            {% endif %}
             <div class="form-grid form-grid-archive-folder">
                 <label>{{ folder_form.customer_name.label }}{{ folder_form.customer_name }}{{ folder_form.customer_name.errors }}</label>
                 <label>{{ folder_form.customer_email.label }}{{ folder_form.customer_email }}{{ folder_form.customer_email.errors }}</label>
@@ -299,6 +305,9 @@
                 {% csrf_token %}
                 <input type="hidden" name="action" value="merge_archive_folder">
                 <input type="hidden" name="q" value="{{ archive_query }}">
+                {% if selected_report_entry %}
+                <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
+                {% endif %}
                 <div class="form-grid form-grid-archive-merge">
                     <label>{{ merge_form.source_folder.label }}{{ merge_form.source_folder }}{{ merge_form.source_folder.errors }}</label>
                 </div>
@@ -318,6 +327,9 @@
                 {% csrf_token %}
                 <input type="hidden" name="action" value="add_archive_report">
                 <input type="hidden" name="q" value="{{ archive_query }}">
+                {% if selected_report_entry %}
+                <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
+                {% endif %}
                 <div class="form-grid form-grid-archive-upload">
                     <label>{{ add_report_form.title.label }}{{ add_report_form.title }}{{ add_report_form.title.errors }}</label>
                     <label>{{ add_report_form.report_file.label }}{{ add_report_form.report_file }}{{ add_report_form.report_file.errors }}</label>
@@ -330,12 +342,15 @@
             </form>
         </section>
 
-        <h2>File nella cartella</h2>
+        <h2>Confronti nella cartella</h2>
         {% if report_entries %}
         <form id="archive-summary-form" method="post" class="archive-summary-builder">
             {% csrf_token %}
             <input type="hidden" name="action" value="build_archive_report_summary">
             <input type="hidden" name="q" value="{{ archive_query }}">
+            {% if selected_report_entry %}
+            <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
+            {% endif %}
             <p class="archive-help-text archive-help-text-compact">Seleziona i file che vuoi includere e crea il sunto solo su quelli scelti.</p>
             <div class="archive-summary-toolbar">
                 <div id="archive-selected-count" class="archive-selection-count" aria-live="polite">0 file selezionati</div>
@@ -352,50 +367,91 @@
             </div>
         </form>
 
+        <div class="archive-folder-report-list">
         {% for entry in report_entries %}
-        <article class="archive-report-card">
-            <div class="archive-report-selector">
-                <label class="archive-report-selector-label">
-                    <input
-                        type="checkbox"
-                        name="selected_reports"
-                        value="{{ entry.report.pk }}"
-                        form="archive-summary-form"
-                        class="archive-report-selector-input"
-                        {% if entry.report.pk in selected_report_ids %}checked{% endif %}
-                    >
-                    <span class="archive-report-selector-copy">
-                        <strong>Seleziona questo file</strong>
-                        <span>Spunta il checkbox per includerlo nel sunto.</span>
-                    </span>
-                </label>
+        <article class="archive-folder-report-row{% if selected_report_entry and selected_report_entry.report.pk == entry.report.pk %} is-active{% endif %}">
+            <label class="archive-folder-report-check">
+                <input
+                    type="checkbox"
+                    name="selected_reports"
+                    value="{{ entry.report.pk }}"
+                    form="archive-summary-form"
+                    class="archive-report-selector-input"
+                    {% if entry.report.pk in selected_report_ids %}checked{% endif %}
+                >
+                <span>Seleziona</span>
+            </label>
+            <a href="{% url 'archivio_report_cartella' selected_folder.pk %}?{% if archive_query %}q={{ archive_query|urlencode }}&amp;{% endif %}report_id={{ entry.report.pk }}" class="archive-folder-report-link">
+                <span><strong>Cliente:</strong> {{ entry.customer_name_display }}</span>
+                <span><strong>Data:</strong> {{ entry.reference_datetime|date:"d/m/Y H:i"|default:"N.D." }}</span>
+                <span><strong>Fornitura:</strong> {{ entry.commodity_label }}</span>
+                <span><strong>Indirizzo fornitura:</strong> {{ entry.supply_address_display }}</span>
+            </a>
+        </article>
+        {% endfor %}
+        </div>
+
+        {% if selected_report_entry %}
+        {% with entry=selected_report_entry %}
+        <section class="archive-selected-report-detail">
+            <div class="archive-detail-header">
+                <div>
+                    <h2>Dettaglio confronto</h2>
+                    <p class="panel-lead">{{ entry.display_title }}</p>
+                </div>
+                <a href="{% url 'archivio_report_cartella' selected_folder.pk %}{% if archive_query %}?q={{ archive_query|urlencode }}{% endif %}" class="action-link action-link-secondary">Chiudi dettaglio</a>
             </div>
 
-            <div class="archive-report-meta">
-                <div>
-                    <strong>{{ entry.display_title }}</strong>
-                    <div class="archive-report-submeta">
-                        <span><strong>Cliente:</strong> {{ entry.customer_name_display }}</span>
-                        <span><strong>POD/PDR:</strong> {{ entry.pod_pdr_display }}</span>
-                        <span><strong>Data:</strong> {{ entry.reference_datetime|date:"d/m/Y H:i"|default:"N.D." }}</span>
-                        <span><strong>Fornitori:</strong> {{ entry.report.providers_label|default:"N.D." }}</span>
-                        <span><strong>Periodo:</strong> {{ entry.report.bill_period_label|default:"N.D." }}</span>
-                        <span><strong>File:</strong> {{ entry.report.original_filename|default:"report.xlsx" }}</span>
-                        <span><code class="archive-path">{{ entry.report.report_file.name }}</code></span>
-                        {% if archive_local_open_available %}
-                        <span><code class="archive-path">{{ entry.absolute_path }}</code></span>
-                        {% endif %}
-                    </div>
+            <div class="archive-detail-stats">
+                <div class="archive-detail-stat">
+                    <strong>Cliente</strong>
+                    <span>{{ entry.customer_name_display }}</span>
                 </div>
-                <div class="archive-report-actions">
-                    <a href="{% url 'scarica_report_archiviato' entry.report.pk %}" class="action-link">Apri / scarica file</a>
+                <div class="archive-detail-stat">
+                    <strong>Data confronto</strong>
+                    <span>{{ entry.reference_datetime|date:"d/m/Y H:i"|default:"N.D." }}</span>
                 </div>
+                <div class="archive-detail-stat">
+                    <strong>Fornitura</strong>
+                    <span>{{ entry.commodity_label }}</span>
+                </div>
+                <div class="archive-detail-stat">
+                    <strong>Indirizzo fornitura</strong>
+                    <span>{{ entry.supply_address_display }}</span>
+                </div>
+                <div class="archive-detail-stat">
+                    <strong>POD / PDR</strong>
+                    <span>{{ entry.pod_pdr_display }}</span>
+                </div>
+                <div class="archive-detail-stat">
+                    <strong>Periodo bolletta</strong>
+                    <span>{{ entry.report.bill_period_label|default:"N.D." }}</span>
+                </div>
+                <div class="archive-detail-stat">
+                    <strong>Fornitori</strong>
+                    <span>{{ entry.report.providers_label|default:"N.D." }}</span>
+                </div>
+                <div class="archive-detail-stat archive-detail-stat-wide">
+                    <strong>Percorso archivio app</strong>
+                    <span><code class="archive-path">{{ entry.report.report_file.name }}</code></span>
+                </div>
+                {% if archive_local_open_available %}
+                <div class="archive-detail-stat archive-detail-stat-wide">
+                    <strong>Percorso locale reale</strong>
+                    <span><code class="archive-path">{{ entry.absolute_path }}</code></span>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="archive-report-actions archive-report-actions-inline">
+                <a href="{% url 'scarica_report_archiviato' entry.report.pk %}" class="action-link">Apri / scarica file</a>
             </div>
 
             <form method="post" class="archive-edit-form archive-move-form">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="move_archive_report">
                 <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+                <input type="hidden" name="selected_report_id" value="{{ entry.report.pk }}">
                 <input type="hidden" name="q" value="{{ archive_query }}">
                 <div class="form-grid form-grid-archive-move">
                     <label>
@@ -416,6 +472,7 @@
                 {% csrf_token %}
                 <input type="hidden" name="action" value="replace_archive_report_file">
                 <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+                <input type="hidden" name="selected_report_id" value="{{ entry.report.pk }}">
                 <input type="hidden" name="q" value="{{ archive_query }}">
                 <div class="form-grid form-grid-archive-replace">
                     <label>{{ entry.replace_form.report_file.label }}{{ entry.replace_form.report_file }}{{ entry.replace_form.report_file.errors }}</label>
@@ -429,6 +486,7 @@
                 {% csrf_token %}
                 <input type="hidden" name="action" value="update_archive_report">
                 <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+                <input type="hidden" name="selected_report_id" value="{{ entry.report.pk }}">
                 <input type="hidden" name="q" value="{{ archive_query }}">
                 <div class="form-grid form-grid-archive-report">
                     <label>{{ entry.form.title.label }}{{ entry.form.title }}{{ entry.form.title.errors }}</label>
@@ -443,13 +501,20 @@
                 {% csrf_token %}
                 <input type="hidden" name="action" value="delete_archive_report">
                 <input type="hidden" name="report_id" value="{{ entry.report.pk }}">
+                <input type="hidden" name="selected_report_id" value="{{ entry.report.pk }}">
                 <input type="hidden" name="q" value="{{ archive_query }}">
                 <div class="form-actions">
                     <button type="submit" class="archive-delete-button">Elimina file</button>
                 </div>
             </form>
-        </article>
-        {% endfor %}
+        </section>
+        {% endwith %}
+        {% else %}
+        <div class="archive-empty-state archive-empty-state-compact">
+            <h2>Seleziona un confronto</h2>
+            <p>Dalla lista sopra puoi aprire il dettaglio di un confronto e vedere tutte le azioni disponibili.</p>
+        </div>
+        {% endif %}
         {% else %}
         <p class="status-empty">Questa cartella non contiene ancora file.</p>
         {% endif %}

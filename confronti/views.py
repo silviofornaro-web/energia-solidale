@@ -650,6 +650,11 @@ def _archive_report_pod_pdr(report):
     return str(comparison_data.get("pod_pdr") or "").strip()
 
 
+def _archive_report_supply_address(report):
+    comparison_data = report.comparison_data if isinstance(report.comparison_data, dict) else {}
+    return str(comparison_data.get("supply_address") or "").strip()
+
+
 def _archive_report_commodity_label(report):
     comparison_data = report.comparison_data if isinstance(report.comparison_data, dict) else {}
     commodity = str(comparison_data.get("commodity") or report.commodity or "").strip().upper()
@@ -691,6 +696,7 @@ def _archive_report_entry(
     )
     customer_name = _archive_report_customer_name(report)
     pod_pdr = _archive_report_pod_pdr(report)
+    supply_address = _archive_report_supply_address(report)
     commodity_label = _archive_report_commodity_label(report)
     return {
         "report": report,
@@ -703,6 +709,8 @@ def _archive_report_entry(
         "customer_name_display": customer_name or "Cliente non indicato",
         "pod_pdr": pod_pdr,
         "pod_pdr_display": pod_pdr or "N.D.",
+        "supply_address": supply_address,
+        "supply_address_display": supply_address or "N.D.",
         "commodity_label": commodity_label,
         "reference_datetime": _archive_report_reference_datetime(report),
     }
@@ -742,9 +750,9 @@ def _archive_context(
     report_summary_warnings = list(report_summary_warnings or [])
     archive_folder_absolute_path = ""
     archive_local_open_available = _can_open_local_archive_path()
-    selected_report_lookup_id = None
-    if selected_folder is None and selected_report is None:
-        raw_selected_report_id = request.GET.get("report_id")
+    selected_report_lookup_id = getattr(selected_report, "pk", None)
+    if selected_report_lookup_id is None:
+        raw_selected_report_id = request.GET.get("report_id") or request.POST.get("selected_report_id")
         if str(raw_selected_report_id).isdigit():
             selected_report_lookup_id = int(raw_selected_report_id)
     if create_folder_form is None:
@@ -763,17 +771,19 @@ def _archive_context(
         if add_report_form is None:
             add_report_form = ArchiveReportUploadForm(prefix="add-report")
         for report in reports:
-            report_entries.append(
-                _archive_report_entry(
-                    report,
-                    active_move_report_id=active_move_report_id,
-                    active_move_form=active_move_report_form,
-                    active_report_id=active_report_id,
-                    active_report_form=active_report_form,
-                    active_replace_report_id=active_replace_report_id,
-                    active_replace_report_form=active_replace_report_form,
-                )
+            entry = _archive_report_entry(
+                report,
+                active_move_report_id=active_move_report_id,
+                active_move_form=active_move_report_form,
+                active_report_id=active_report_id,
+                active_report_form=active_report_form,
+                active_replace_report_id=active_replace_report_id,
+                active_replace_report_form=active_replace_report_form,
             )
+            report_entries.append(entry)
+            if selected_report_lookup_id == report.pk:
+                selected_report = report
+                selected_report_entry = entry
     else:
         for report in _archive_reports_queryset(search_query):
             entry = _archive_report_entry(
@@ -840,7 +850,7 @@ def _archive_redirect_url(search_query="", *, folder_id=None, report_id=None):
     query = str(search_query or "").strip()
     if query:
         query_params["q"] = query
-    if folder_id is None and report_id is not None:
+    if report_id is not None:
         query_params["report_id"] = report_id
     if not query_params:
         return base_url
@@ -1500,12 +1510,13 @@ def archivio_report_cartella(request, folder_id):
     if request.method == "POST":
         action = request.POST.get("action")
         search_query = request.POST.get("q")
+        selected_report_id = request.POST.get("selected_report_id")
         if action == "update_archive_folder":
             folder_form = ArchiveFolderForm(request.POST, instance=folder)
             if folder_form.is_valid():
                 folder_form.save()
                 messages.success(request, "Dati cartella archivio aggiornati.")
-                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk))
+                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk, report_id=selected_report_id or None))
             return render(
                 request,
                 "confronti/archive.html",
@@ -1523,7 +1534,7 @@ def archivio_report_cartella(request, folder_id):
                         f"con {merged['moved_report_count']} report spostati."
                     ),
                 )
-                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk))
+                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk, report_id=selected_report_id or None))
             return render(
                 request,
                 "confronti/archive.html",
@@ -1534,7 +1545,7 @@ def archivio_report_cartella(request, folder_id):
             if add_report_form.is_valid():
                 _create_uploaded_archive_report(folder, add_report_form, request.user)
                 messages.success(request, f"File aggiunto nella cartella {folder.folder_name}.")
-                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk))
+                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk, report_id=selected_report_id or None))
             return render(
                 request,
                 "confronti/archive.html",
@@ -1581,13 +1592,14 @@ def archivio_report_cartella(request, folder_id):
                 report_form.save()
                 _touch_archive_folder(folder)
                 messages.success(request, "Report archiviato aggiornato.")
-                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk))
+                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk, report_id=report.pk))
             return render(
                 request,
                 "confronti/archive.html",
                 _archive_context(
                     request,
                     selected_folder=folder,
+                    selected_report=report,
                     active_report_id=report.pk,
                     active_report_form=report_form,
                 ),
@@ -1598,13 +1610,14 @@ def archivio_report_cartella(request, folder_id):
             if replace_form.is_valid():
                 _replace_archive_report_file(report, replace_form.cleaned_data["report_file"])
                 messages.success(request, "File report sostituito.")
-                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk))
+                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk, report_id=report.pk))
             return render(
                 request,
                 "confronti/archive.html",
                 _archive_context(
                     request,
                     selected_folder=folder,
+                    selected_report=report,
                     active_replace_report_id=report.pk,
                     active_replace_report_form=replace_form,
                 ),
@@ -1617,15 +1630,19 @@ def archivio_report_cartella(request, folder_id):
                 current_folder=folder,
             )
             if move_form.is_valid():
-                _move_archive_report_to_folder(report, move_form.cleaned_data["destination_folder"])
-                messages.success(request, _archive_report_move_message(move_form.cleaned_data["destination_folder"]))
-                return redirect(_archive_redirect_url(search_query, folder_id=folder.pk))
+                target_folder = move_form.cleaned_data["destination_folder"]
+                _move_archive_report_to_folder(report, target_folder)
+                messages.success(request, _archive_report_move_message(target_folder))
+                if target_folder is None:
+                    return redirect(_archive_redirect_url(search_query, report_id=report.pk))
+                return redirect(_archive_redirect_url(search_query, folder_id=target_folder.pk, report_id=report.pk))
             return render(
                 request,
                 "confronti/archive.html",
                 _archive_context(
                     request,
                     selected_folder=folder,
+                    selected_report=report,
                     active_move_report_id=report.pk,
                     active_move_report_form=move_form,
                 ),
