@@ -257,92 +257,8 @@
             </div>
         </div>
 
-        <div class="form-actions archive-open-folder-actions">
-            {% if archive_local_open_available %}
-            <form method="post" action="{% url 'apri_cartella_archivio_locale' selected_folder.pk %}" class="inline-form">
-                {% csrf_token %}
-                <button type="submit" class="secondary">Apri cartella file</button>
-            </form>
-            {% else %}
-            <span class="archive-open-folder-note">Su Render i file restano nel cloud dell'app. Per modificarli usa `Aggiungi file`, `Sostituisci file` ed `Elimina file` direttamente da questa pagina.</span>
-            {% endif %}
-            <form method="post" class="inline-form" onsubmit="return window.confirm('Eliminare la cartella? I report contenuti resteranno nell\\'archivio senza cartella.');">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="delete_archive_folder">
-                <input type="hidden" name="q" value="{{ archive_query }}">
-                {% if selected_report_entry %}
-                <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
-                {% endif %}
-                <button type="submit" class="archive-delete-button">Elimina cartella cliente</button>
-            </form>
-        </div>
-
-        <p class="archive-help-text">Da qui puoi aggiornare la cartella, aggiungere file Excel, spostare i report in un'altra cartella oppure lasciarli senza cartella.</p>
-        <p class="archive-help-text archive-help-text-compact">Se modifichi direttamente un file nella cartella locale, mantieni lo stesso nome. Se vuoi cambiare file o nome, usa `Sostituisci file` oppure `Elimina file` + `Aggiungi file`.</p>
-
-        <form method="post" class="archive-edit-form">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="update_archive_folder">
-            <input type="hidden" name="q" value="{{ archive_query }}">
-            {% if selected_report_entry %}
-            <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
-            {% endif %}
-            <div class="form-grid form-grid-archive-folder">
-                <label>{{ folder_form.customer_name.label }}{{ folder_form.customer_name }}{{ folder_form.customer_name.errors }}</label>
-                <label>{{ folder_form.customer_email.label }}{{ folder_form.customer_email }}{{ folder_form.customer_email.errors }}</label>
-                <label>{{ folder_form.customer_phone.label }}{{ folder_form.customer_phone }}{{ folder_form.customer_phone.errors }}</label>
-                <label class="archive-notes-field">{{ folder_form.notes.label }}{{ folder_form.notes }}{{ folder_form.notes.errors }}</label>
-            </div>
-            <div class="form-actions">
-                <button type="submit" class="secondary">Aggiorna cartella</button>
-            </div>
-        </form>
-
-        <section class="archive-upload-panel">
-            <h2>Unisci cartella</h2>
-            {% if merge_form.fields.source_folder.queryset.exists %}
-            <form method="post" class="archive-edit-form" onsubmit="return window.confirm('I report della cartella selezionata verranno spostati qui e l\\'altra cartella verra eliminata. Continuare?');">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="merge_archive_folder">
-                <input type="hidden" name="q" value="{{ archive_query }}">
-                {% if selected_report_entry %}
-                <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
-                {% endif %}
-                <div class="form-grid form-grid-archive-merge">
-                    <label>{{ merge_form.source_folder.label }}{{ merge_form.source_folder }}{{ merge_form.source_folder.errors }}</label>
-                </div>
-                <p class="archive-help-text archive-help-text-compact">La cartella aperta resta attiva. L'altra cartella viene assorbita e poi eliminata.</p>
-                <div class="form-actions">
-                    <button type="submit" class="secondary">Unisci in questa cartella</button>
-                </div>
-            </form>
-            {% else %}
-            <p class="archive-help-text archive-help-text-compact">Non ci sono altre cartelle archivio da unire a questa.</p>
-            {% endif %}
-        </section>
-
-        <section class="archive-upload-panel">
-            <h2>Aggiungi file</h2>
-            <form method="post" enctype="multipart/form-data" class="archive-edit-form">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="add_archive_report">
-                <input type="hidden" name="q" value="{{ archive_query }}">
-                {% if selected_report_entry %}
-                <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
-                {% endif %}
-                <div class="form-grid form-grid-archive-upload">
-                    <label>{{ add_report_form.title.label }}{{ add_report_form.title }}{{ add_report_form.title.errors }}</label>
-                    <label>{{ add_report_form.report_file.label }}{{ add_report_form.report_file }}{{ add_report_form.report_file.errors }}</label>
-                    <label class="archive-notes-field">{{ add_report_form.notes.label }}{{ add_report_form.notes }}{{ add_report_form.notes.errors }}</label>
-                </div>
-                <p class="archive-help-text archive-help-text-compact">Accetta solo file `.xlsx`. Se il titolo e vuoto, viene usato il nome del file.</p>
-                <div class="form-actions">
-                    <button type="submit">Aggiungi file</button>
-                </div>
-            </form>
-        </section>
-
         <h2>Confronti nella cartella</h2>
+        <p class="archive-help-text archive-help-text-compact">A destra trovi subito la lista semplice dei confronti inclusi: nome cliente, data esecuzione, fornitura e codice POD/PDR. Clicca una riga per aprire il dettaglio completo del confronto.</p>
         {% if report_entries %}
         <form id="archive-summary-form" method="post" class="archive-summary-builder">
             {% csrf_token %}
@@ -382,10 +298,10 @@
                 <span>Seleziona</span>
             </label>
             <a href="{% url 'archivio_report_cartella' selected_folder.pk %}?{% if archive_query %}q={{ archive_query|urlencode }}&amp;{% endif %}report_id={{ entry.report.pk }}" class="archive-folder-report-link">
-                <span><strong>Cliente:</strong> {{ entry.customer_name_display }}</span>
-                <span><strong>Data:</strong> {{ entry.reference_datetime|date:"d/m/Y H:i"|default:"N.D." }}</span>
+                <span><strong>Nome cliente:</strong> {{ entry.customer_name_display }}</span>
+                <span><strong>Data esecuzione:</strong> {{ entry.reference_datetime|date:"d/m/Y H:i"|default:"N.D." }}</span>
                 <span><strong>Fornitura:</strong> {{ entry.commodity_label }}</span>
-                <span><strong>Indirizzo fornitura:</strong> {{ entry.supply_address_display }}</span>
+                <span><strong>POD / PDR:</strong> {{ entry.pod_pdr_display }}</span>
             </a>
             <form method="post" class="archive-folder-report-inline-actions" onsubmit="return window.confirm('Eliminare questo file dall\\'archivio?');">
                 {% csrf_token %}
@@ -519,7 +435,7 @@
         {% else %}
         <div class="archive-empty-state archive-empty-state-compact">
             <h2>Seleziona un confronto</h2>
-            <p>Dalla lista sopra puoi aprire il dettaglio di un confronto e vedere tutte le azioni disponibili.</p>
+            <p>Clicca un confronto dalla lista qui sopra per vedere i dettagli completi e tutte le azioni disponibili.</p>
         </div>
         {% endif %}
         {% else %}
@@ -554,6 +470,91 @@
             </div>
         </section>
         {% endif %}
+
+        <div class="form-actions archive-open-folder-actions">
+            {% if archive_local_open_available %}
+            <form method="post" action="{% url 'apri_cartella_archivio_locale' selected_folder.pk %}" class="inline-form">
+                {% csrf_token %}
+                <button type="submit" class="secondary">Apri cartella file</button>
+            </form>
+            {% else %}
+            <span class="archive-open-folder-note">Su Render i file restano nel cloud dell'app. Per modificarli usa `Aggiungi file`, `Sostituisci file` ed `Elimina file` direttamente da questa pagina.</span>
+            {% endif %}
+            <form method="post" class="inline-form" onsubmit="return window.confirm('Eliminare la cartella? I report contenuti resteranno nell\\'archivio senza cartella.');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete_archive_folder">
+                <input type="hidden" name="q" value="{{ archive_query }}">
+                {% if selected_report_entry %}
+                <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
+                {% endif %}
+                <button type="submit" class="archive-delete-button">Elimina cartella cliente</button>
+            </form>
+        </div>
+
+        <p class="archive-help-text">Da qui puoi aggiornare la cartella, aggiungere file Excel, spostare i report in un'altra cartella oppure lasciarli senza cartella.</p>
+        <p class="archive-help-text archive-help-text-compact">Se modifichi direttamente un file nella cartella locale, mantieni lo stesso nome. Se vuoi cambiare file o nome, usa `Sostituisci file` oppure `Elimina file` + `Aggiungi file`.</p>
+
+        <form method="post" class="archive-edit-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="update_archive_folder">
+            <input type="hidden" name="q" value="{{ archive_query }}">
+            {% if selected_report_entry %}
+            <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
+            {% endif %}
+            <div class="form-grid form-grid-archive-folder">
+                <label>{{ folder_form.customer_name.label }}{{ folder_form.customer_name }}{{ folder_form.customer_name.errors }}</label>
+                <label>{{ folder_form.customer_email.label }}{{ folder_form.customer_email }}{{ folder_form.customer_email.errors }}</label>
+                <label>{{ folder_form.customer_phone.label }}{{ folder_form.customer_phone }}{{ folder_form.customer_phone.errors }}</label>
+                <label class="archive-notes-field">{{ folder_form.notes.label }}{{ folder_form.notes }}{{ folder_form.notes.errors }}</label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="secondary">Aggiorna cartella</button>
+            </div>
+        </form>
+
+        <section class="archive-upload-panel">
+            <h2>Unisci cartella</h2>
+            {% if merge_form.fields.source_folder.queryset.exists %}
+            <form method="post" class="archive-edit-form" onsubmit="return window.confirm('I report della cartella selezionata verranno spostati qui e l\\'altra cartella verra eliminata. Continuare?');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="merge_archive_folder">
+                <input type="hidden" name="q" value="{{ archive_query }}">
+                {% if selected_report_entry %}
+                <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
+                {% endif %}
+                <div class="form-grid form-grid-archive-merge">
+                    <label>{{ merge_form.source_folder.label }}{{ merge_form.source_folder }}{{ merge_form.source_folder.errors }}</label>
+                </div>
+                <p class="archive-help-text archive-help-text-compact">La cartella aperta resta attiva. L'altra cartella viene assorbita e poi eliminata.</p>
+                <div class="form-actions">
+                    <button type="submit" class="secondary">Unisci in questa cartella</button>
+                </div>
+            </form>
+            {% else %}
+            <p class="archive-help-text archive-help-text-compact">Non ci sono altre cartelle archivio da unire a questa.</p>
+            {% endif %}
+        </section>
+
+        <section class="archive-upload-panel">
+            <h2>Aggiungi file</h2>
+            <form method="post" enctype="multipart/form-data" class="archive-edit-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="add_archive_report">
+                <input type="hidden" name="q" value="{{ archive_query }}">
+                {% if selected_report_entry %}
+                <input type="hidden" name="selected_report_id" value="{{ selected_report_entry.report.pk }}">
+                {% endif %}
+                <div class="form-grid form-grid-archive-upload">
+                    <label>{{ add_report_form.title.label }}{{ add_report_form.title }}{{ add_report_form.title.errors }}</label>
+                    <label>{{ add_report_form.report_file.label }}{{ add_report_form.report_file }}{{ add_report_form.report_file.errors }}</label>
+                    <label class="archive-notes-field">{{ add_report_form.notes.label }}{{ add_report_form.notes }}{{ add_report_form.notes.errors }}</label>
+                </div>
+                <p class="archive-help-text archive-help-text-compact">Accetta solo file `.xlsx`. Se il titolo e vuoto, viene usato il nome del file.</p>
+                <div class="form-actions">
+                    <button type="submit">Aggiungi file</button>
+                </div>
+            </form>
+        </section>
         {% elif selected_report_entry %}
         {% with entry=selected_report_entry %}
         <div class="archive-detail-header">
