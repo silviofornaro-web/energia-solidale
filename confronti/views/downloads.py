@@ -6,13 +6,13 @@ from django.shortcuts import get_object_or_404, redirect
 
 from ..models import ComparisonReport
 from ..roles import is_illumia_operator, is_internal_user
+from ..forms import session_to_service_data
 from ..services import (
     build_excel_bytes,
     build_reports_summary_excel,
     prepare_comparison,
     provider_label,
     safe_download_filename,
-    session_to_service_data,
 )
 from .helpers import (
     LAST_COMPARISON_KEY,
@@ -57,7 +57,6 @@ def _scarica_excel(request, customer_mode=False, operator_mode=False):
 
 
 def prepare_session_data(raw, customer_mode=False, operator_mode=False):
-    from ..services import session_to_service_data
     data = session_to_service_data(raw)
     if customer_mode:
         data = force_customer_mode_data(data)

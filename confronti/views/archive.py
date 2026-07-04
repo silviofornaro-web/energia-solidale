@@ -23,7 +23,8 @@ from ..forms import (
 )
 from ..models import ComparisonReport, CustomerArchiveFolder
 from ..roles import is_internal_user
-from ..services import prepare_comparison, session_to_service_data
+from ..forms import session_to_service_data
+from ..services import prepare_comparison
 from .helpers import (
     LAST_COMPARISON_KEY,
     LAST_ARCHIVED_REPORT_KEY,
