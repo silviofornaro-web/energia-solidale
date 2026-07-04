@@ -553,6 +553,64 @@ class BillParserTests(SimpleTestCase):
         self.assertEqual(parsed.values["bill_end"], date(2025, 10, 31))
         self.assertAlmostEqual(parsed.values["b_rete_fissa"], 7.33)
 
+    def test_parser_prefers_explicit_supply_address_over_customer_residence(self):
+        parsed = parse_bill_text(
+            """
+            ENERGIA ELETTRICA
+            MERCATO LIBERO
+            MARIO ROSSI
+            Residenza cliente
+            Via Roma 10
+            Luogo di fornitura
+            Via Torino 44
+            Periodo oggetto di fatturazione: 1 gennaio 2026 - 31 gennaio 2026
+            Consumo totale fatturato: 120 kWh
+            Consumo annuo: 1200 kWh
+            Scadenza condizioni economiche: 31/12/2026
+            SCONTRINO DELL'ENERGIA
+            Codice POD IT001E12345678
+            QUOTA PER CONSUMI
+            120 kWh 0,300000 €/kWh 36,00
+            di cui spesa per vendita energia elettrica 0,200000 €/kWh 24,00
+            di cui spesa per la rete e gli oneri generali di sistema 0,100000 €/kWh 12,00
+            QUOTA FISSA
+            1 mesi 10,000000 €/mese 10,00
+            di cui spesa per vendita energia elettrica 5,000000 €/mese 5,00
+            di cui spesa per la rete e gli oneri generali di sistema 5,000000 €/mese 5,00
+            Accise e IVA 9,00
+            """
+        )
+        self.assertEqual(parsed.values["indirizzo_fornitura"], "Via Torino 44")
+
+    def test_parser_does_not_guess_supply_address_when_multiple_addresses_are_ambiguous(self):
+        parsed = parse_bill_text(
+            """
+            GAS NATURALE
+            MERCATO LIBERO
+            MARIO ROSSI
+            VIA ROMA 10
+            Altra sede
+            VIA TORINO 44
+            Periodo oggetto di fatturazione: 1 gennaio 2026 - 31 gennaio 2026
+            Consumo totale fatturato: 100 Smc
+            Consumo annuo: 1200 Smc
+            Scadenza condizioni economiche: 31/12/2026
+            SCONTRINO DELL'ENERGIA
+            Codice PDR: 15351410010036
+            QUOTA PER CONSUMI
+            100 Smc 0,400000 €/Smc 40,00
+            di cui spesa per vendita gas naturale 0,300000 €/Smc 30,00
+            di cui spesa per la rete e gli oneri generali di sistema 0,100000 €/Smc 10,00
+            QUOTA FISSA
+            1 mesi 10,000000 €/mese 10,00
+            di cui spesa per vendita gas naturale 4,000000 €/mese 4,00
+            di cui spesa per la rete e gli oneri generali di sistema 6,000000 €/mese 6,00
+            Accise e IVA 8,00
+            """
+        )
+        self.assertNotIn("indirizzo_fornitura", parsed.values)
+        self.assertIn("Indirizzo fornitura non riconosciuto: compilalo manualmente.", parsed.warnings)
+
     def test_parser_keeps_fixed_bill_amounts_for_multi_month_periods(self):
         parsed = parse_bill_text(
             """
@@ -1989,7 +2047,7 @@ class ConfrontoViewTests(TestCase):
         for stored_name in stored_names:
             self.assertFalse(default_storage.exists(stored_name))
 
-    @patch("confronti.views.subprocess.Popen")
+    @patch("confronti.views.helpers.subprocess.Popen")
     def test_archive_page_can_open_local_archive_folder(self, mock_popen):
         self.login()
         folder = self._create_archive_folder("Mario Rossi Dossier")
@@ -2248,7 +2306,7 @@ class ConfrontoViewTests(TestCase):
         self.assertNotIn("last_uploaded_bill_name", self.client.session)
         self.assertEqual(response.context["uploaded_bill_name"], "")
 
-    @patch("confronti.views.parse_uploaded_bill")
+    @patch("confronti.views.comparison.parse_uploaded_bill")
     def test_pdf_upload_prefills_recognized_bill_values(self, mock_parse_uploaded_bill):
         mock_parse_uploaded_bill.return_value = ParsedBill(
             values={

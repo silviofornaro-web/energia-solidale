@@ -41,6 +41,18 @@ ADDRESS_PREFIX_PATTERN = (
     r"(?:VIA|VIALE|BORGO|CORSO|PIAZZA|P\.ZZA|PZA|STRADA|LOCALIT[AÀ]|LOC\.?|LARGO|"
     r"RIVIERA|FONDAMENTA|CALLE|CAMPO|SALIZADA|CONTRADA|VICOLO)"
 )
+SUPPLY_ADDRESS_LABELS = (
+    r"Indirizzo\s+(?:di\s+)?fornitura",
+    r"Ubicazione\s+(?:della\s+)?fornitura",
+    r"Luogo\s+di\s+fornitura",
+    r"Punto\s+di\s+fornitura",
+)
+SUPPLY_ADDRESS_LABEL_PATTERN = "(?:" + "|".join(SUPPLY_ADDRESS_LABELS) + ")"
+RESIDENCE_ADDRESS_LABEL_PATTERN = (
+    r"(?:Residenza|Indirizzo\s+di\s+residenza|Domicilio|Recapito|Indirizzo\s+di\s+recapito|"
+    r"Sede\s+legale|Sede\s+amministrativa|Indirizzo\s+cliente|Fatturare\s+a)"
+)
+POD_PDR_LABEL_PATTERN = r"(?:Codice\s+POD|Codice\s+PDR|\bPOD\b|\bPDR\b)"
 
 
 @dataclass
@@ -188,38 +200,87 @@ def _clean_address(value):
     return address.strip(" ,;-. ").title()
 
 
-def _extract_supply_address(text, name=""):
-    lines = [" ".join(line.split()).strip() for line in _normalize_text(text).splitlines()]
-    lines = [line for line in lines if line]
-    explicit_labels = (
-        r"Indirizzo\s+(?:di\s+)?fornitura",
-        r"Ubicazione\s+(?:della\s+)?fornitura",
-        r"Luogo\s+di\s+fornitura",
-        r"Punto\s+di\s+fornitura",
-    )
-    label_pattern = "(?:" + "|".join(explicit_labels) + ")"
+def _line_has_supply_address_context(value):
+    return bool(re.search(SUPPLY_ADDRESS_LABEL_PATTERN, str(value or ""), re.IGNORECASE))
+
+
+def _line_has_residence_address_context(value):
+    return bool(re.search(RESIDENCE_ADDRESS_LABEL_PATTERN, str(value or ""), re.IGNORECASE))
+
+
+def _line_has_pod_pdr_context(value):
+    return bool(re.search(POD_PDR_LABEL_PATTERN, str(value or ""), re.IGNORECASE))
+
+
+def _collect_address_candidates(lines, name=""):
+    candidates = {}
+
+    def remember(index, raw_value, score):
+        cleaned = _clean_address(raw_value)
+        if not cleaned:
+            return
+        current = candidates.get((index, cleaned))
+        if current is None or score > current["score"]:
+            candidates[(index, cleaned)] = {"index": index, "address": cleaned, "score": score}
+
     for index, line in enumerate(lines):
         explicit = re.search(
-            rf"{label_pattern}\s*:?[\s-]*({ADDRESS_PREFIX_PATTERN}\b.+)",
+            rf"{SUPPLY_ADDRESS_LABEL_PATTERN}\s*:?[\s-]*({ADDRESS_PREFIX_PATTERN}\b.+)",
             line,
             re.IGNORECASE,
         )
         if explicit:
-            return _clean_address(explicit.group(1))
-        if re.search(label_pattern, line, re.IGNORECASE):
-            for candidate in lines[index + 1 : index + 4]:
+            remember(index, explicit.group(1), 100)
+        if _line_has_supply_address_context(line):
+            for offset, candidate in enumerate(lines[index + 1 : index + 4], start=1):
                 if _looks_like_address(candidate):
-                    return _clean_address(candidate)
-    if name:
-        name_norm = " ".join(str(name).split()).lower()
+                    remember(index + offset, candidate, 95 - offset)
+                    break
+
+    name_norm = " ".join(str(name).split()).lower()
+    for index, line in enumerate(lines):
+        if not _looks_like_address(line):
+            continue
+        window_lines = lines[max(0, index - 2) : min(len(lines), index + 3)]
+        window_text = " ".join(window_lines)
+        score = 10
+        if _line_has_residence_address_context(window_text):
+            score -= 100
+        if _line_has_supply_address_context(window_text):
+            score += 70
+        if _line_has_pod_pdr_context(window_text):
+            score += 40
+        remember(index, line, score)
+
+    if name_norm:
         for index, line in enumerate(lines):
-            if " ".join(line.split()).lower() == name_norm:
-                for candidate in lines[index + 1 : index + 4]:
-                    if _looks_like_address(candidate):
-                        return _clean_address(candidate)
+            if " ".join(line.split()).lower() != name_norm:
+                continue
+            for offset, candidate in enumerate(lines[index + 1 : index + 4], start=1):
+                if _looks_like_address(candidate):
+                    remember(index + offset, candidate, 20 - offset)
+                    break
+    return sorted(candidates.values(), key=lambda item: (-item["score"], item["index"]))
+
+
+def _extract_supply_address(text, name=""):
+    lines = [" ".join(line.split()).strip() for line in _normalize_text(text).splitlines()]
+    lines = [line for line in lines if line]
+    candidates = _collect_address_candidates(lines, name=name)
+    if candidates:
+        strongest = candidates[0]
+        if strongest["score"] >= 90:
+            return strongest["address"]
+        non_residence = [candidate for candidate in candidates if candidate["score"] >= 0]
+        unique_addresses = {candidate["address"] for candidate in non_residence}
+        if len(unique_addresses) == 1:
+            return non_residence[0]["address"]
+        pod_candidates = [candidate for candidate in non_residence if candidate["score"] >= 40]
+        if pod_candidates:
+            return pod_candidates[0]["address"]
     collapsed = _collapsed(text)
     explicit = re.search(
-        rf"{label_pattern}\s*:?[\s-]*({ADDRESS_PREFIX_PATTERN}\b.{{5,140}}?)(?=\s+(?:Codice\s+POD|Codice\s+PDR|POD|PDR|Periodo|MERCATO|Contratto|Scontrino|$))",
+        rf"{SUPPLY_ADDRESS_LABEL_PATTERN}\s*:?[\s-]*({ADDRESS_PREFIX_PATTERN}\b.{{5,140}}?)(?=\s+(?:Codice\s+POD|Codice\s+PDR|POD|PDR|Periodo|MERCATO|Contratto|Scontrino|$))",
         collapsed,
         re.IGNORECASE,
     )
