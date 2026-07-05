@@ -840,11 +840,6 @@ def home_tabs():
             "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=confronto'})}",
         },
         {
-            "key": "genera-codici",
-            "label": "Genera Codice Invito",
-            "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=genera-codici'})}",
-        },
-        {
             "key": "sunto-report",
             "label": "Sunto Report",
             "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=sunto-report'})}",
@@ -853,6 +848,7 @@ def home_tabs():
             "key": "clienti",
             "label": "Clienti",
             "subs": [
+                {"label": "Genera Codice Invito", "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=genera-codici'})}"},
                 {"label": "Stato Clienti", "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=status-clienti'})}"},
                 {"label": "Apri Dashboard", "href": reverse("accesso_clienti")},
                 {"label": "Apri Registrazione Cliente", "href": reverse("register")},
@@ -871,13 +867,13 @@ def admin_tabs(active_panel, operator_mode=False):
         return [{"key": "sunto-report", "label": "Sunto report", "href": f"{root_url}?panel=sunto-report#sunto-report", "active": active_panel == "sunto-report"}]
     return [
         {"key": "confronto", "label": "Esegui confronto", "href": f"{root_url}?panel=confronto#confronto-bollette-offerte", "active": active_panel == "confronto"},
-        {"key": "genera-codici", "label": "Genera Codice Invito", "href": f"{root_url}?panel=genera-codici#genera-codici", "active": active_panel == "genera-codici"},
         {"key": "sunto-report", "label": "Sunto Report", "href": f"{root_url}?panel=sunto-report#sunto-report", "active": active_panel == "sunto-report"},
         {"key": "archivio-report", "label": "Apri archivio file", "href": reverse("archivio_report"), "active": active_panel == "archivio-report"},
         {
             "key": "clienti",
             "label": "Clienti",
             "subs": [
+                {"label": "Genera Codice Invito", "href": f"{root_url}?panel=genera-codici#genera-codici"},
                 {"label": "Stato Clienti", "href": f"{root_url}?panel=status-clienti#stato-clienti"},
                 {"label": "Apri Dashboard", "href": reverse("accesso_clienti")},
                 {"label": "Apri Registrazione Cliente", "href": reverse("register")},
