@@ -834,13 +834,30 @@ def home_tabs():
     root_url = reverse("confronto")
     login_url = reverse("login")
     return [
-        {"key": "mostra-dashboard-clienti", "label": "Mostra Dashboard Clienti", "href": f"{login_url}?{urlencode({'next': reverse('accesso_clienti')})}"},
-        {"key": "mostra-registrazione-clienti", "label": "Mostra Registrazione Clienti", "href": reverse("register")},
-        {"key": "stato-clienti", "label": "Stato Clienti", "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=status-clienti'})}"},
-        {"key": "genera-codici", "label": "Genera Codici", "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=genera-codici'})}"},
-        {"key": "archivio-report", "label": "Apri archivio file", "href": f"{login_url}?{urlencode({'next': reverse('archivio_report')})}"},
-        {"key": "confronto-bollette-offerte", "label": "Confronto Bollette/Offerte", "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=confronto'})}"},
-        {"key": "sunto-report", "label": "Sunto Report", "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=sunto-report'})}"},
+        {
+            "key": "confronto",
+            "label": "Esegui confronto",
+            "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=confronto'})}",
+        },
+        {
+            "key": "genera-codici",
+            "label": "Genera Codice Invito",
+            "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=genera-codici'})}",
+        },
+        {
+            "key": "sunto-report",
+            "label": "Sunto Report",
+            "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=sunto-report'})}",
+        },
+        {
+            "key": "clienti",
+            "label": "Clienti",
+            "subs": [
+                {"label": "Stato Clienti", "href": f"{login_url}?{urlencode({'next': f'{root_url}?panel=status-clienti'})}"},
+                {"label": "Apri Dashboard", "href": reverse("accesso_clienti")},
+                {"label": "Apri Registrazione Cliente", "href": reverse("register")},
+            ],
+        },
     ]
 
 

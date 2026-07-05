@@ -15,30 +15,34 @@
     </div>
 
     <div class="home-primary-tabs" role="tablist" aria-label="Accessi principali">
-        <button type="button" class="home-primary-tab is-active" data-home-primary-tab="admin" aria-selected="true">
-            Dashboard Amministrazione (Interna)
-        </button>
-        <button type="button" class="home-primary-tab" data-home-primary-tab="customer" aria-selected="false">
-            Confronto Bollette
-        </button>
+        {% for tab in admin_tabs %}
+            <button type="button"
+                class="home-primary-tab{% if forloop.first %} is-active{% endif %}"
+                data-home-primary-tab="{{ tab.key }}"
+                aria-selected="{% if forloop.first %}true{% else %}false{% endif %}">
+                {{ tab.label }}
+            </button>
+        {% endfor %}
     </div>
 
-    <section class="home-primary-panel is-active" data-home-primary-panel="admin">
-        <div class="home-subtabs" aria-label="Funzioni amministrazione">
-            {% for tab in admin_tabs %}
-                <a href="{{ tab.href }}" class="home-subtab">
-                    <span class="home-subtab-label">{{ tab.label }}</span>
+    {% for tab in admin_tabs %}
+        <section class="home-primary-panel{% if forloop.first %} is-active{% endif %}" data-home-primary-panel="{{ tab.key }}"{% if not forloop.first %} hidden{% endif %}>
+            {% if tab.subs %}
+                <div class="home-subtabs" aria-label="{{ tab.label }}">
+                    {% for sub in tab.subs %}
+                        <a href="{{ sub.href }}" class="home-subtab">
+                            <span class="home-subtab-label">{{ sub.label }}</span>
+                        </a>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <a href="{{ tab.href }}" class="home-customer-entry">
+                    <span class="home-customer-entry-title">{{ tab.label }}</span>
+                    <span class="home-customer-entry-text">Accedi alla sezione dedicata.</span>
                 </a>
-            {% endfor %}
-        </div>
-    </section>
-
-    <section class="home-primary-panel" data-home-primary-panel="customer" hidden>
-        <a href="{{ customer_dashboard_url }}" class="home-customer-entry">
-            <span class="home-customer-entry-title">Confronto Bollette</span>
-            <span class="home-customer-entry-text">Accedi all'attuale dashboard clienti per il confronto bollette.</span>
-        </a>
-    </section>
+            {% endif %}
+        </section>
+    {% endfor %}
 </section>
 
 <script>
