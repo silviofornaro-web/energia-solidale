@@ -6,6 +6,7 @@ import subprocess
 from datetime import datetime
 from urllib.parse import quote, urlencode, urljoin
 
+from django.core.files.base import ContentFile
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
