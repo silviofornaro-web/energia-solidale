@@ -10,9 +10,20 @@
 <section class="panel admin-tabs-shell">
     <nav class="admin-tabs-nav" aria-label="Azioni dashboard interna">
         {% for tab in admin_tabs %}
+        {% if tab.subs %}
+        <div class="admin-tab-group">
+            <span class="admin-tab-group-label">{{ tab.label }}</span>
+            <div class="admin-tab-group-links">
+                {% for sub in tab.subs %}
+                <a href="{{ sub.href }}" class="admin-tab-link">{{ sub.label }}</a>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
         <a href="{{ tab.href }}" class="admin-tab-link{% if tab.active %} is-active{% endif %}"{% if tab.new_tab %} target="_blank" rel="noopener"{% endif %}>
             {{ tab.label }}
         </a>
+        {% endif %}
         {% endfor %}
     </nav>
 </section>
