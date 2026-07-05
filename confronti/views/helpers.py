@@ -867,22 +867,22 @@ def normalize_admin_focus_panel(panel):
 
 def admin_tabs(active_panel, operator_mode=False):
     root_url = reverse("confronto")
-    comparison_tab = {
-        "key": "confronto",
-        "label": "Esegui confronto",
-        "href": f"{root_url}?panel=confronto#confronto-bollette-offerte",
-        "active": active_panel == "confronto",
-    }
     if operator_mode:
         return [{"key": "sunto-report", "label": "Sunto report", "href": f"{root_url}?panel=sunto-report#sunto-report", "active": active_panel == "sunto-report"}]
     return [
-        comparison_tab,
-        {"key": "genera-codici", "label": "Genera Codice invito", "href": f"{root_url}?panel=genera-codici#genera-codici", "active": active_panel == "genera-codici"},
-        {"key": "status-clienti", "label": "Stato clienti", "href": f"{root_url}?panel=status-clienti#stato-clienti", "active": active_panel == "status-clienti"},
+        {"key": "confronto", "label": "Esegui confronto", "href": f"{root_url}?panel=confronto#confronto-bollette-offerte", "active": active_panel == "confronto"},
+        {"key": "genera-codici", "label": "Genera Codice Invito", "href": f"{root_url}?panel=genera-codici#genera-codici", "active": active_panel == "genera-codici"},
+        {"key": "sunto-report", "label": "Sunto Report", "href": f"{root_url}?panel=sunto-report#sunto-report", "active": active_panel == "sunto-report"},
+        {
+            "key": "clienti",
+            "label": "Clienti",
+            "subs": [
+                {"label": "Stato Clienti", "href": f"{root_url}?panel=status-clienti#stato-clienti"},
+                {"label": "Apri Dashboard", "href": reverse("accesso_clienti")},
+                {"label": "Apri Registrazione Cliente", "href": reverse("register")},
+            ],
+        },
         {"key": "archivio-report", "label": "Apri archivio file", "href": reverse("archivio_report"), "active": active_panel == "archivio-report"},
-        {"key": "sunto-report", "label": "Sunto report", "href": f"{root_url}?panel=sunto-report#sunto-report", "active": active_panel == "sunto-report"},
-        {"key": "apri-dashboard-cliente", "label": "Apri dashboard cliente", "href": reverse("accesso_clienti"), "active": False, "new_tab": True},
-        {"key": "apri-registrazione-cliente", "label": "Apri registrazione cliente", "href": reverse("register"), "active": False, "new_tab": True},
     ]
 
 
