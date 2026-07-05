@@ -125,9 +125,6 @@ def archivia_report_corrente(request):
     return redirect(f"{reverse('confronto')}?panel=confronto")
 
 
-_logger = logging.getLogger(__name__)
-
-
 @login_required
 def archivio_report(request):
     if not is_archive_admin(request.user):
@@ -141,107 +138,107 @@ def archivio_report(request):
 
             if action == "create_archive_folder":
                 selected_report = ComparisonReport.objects.select_related("folder").filter(pk=selected_report_id).first()
-            create_folder_form = ArchiveFolderCreateForm(request.POST, prefix="create-folder")
-            if create_folder_form.is_valid():
-                folder = create_folder_form.save(commit=False)
-                folder.created_by = request.user
-                folder.save()
-                messages.success(request, f"Cartella {folder.customer_name} creata.")
-                if selected_report is not None:
-                    if selected_report.folder_id is not None:
-                        return redirect(archive_redirect_url(search_query, folder_id=selected_report.folder_id, report_id=selected_report.pk))
-                    return redirect(archive_redirect_url(search_query, report_id=selected_report.pk))
-                return redirect(archive_redirect_url(search_query, folder_id=folder.pk))
-            return render(request, "confronti/archive.html", archive_context(request, create_folder_form=create_folder_form, selected_folder=selected_report.folder if selected_report and selected_report.folder_id else None, selected_report=selected_report))
+                create_folder_form = ArchiveFolderCreateForm(request.POST, prefix="create-folder")
+                if create_folder_form.is_valid():
+                    folder = create_folder_form.save(commit=False)
+                    folder.created_by = request.user
+                    folder.save()
+                    messages.success(request, f"Cartella {folder.customer_name} creata.")
+                    if selected_report is not None:
+                        if selected_report.folder_id is not None:
+                            return redirect(archive_redirect_url(search_query, folder_id=selected_report.folder_id, report_id=selected_report.pk))
+                        return redirect(archive_redirect_url(search_query, report_id=selected_report.pk))
+                    return redirect(archive_redirect_url(search_query, folder_id=folder.pk))
+                return render(request, "confronti/archive.html", archive_context(request, create_folder_form=create_folder_form, selected_folder=selected_report.folder if selected_report and selected_report.folder_id else None, selected_report=selected_report))
 
-        if action == "delete_archive_report_global":
-            report = get_object_or_404(ComparisonReport.objects.select_related("folder"), pk=request.POST.get("report_id"))
-            folder_label = report.folder.customer_name if report.folder else "senza cartella"
-            delete_archive_report(report)
-            messages.success(request, f"Report eliminato dall'archivio ({folder_label}).")
-            return redirect(archive_redirect_url(search_query))
+            if action == "delete_archive_report_global":
+                report = get_object_or_404(ComparisonReport.objects.select_related("folder"), pk=request.POST.get("report_id"))
+                folder_label = report.folder.customer_name if report.folder else "senza cartella"
+                delete_archive_report(report)
+                messages.success(request, f"Report eliminato dall'archivio ({folder_label}).")
+                return redirect(archive_redirect_url(search_query))
 
-        if action == "update_archive_report_global":
-            report = get_object_or_404(ComparisonReport.objects.select_related("folder"), pk=request.POST.get("report_id"), folder__isnull=True)
-            report_form = ArchiveReportForm(request.POST, instance=report, prefix=f"report-{report.pk}")
-            if report_form.is_valid():
-                report_form.save()
-                messages.success(request, "File archivio aggiornato.")
-                return redirect(archive_redirect_url(search_query, report_id=report.pk))
-            return render(request, "confronti/archive.html", archive_context(request, selected_report=report, active_report_id=report.pk, active_report_form=report_form))
+            if action == "update_archive_report_global":
+                report = get_object_or_404(ComparisonReport.objects.select_related("folder"), pk=request.POST.get("report_id"), folder__isnull=True)
+                report_form = ArchiveReportForm(request.POST, instance=report, prefix=f"report-{report.pk}")
+                if report_form.is_valid():
+                    report_form.save()
+                    messages.success(request, "File archivio aggiornato.")
+                    return redirect(archive_redirect_url(search_query, report_id=report.pk))
+                return render(request, "confronti/archive.html", archive_context(request, selected_report=report, active_report_id=report.pk, active_report_form=report_form))
 
-        if action == "replace_archive_report_file_global":
-            report = get_object_or_404(ComparisonReport.objects.select_related("folder"), pk=request.POST.get("report_id"), folder__isnull=True)
-            replace_form = ArchiveReportReplaceFileForm(request.POST, request.FILES, prefix=f"replace-report-{report.pk}")
-            if replace_form.is_valid():
-                replace_archive_report_file(report, replace_form.cleaned_data["report_file"])
-                messages.success(request, "File report sostituito.")
-                return redirect(archive_redirect_url(search_query, report_id=report.pk))
-            return render(request, "confronti/archive.html", archive_context(request, selected_report=report, active_replace_report_id=report.pk, active_replace_report_form=replace_form))
+            if action == "replace_archive_report_file_global":
+                report = get_object_or_404(ComparisonReport.objects.select_related("folder"), pk=request.POST.get("report_id"), folder__isnull=True)
+                replace_form = ArchiveReportReplaceFileForm(request.POST, request.FILES, prefix=f"replace-report-{report.pk}")
+                if replace_form.is_valid():
+                    replace_archive_report_file(report, replace_form.cleaned_data["report_file"])
+                    messages.success(request, "File report sostituito.")
+                    return redirect(archive_redirect_url(search_query, report_id=report.pk))
+                return render(request, "confronti/archive.html", archive_context(request, selected_report=report, active_replace_report_id=report.pk, active_replace_report_form=replace_form))
 
-        if action == "move_archive_report_global":
-            report = get_object_or_404(ComparisonReport.objects.select_related("folder"), pk=request.POST.get("report_id"))
-            move_form = ArchiveReportMoveForm(request.POST, prefix=f"move-report-{report.pk}", current_folder=report.folder)
-            if move_form.is_valid():
-                target_folder = move_form.cleaned_data["destination_folder"]
-                move_archive_report_to_folder(report, target_folder)
-                messages.success(request, _move_message(target_folder))
-                if target_folder is not None:
-                    return redirect(archive_redirect_url(search_query, folder_id=target_folder.pk))
-                return redirect(archive_redirect_url(search_query, report_id=report.pk))
-            return render(request, "confronti/archive.html", archive_context(request, selected_report=report if report.folder_id is None else None, active_move_report_id=report.pk, active_move_report_form=move_form))
+            if action == "move_archive_report_global":
+                report = get_object_or_404(ComparisonReport.objects.select_related("folder"), pk=request.POST.get("report_id"))
+                move_form = ArchiveReportMoveForm(request.POST, prefix=f"move-report-{report.pk}", current_folder=report.folder)
+                if move_form.is_valid():
+                    target_folder = move_form.cleaned_data["destination_folder"]
+                    move_archive_report_to_folder(report, target_folder)
+                    messages.success(request, _move_message(target_folder))
+                    if target_folder is not None:
+                        return redirect(archive_redirect_url(search_query, folder_id=target_folder.pk))
+                    return redirect(archive_redirect_url(search_query, report_id=report.pk))
+                return render(request, "confronti/archive.html", archive_context(request, selected_report=report if report.folder_id is None else None, active_move_report_id=report.pk, active_move_report_form=move_form))
 
-        if action == "delete_archive_folder":
-            folder = get_object_or_404(CustomerArchiveFolder, pk=request.POST.get("folder_id"))
-            deleted = delete_archive_folder(folder)
-            messages.success(request, f"Cartella {deleted['folder_name']} eliminata. {deleted['report_count']} report restano senza cartella.")
-            return redirect(archive_redirect_url(search_query, report_id=selected_report_id or None))
+            if action == "delete_archive_folder":
+                folder = get_object_or_404(CustomerArchiveFolder, pk=request.POST.get("folder_id"))
+                deleted = delete_archive_folder(folder)
+                messages.success(request, f"Cartella {deleted['folder_name']} eliminata. {deleted['report_count']} report restano senza cartella.")
+                return redirect(archive_redirect_url(search_query, report_id=selected_report_id or None))
 
-        if action == "merge_selected_archive_folders":
-            selected_ids = selected_archive_folder_ids(request.POST.getlist("selected_folder_ids"))
-            if len(selected_ids) != 2:
-                messages.error(request, "Seleziona esattamente 2 cartelle cliente da unire.")
-                return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids))
-            try:
-                target_folder_id = int(request.POST.get("merge_target_folder_id"))
-            except (TypeError, ValueError):
-                target_folder_id = 0
-            if target_folder_id not in selected_ids:
-                messages.error(request, "Scegli quale delle 2 cartelle selezionate deve restare attiva.")
-                return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids))
-            folders_by_id = CustomerArchiveFolder.objects.in_bulk(selected_ids)
-            if len(folders_by_id) != 2:
-                messages.error(request, "Le cartelle selezionate non sono piu disponibili nell'archivio.")
-                return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids))
-            target_folder = folders_by_id[target_folder_id]
-            source_folder_id = next(fid for fid in selected_ids if fid != target_folder_id)
-            source_folder = folders_by_id[source_folder_id]
-            merged = merge_archive_folders(target_folder, source_folder)
-            messages.success(request, f"Cartella {merged['source_folder_name']} unita in {merged['target_folder_name']} con {merged['moved_report_count']} report spostati.")
-            return redirect(archive_redirect_url(search_query, folder_id=target_folder.pk))
+            if action == "merge_selected_archive_folders":
+                selected_ids = selected_archive_folder_ids(request.POST.getlist("selected_folder_ids"))
+                if len(selected_ids) != 2:
+                    messages.error(request, "Seleziona esattamente 2 cartelle cliente da unire.")
+                    return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids))
+                try:
+                    target_folder_id = int(request.POST.get("merge_target_folder_id"))
+                except (TypeError, ValueError):
+                    target_folder_id = 0
+                if target_folder_id not in selected_ids:
+                    messages.error(request, "Scegli quale delle 2 cartelle selezionate deve restare attiva.")
+                    return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids))
+                folders_by_id = CustomerArchiveFolder.objects.in_bulk(selected_ids)
+                if len(folders_by_id) != 2:
+                    messages.error(request, "Le cartelle selezionate non sono piu disponibili nell'archivio.")
+                    return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids))
+                target_folder = folders_by_id[target_folder_id]
+                source_folder_id = next(fid for fid in selected_ids if fid != target_folder_id)
+                source_folder = folders_by_id[source_folder_id]
+                merged = merge_archive_folders(target_folder, source_folder)
+                messages.success(request, f"Cartella {merged['source_folder_name']} unita in {merged['target_folder_name']} con {merged['moved_report_count']} report spostati.")
+                return redirect(archive_redirect_url(search_query, folder_id=target_folder.pk))
 
-        if action == "build_archive_folder_summary":
-            selected_ids = selected_archive_folder_ids(request.POST.getlist("selected_folder_ids"))
-            if not selected_ids:
-                messages.error(request, "Seleziona almeno una cartella cliente da includere nel sunto.")
-                return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids, report_summary_scope="folders"))
-            selected_folders, selected_reports, empty_folders = selected_archive_folders_and_reports(selected_ids)
-            if not selected_folders:
-                messages.error(request, "Le cartelle selezionate non sono disponibili nell'archivio.")
-                return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids, report_summary_scope="folders"))
-            if not selected_reports:
-                messages.error(request, "Le cartelle selezionate non contengono report da usare nel sunto.")
-                return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids, selected_archive_folders=selected_folders, report_summary_scope="folders"))
-            report_summary = build_reports_summary_from_archived_reports(selected_reports)
-            report_summary_warnings = report_summary.get("warnings", [])
-            if empty_folders:
-                folder_labels = ", ".join(f.customer_name for f in empty_folders)
-                report_summary_warnings = [f"Queste cartelle non contenevano report e sono state saltate: {folder_labels}.", *report_summary_warnings]
-            store_report_summary_session(request, report_summary)
-            messages.success(request, f"Sunto creato per {report_summary.get('count', 0)} report da {len(selected_folders)} cartelle.")
-            return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids, selected_archive_folders=selected_folders, report_summary=report_summary, report_summary_warnings=report_summary_warnings, report_summary_scope="folders"))
+            if action == "build_archive_folder_summary":
+                selected_ids = selected_archive_folder_ids(request.POST.getlist("selected_folder_ids"))
+                if not selected_ids:
+                    messages.error(request, "Seleziona almeno una cartella cliente da includere nel sunto.")
+                    return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids, report_summary_scope="folders"))
+                selected_folders, selected_reports, empty_folders = selected_archive_folders_and_reports(selected_ids)
+                if not selected_folders:
+                    messages.error(request, "Le cartelle selezionate non sono disponibili nell'archivio.")
+                    return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids, report_summary_scope="folders"))
+                if not selected_reports:
+                    messages.error(request, "Le cartelle selezionate non contengono report da usare nel sunto.")
+                    return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids, selected_archive_folders=selected_folders, report_summary_scope="folders"))
+                report_summary = build_reports_summary_from_archived_reports(selected_reports)
+                report_summary_warnings = report_summary.get("warnings", [])
+                if empty_folders:
+                    folder_labels = ", ".join(f.customer_name for f in empty_folders)
+                    report_summary_warnings = [f"Queste cartelle non contenevano report e sono state saltate: {folder_labels}.", *report_summary_warnings]
+                store_report_summary_session(request, report_summary)
+                messages.success(request, f"Sunto creato per {report_summary.get('count', 0)} report da {len(selected_folders)} cartelle.")
+                return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids, selected_archive_folders=selected_folders, report_summary=report_summary, report_summary_warnings=report_summary_warnings, report_summary_scope="folders"))
         except Exception:
-            _logger.exception("POST archivio-report action=%s", action)
+            logger.exception("POST archivio-report action=%s", action)
             raise
 
     return render(request, "confronti/archive.html", archive_context(request))
