@@ -343,18 +343,19 @@ h2 span {
 
 .admin-tab-group-links {
     display: flex;
-    flex: 1;
+    flex-direction: column;
 }
 
 .admin-tab-group-links .admin-tab-link {
     border: 0;
     border-radius: 0;
-    flex: 1;
-    min-height: 56px;
+    justify-content: flex-start;
+    min-height: 44px;
+    padding: 10px 16px;
 }
 
 .admin-tab-group-links .admin-tab-link + .admin-tab-link {
-    border-left: 1px solid #d8e1ea;
+    border-top: 1px solid #e2e8f0;
 }
 
 .admin-tab-group-links .admin-tab-link:hover {
@@ -1865,15 +1866,6 @@ footer strong {
     .home-primary-tabs,
     .home-subtabs {
         grid-template-columns: 1fr;
-    }
-
-    .admin-tab-group-links {
-        flex-direction: column;
-    }
-
-    .admin-tab-group-links .admin-tab-link + .admin-tab-link {
-        border-left: 0;
-        border-top: 1px solid #d8e1ea;
     }
 
     .archive-folder-panel-header,
