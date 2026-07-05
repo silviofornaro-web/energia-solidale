@@ -714,7 +714,7 @@ def archive_context(request, selected_folder=None, selected_report=None, folder_
     selected_archive_folder_ids = [int(folder_id) for folder_id in (selected_archive_folder_ids or [])]
     selected_archive_folders = list(selected_archive_folders or [])
     report_summary_warnings = list(report_summary_warnings or [])
-    archive_folder_absolute_path = ""
+    selected_archive_path = ""
     archive_local_open_available = can_open_local_archive_path()
     selected_report_lookup_id = getattr(selected_report, "pk", None)
     if selected_report_lookup_id is None:
@@ -742,7 +742,7 @@ def archive_context(request, selected_folder=None, selected_report=None, folder_
             CustomerArchiveFolder.objects.prefetch_related("reports").annotate(report_count=Count("reports")),
             pk=selected_folder.pk,
         )
-        archive_folder_absolute_path = archive_folder_absolute_path(selected_folder)
+        selected_archive_path = archive_folder_absolute_path(selected_folder)
         reports = list(selected_folder.reports.order_by("-comparison_datetime", "-created_at"))
         if folder_form is None:
             folder_form = ArchiveFolderForm(instance=selected_folder)
@@ -789,7 +789,7 @@ def archive_context(request, selected_folder=None, selected_report=None, folder_
         "merge_form": merge_form,
         "add_report_form": add_report_form,
         "archive_storage_label": archive_storage_label(),
-        "archive_folder_absolute_path": archive_folder_absolute_path,
+        "archive_folder_absolute_path": selected_archive_path,
         "archive_local_open_available": archive_local_open_available,
         "selected_report_ids": selected_report_ids,
         "selected_archive_folder_ids": selected_archive_folder_ids,
