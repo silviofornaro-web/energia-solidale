@@ -125,18 +125,22 @@ def archivia_report_corrente(request):
     return redirect(f"{reverse('confronto')}?panel=confronto")
 
 
+_logger = logging.getLogger(__name__)
+
+
 @login_required
 def archivio_report(request):
     if not is_archive_admin(request.user):
         return redirect_for_non_archive_admin(request)
 
     if request.method == "POST":
-        action = request.POST.get("action")
-        search_query = request.POST.get("q")
-        selected_report_id = request.POST.get("selected_report_id")
+        try:
+            action = request.POST.get("action")
+            search_query = request.POST.get("q")
+            selected_report_id = request.POST.get("selected_report_id")
 
-        if action == "create_archive_folder":
-            selected_report = ComparisonReport.objects.select_related("folder").filter(pk=selected_report_id).first()
+            if action == "create_archive_folder":
+                selected_report = ComparisonReport.objects.select_related("folder").filter(pk=selected_report_id).first()
             create_folder_form = ArchiveFolderCreateForm(request.POST, prefix="create-folder")
             if create_folder_form.is_valid():
                 folder = create_folder_form.save(commit=False)
@@ -236,6 +240,9 @@ def archivio_report(request):
             store_report_summary_session(request, report_summary)
             messages.success(request, f"Sunto creato per {report_summary.get('count', 0)} report da {len(selected_folders)} cartelle.")
             return render(request, "confronti/archive.html", archive_context(request, selected_archive_folder_ids=selected_ids, selected_archive_folders=selected_folders, report_summary=report_summary, report_summary_warnings=report_summary_warnings, report_summary_scope="folders"))
+        except Exception:
+            _logger.exception("POST archivio-report action=%s", action)
+            raise
 
     return render(request, "confronti/archive.html", archive_context(request))
 
