@@ -193,7 +193,7 @@
                 <h2>Tutti i confronti archiviati</h2>
                 <span class="archive-browser-count">{{ archived_report_entries|length }}</span>
             </div>
-            <p class="archive-help-text archive-help-text-compact">Ogni riga mostra cliente, POD/PDR, fornitura, data del confronto e cartella attuale. Clicca il file per aprire il dettaglio o la cartella che lo contiene.</p>
+            <p class="archive-help-text archive-help-text-compact">Clicca un confronto per aprirne il dettaglio.</p>
             {% if archived_report_entries %}
             <div class="archive-single-report-list">
                 {% for entry in archived_report_entries %}
@@ -201,30 +201,13 @@
                     href="{% if entry.report.folder_id %}{% url 'archivio_report_cartella' entry.report.folder_id %}{% else %}{% url 'archivio_report' %}{% endif %}?{% if archive_query %}q={{ archive_query|urlencode }}&amp;{% endif %}report_id={{ entry.report.pk }}"
                     class="archive-single-report-card{% if selected_report_entry and selected_report_entry.report.pk == entry.report.pk %} is-active{% endif %}"
                 >
-                    <strong>{{ entry.customer_name_display }}</strong>
-                    <span class="archive-single-report-title">{{ entry.display_title }}</span>
-                    <div class="archive-folder-meta-list">
-                        <span>
-                            <span class="archive-meta-label">POD / PDR</span>
-                            {{ entry.pod_pdr_display }}
-                        </span>
-                        <span>
-                            <span class="archive-meta-label">Fornitura</span>
-                            {{ entry.commodity_label }}
-                        </span>
-                        <span>
-                            <span class="archive-meta-label">Data confronto</span>
-                            {{ entry.reference_datetime|date:"d/m/Y H:i"|default:"N.D." }}
-                        </span>
-                        <span>
-                            <span class="archive-meta-label">Cartella</span>
-                            {% if entry.report.folder_id %}
-                            {{ entry.report.folder.customer_name }}
-                            {% else %}
-                            Senza cartella
-                            {% endif %}
-                        </span>
-                    </div>
+                    <span class="archive-single-report-title">{{ entry.customer_name_display }}</span>
+                    <span class="archive-single-report-meta">
+                        {% if entry.report.folder_id %}
+                        <span class="archive-tag-folder">{{ entry.report.folder.customer_name }}</span>
+                        {% endif %}
+                        <span>{{ entry.pod_pdr_display }}</span>
+                    </span>
                 </a>
                 {% endfor %}
             </div>
