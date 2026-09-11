@@ -28,6 +28,8 @@ def find_row_map(ws):
             rm["vendita_fissa_luce"] = r
         elif "vendita fissa" in t and "gas" in t:
             rm["vendita_fissa_gas"] = r
+        elif "caldaia" in t or ("contributo" in t and "extra" in t):
+            rm["vendita_extra"] = r
         elif "rete" in t and "consumi" in t:
             rm["rete_consumi"] = r
         elif "rete" in t and "fissa" in t:
@@ -85,6 +87,8 @@ def ensure_export_rows(ws):
         missing_count += 1
     if "iva" not in rm:
         missing_count += 1
+    if "vendita_extra" not in rm:
+        missing_count += 1
     if missing_count == 0:
         return
 
@@ -99,6 +103,7 @@ def validate_row_map(rm, commodity="EE"):
     required = [
         "vendita_consumo",
         "vendita_fissa_gas",
+        "vendita_extra",
         "rete_consumi",
         "rete_fissa",
         "sconti",
@@ -135,17 +140,18 @@ def apply_export_labels(ws, nome_cliente, servizi_accessori_iva_label="22%", com
         5: "Rete e oneri di sistema Consumi",
         6: "Vendita Fissa Luce",
         7: "Vendita Fissa Gas",
-        8: "Rete e oneri di sistema Fissa",
-        9: "Quota Potenza",
-        10: "Sconti",
-        11: "Ricalcoli/Partite pregresse",
-        12: "Bonus Sociale",
-        13: "Arrotondamenti",
-        14: f"Servizi accessori (IVA {servizi_accessori_iva_label})",
-        15: accise_label,
-        16: "IVA",
-        17: "Accise e Iva",
-        18: "Totale",
+        8: "Contributo Caldaia",
+        9: "Rete e oneri di sistema Fissa",
+        10: "Quota Potenza",
+        11: "Sconti",
+        12: "Ricalcoli/Partite pregresse",
+        13: "Bonus Sociale",
+        14: "Arrotondamenti",
+        15: f"Servizi accessori (IVA {servizi_accessori_iva_label})",
+        16: accise_label,
+        17: "IVA",
+        18: "Accise e Iva",
+        19: "Totale",
     }
     for row, value in labels.items():
         ws[f"A{row}"] = value
@@ -227,11 +233,15 @@ def write_column(ws, rm, col, vals, commodity):
         ws[f"{col}{rm['vendita_fissa_gas']}"] = float(vals["vendita_fissa"])
         if "vendita_fissa_luce" in rm:
             ws[f"{col}{rm['vendita_fissa_luce']}"] = "N.A."
+        if "vendita_extra" in rm:
+            ws[f"{col}{rm['vendita_extra']}"] = float(vals.get("vendita_extra", 0.0))
         if "quota_potenza" in rm:
             ws[f"{col}{rm['quota_potenza']}"] = "N.A."
     else:
         ws[f"{col}{rm['vendita_fissa_luce']}"] = float(vals["vendita_fissa"])
         ws[f"{col}{rm['vendita_fissa_gas']}"] = "N.A."
+        if "vendita_extra" in rm:
+            ws[f"{col}{rm['vendita_extra']}"] = "N.A."
         ws[f"{col}{rm['quota_potenza']}"] = float(vals["quota_potenza"])
     ws[f"{col}{rm['rete_consumi']}"] = float(vals["rete_consumi"])
     ws[f"{col}{rm['rete_fissa']}"] = float(vals["rete_fissa"])

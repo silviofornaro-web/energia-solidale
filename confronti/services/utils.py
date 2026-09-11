@@ -328,6 +328,7 @@ def comparison_subtotal(vals, commodity):
         float(vals["vendita_consumo"])
         + float(vals["rete_consumi"])
         + float(vals["vendita_fissa"])
+        + float(vals.get("vendita_extra", 0.0))
         + float(vals["rete_fissa"])
         + float(vals["sconti"])
         + float(vals["ricalcoli"])
@@ -349,6 +350,8 @@ def comparison_value(vals, key, commodity):
         return float(vals["vendita_fissa"]) if commodity == "EE" else "N.A."
     if key == "vendita_fissa_gas":
         return float(vals["vendita_fissa"]) if commodity == "GAS" else "N.A."
+    if key == "vendita_extra":
+        return float(vals.get("vendita_extra", 0.0)) if commodity == "GAS" else "N.A."
     if key == "quota_potenza":
         return float(vals["quota_potenza"]) if commodity == "EE" else "N.A."
     if key in {"accise", "iva"}:

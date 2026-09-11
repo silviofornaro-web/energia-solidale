@@ -102,6 +102,15 @@ def calc_illumia_vendite(rows_offer, commodity, offer, consumo, pun, psv, billin
     return float(consumo * prezzo), float(fixed_annua("GAS", "FISSA") / float(billing_divisor))
 
 
+def calc_illumia_extra(rows_offer, commodity, offer, billing_divisor):
+    comm = commodity.upper()
+    off = offer.upper()
+    quota = comp_sum(rows_offer, comm, off, "quota_mensile_extra")
+    if quota == 0.0:
+        return 0.0
+    return float(quota * 12.0 / float(billing_divisor))
+
+
 def format_fiscal_parameters(data, calc=None):
     comm = data.get("commodity", "EE")
     return (
@@ -122,6 +131,7 @@ def build_comparison_table_rows(values):
         ("rete_consumi", "Rete e oneri di sistema Consumi"),
         ("vendita_fissa_luce", "Vendita Fissa Luce"),
         ("vendita_fissa_gas", "Vendita Fissa Gas"),
+        ("vendita_extra", "Contributo Caldaia"),
         ("rete_fissa", "Rete e oneri di sistema Fissa"),
         ("quota_potenza", "Quota Potenza"),
         ("sconti", "Sconti"),
@@ -137,6 +147,8 @@ def build_comparison_table_rows(values):
     out = []
     for key, label in rows_config:
         if comm == "GAS" and key in {"vendita_fissa_luce", "quota_potenza"}:
+            continue
+        if comm == "EE" and key == "vendita_extra":
             continue
         cells = [format_eur(comparison_value(values["bolletta"], key, comm))]
         for column in values["offer_columns"]:
@@ -207,18 +219,20 @@ def calculate_provider_result(data, base_calc, provider):
     if offer_var:
         rows_var = filter_rows_by_offer(tariffe_rows, commodity, "VARIABILE", offer_var)
         v_cons, v_fix = calc_illumia_vendite(rows_var, commodity, "VARIABILE", consumo, pun, psv, billing_divisor)
+        v_extra = calc_illumia_extra(rows_var, commodity, "VARIABILE", billing_divisor)
         if provider_norm != "ILLUMIA":
             sconto_var = comp_sum(rows_var, commodity, "VARIABILE", "sconto_bonus")
     else:
-        v_cons, v_fix = 0.0, 0.0
+        v_cons, v_fix, v_extra = 0.0, 0.0, 0.0
 
     if offer_fix:
         rows_fix = filter_rows_by_offer(tariffe_rows, commodity, "FISSA", offer_fix)
         f_cons, f_fix = calc_illumia_vendite(rows_fix, commodity, "FISSA", consumo, pun, psv, billing_divisor)
+        f_extra = calc_illumia_extra(rows_fix, commodity, "FISSA", billing_divisor)
         if provider_norm != "ILLUMIA":
             sconto_fix = comp_sum(rows_fix, commodity, "FISSA", "sconto_bonus")
     else:
-        f_cons, f_fix = 0.0, 0.0
+        f_cons, f_fix, f_extra = 0.0, 0.0, 0.0
 
     selected_valid_from, selected_valid_to = valid_range_from_rows(rows_var + rows_fix)
     if selected_valid_from or selected_valid_to:
@@ -241,8 +255,10 @@ def calculate_provider_result(data, base_calc, provider):
         "offer_fix": offer_fix,
         "v_cons": v_cons,
         "v_fix": v_fix,
+        "v_extra": v_extra,
         "f_cons": f_cons,
         "f_fix": f_fix,
+        "f_extra": f_extra,
         "sconto_var": sconto_var,
         "sconto_fix": sconto_fix,
     }
@@ -264,11 +280,13 @@ def build_offer_column_values(data, calc, base_values, provider_result, offer_ty
     if offer_type == "VARIABILE":
         vals["vendita_consumo"] = provider_result["v_cons"]
         vals["vendita_fissa"] = provider_result["v_fix"]
+        vals["vendita_extra"] = float(provider_result.get("v_extra", 0.0))
         vals["sconti"] = float(provider_result.get("sconto_var", data.get("ill_sconto_var", -3.0)))
         offer_name = provider_result["offer_var"]
     else:
         vals["vendita_consumo"] = provider_result["f_cons"]
         vals["vendita_fissa"] = provider_result["f_fix"]
+        vals["vendita_extra"] = float(provider_result.get("f_extra", 0.0))
         vals["sconti"] = float(provider_result.get("sconto_fix", data.get("ill_sconto_fix", -3.0)))
         offer_name = provider_result["offer_fix"]
     vals["ricalcoli"] = 0.0
@@ -326,8 +344,10 @@ def build_comparison_values(data, calc):
             "offer_fix": calc.get("offer_fix", ""),
             "v_cons": calc.get("v_cons", 0.0),
             "v_fix": calc.get("v_fix", 0.0),
+            "v_extra": calc.get("v_extra", 0.0),
             "f_cons": calc.get("f_cons", 0.0),
             "f_fix": calc.get("f_fix", 0.0),
+            "f_extra": calc.get("f_extra", 0.0),
             "sconto_var": calc.get("sconto_var", data.get("ill_sconto_var", -3.0)),
             "sconto_fix": calc.get("sconto_fix", data.get("ill_sconto_fix", -3.0)),
         }
@@ -431,8 +451,10 @@ def prepare_comparison(data):
             "offer_fix": primary.get("offer_fix", ""),
             "v_cons": primary.get("v_cons", 0.0),
             "v_fix": primary.get("v_fix", 0.0),
+            "v_extra": primary.get("v_extra", 0.0),
             "f_cons": primary.get("f_cons", 0.0),
             "f_fix": primary.get("f_fix", 0.0),
+            "f_extra": primary.get("f_extra", 0.0),
             "sconto_var": primary.get("sconto_var", 0.0),
             "sconto_fix": primary.get("sconto_fix", 0.0),
         }

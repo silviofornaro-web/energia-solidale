@@ -54,6 +54,7 @@ def calculate_tax_breakdown(data, calc, vals, commodity):
     )
     fixed_base = (
         float(vals["vendita_fissa"])
+        + float(vals.get("vendita_extra", 0.0))
         + float(vals["rete_fissa"])
         + float(vals["ricalcoli"])
         + float(vals["arrotondamenti"])
