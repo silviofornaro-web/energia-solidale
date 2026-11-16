@@ -12,7 +12,7 @@ from ..bill_parser import parse_uploaded_bill
 from ..forms import BillUploadForm, ConfrontoForm, CustomerInviteForm, ReportSummaryUploadForm
 from ..models import InviteCode
 from ..roles import is_illumia_operator, is_internal_user
-from ..services import build_reports_summary, offer_options_payload, prepare_comparison, provider_label, safe_download_filename
+from ..services import build_reports_summary, current_offer_options_payload, prepare_comparison, provider_label, safe_download_filename
 from .helpers import (
     LAST_ARCHIVED_REPORT_CLIENT_KEY,
     LAST_ARCHIVED_REPORT_KEY,
@@ -240,7 +240,7 @@ def _confronto_page(request, customer_mode=False, operator_mode=False):
             "form": form,
             "prepared": prepared,
             "rows": rows,
-            "offer_options": offer_options_payload(),
+            "offer_options": current_offer_options_payload(),
             "upload_form": upload_form,
             "uploaded_bill_name": uploaded_bill_name,
             "extraction_warnings": extraction_warnings,

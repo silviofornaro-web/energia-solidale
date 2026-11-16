@@ -391,6 +391,46 @@ def offer_options_payload():
     return payload
 
 
+_current_offer_options_cache = None
+
+
+def current_offer_options_payload():
+    """Offerte del solo listino più recente per provider/segmento/commodity.
+
+    Regola: se per un mese non esistono offerte fisse o variabili, non esistono.
+    I menù a tendina non devono quindi proporre offerte riportate dai mesi
+    precedenti. La validazione del form continua a usare offer_options_payload()
+    (aggregato) per consentire la modalità "Tariffe del periodo bolletta".
+    """
+    global _current_offer_options_cache
+    if _current_offer_options_cache is not None:
+        return _current_offer_options_cache
+    payload = {}
+    for provider in PROVIDERS:
+        for segmento in SEGMENTS:
+            for commodity in ("GAS", "EE"):
+                rows = []
+                for effective_segment in tariff_segment_fallbacks(segmento):
+                    candidates = _tariff_file_candidates_for_segment_exact(effective_segment, provider)
+                    for offer_file in reversed(candidates):
+                        segment_rows = filter_rows_by_context(
+                            load_tariffe_from_path(offer_file), provider, effective_segment
+                        )
+                        if rows_have_tariff_options(segment_rows, commodity):
+                            rows = segment_rows
+                            break
+                    if rows:
+                        break
+                key = f"{provider}|{segmento}|{commodity}"
+                payload[key] = {
+                    "VARIABILE": offer_names(rows, commodity, "VARIABILE"),
+                    "FISSA": offer_names(rows, commodity, "FISSA"),
+                }
+    _current_offer_options_cache = payload
+    return payload
+
+
 def invalidate_offer_options_cache():
-    global _offer_options_cache
+    global _offer_options_cache, _current_offer_options_cache
     _offer_options_cache = None
+    _current_offer_options_cache = None
