@@ -19,6 +19,7 @@
             <button type="button"
                 class="home-primary-tab{% if forloop.first %} is-active{% endif %}"
                 data-home-primary-tab="{{ tab.key }}"
+                data-home-primary-href="{{ tab.href|default:'' }}"
                 aria-selected="{% if forloop.first %}true{% else %}false{% endif %}">
                 {{ tab.label }}
             </button>
@@ -66,6 +67,13 @@
     primaryTabs.forEach((tab) => {
         tab.addEventListener("click", () => {
             setActiveTab(tab.dataset.homePrimaryTab);
+            // Le linguette con destinazione diretta portano subito alla pagina:
+            // il tab "Esegui confronto" è già attivo all'apertura, quindi il solo
+            // cambio pannello non produce alcun effetto visibile.
+            const href = tab.dataset.homePrimaryHref;
+            if (href) {
+                window.location.assign(href);
+            }
         });
     });
 })();
