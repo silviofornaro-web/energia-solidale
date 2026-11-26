@@ -415,6 +415,34 @@ def _extract_offer_expiry(text):
     return None if expiry and expiry.year >= 9999 else expiry
 
 
+def _extract_early_termination_clause(text):
+    """Riconosce, se presente, la clausola sulle penali di recesso anticipato.
+
+    Estrae solo una nota descrittiva: l'importo viene lasciato all'operatore
+    perche' le penali sono spesso differenziate per anno di fornitura.
+    """
+    collapsed = _collapsed(text)
+    keyword = re.search(r"(?:recesso|risoluzione)\s+anticipat\w*", collapsed, re.IGNORECASE)
+    if not keyword:
+        return ""
+    left = collapsed[max(0, keyword.start() - 140) : keyword.start()]
+    cut = max(left.rfind(". "), left.rfind("; "))
+    prefix = left[cut + 2 :] if cut >= 0 else left
+    tail = collapsed[keyword.end() : keyword.end() + 160]
+    tail_end = tail.find(". ")
+    tail = tail[:tail_end] if tail_end >= 0 else tail
+    clause = (prefix + collapsed[keyword.start() : keyword.end()] + tail).strip()
+    if re.search(
+        r"(?:nessun\w*|non\s+(?:sono|e'|e|è)\s+previst\w*|esclus\w*)[^.]{0,60}(?:onere|penal|corrispettiv)",
+        clause,
+        re.IGNORECASE,
+    ) or re.search(r"(?:nessun\w*|non\s+previst\w*)\s+(?:onere|penal)", collapsed, re.IGNORECASE):
+        return "Nessuna penale di recesso anticipato (da bolletta)"
+    if re.search(r"\d[\d.,]*\s*\u20ac|\u20ac\s*\d[\d.,]*", clause, re.IGNORECASE):
+        return clause[:220]
+    return ""
+
+
 def _extract_receipt_values(text):
     receipt = _receipt_section(text)
     consumption = _section(
@@ -541,6 +569,9 @@ def parse_bill_text(text):
     expiry = _extract_offer_expiry(normalized)
     if expiry:
         values["bill_offer_expiry"] = expiry
+    early_termination_clause = _extract_early_termination_clause(normalized)
+    if early_termination_clause:
+        values["bill_early_termination_note"] = early_termination_clause
     values.update(_extract_receipt_values(normalized))
 
     if commodity == "GAS":

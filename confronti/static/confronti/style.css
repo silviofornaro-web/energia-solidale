@@ -1033,6 +1033,93 @@ button.secondary:hover {
     font-size: 15px;
 }
 
+.bill-contract-summary {
+    background: #f4f9fd;
+    border: 1px solid #cfe0ee;
+    border-left: 5px solid #1597d3;
+    border-radius: 10px;
+    margin-bottom: 18px;
+    padding: 14px 18px 16px;
+}
+
+.bill-contract-heading {
+    color: #1f5f7a;
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.bill-contract-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.bill-contract-item {
+    border-left: 1px solid #dbe7f1;
+    padding-left: 14px;
+}
+
+.bill-contract-item:first-child {
+    border-left: 0;
+    padding-left: 0;
+}
+
+.bill-contract-label {
+    color: #64748b;
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+}
+
+.bill-contract-item .offer-expiry {
+    margin-bottom: 0;
+}
+
+.bill-contract-detail {
+    color: #475569;
+    display: block;
+    font-size: 12px;
+    line-height: 1.45;
+    margin-top: 6px;
+}
+
+.bill-price-badge {
+    border-radius: 999px;
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 5px 12px;
+}
+
+.bill-price-badge.is-fixed {
+    background: #dcfce7;
+    border: 1px solid #86efac;
+    color: #166534;
+}
+
+.bill-price-badge.is-variable {
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    color: #92400e;
+}
+
+@media (max-width: 720px) {
+    .bill-contract-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .bill-contract-item,
+    .bill-contract-item:first-child {
+        border-left: 0;
+        padding-left: 0;
+    }
+}
+
 .validity-warning {
     background: #fff8db;
     border: 1px solid #f4d36b;

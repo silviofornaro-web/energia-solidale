@@ -314,6 +314,8 @@ class ConfrontoForm(forms.Form):
         "tax_region",
         "b_quota_potenza",
         "b_accise_iva",
+        "bill_early_termination_penalty",
+        "bill_early_termination_note",
     )
 
     nome_cliente = forms.CharField(label="Nome e Cognome", max_length=120)
@@ -423,6 +425,22 @@ class ConfrontoForm(forms.Form):
         input_formats=["%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"],
         widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
     )
+    bill_early_termination_penalty = ItalianDecimalField(
+        label="Penale recesso anticipato (€)",
+        min_value=0,
+        decimal_places=2,
+        max_digits=10,
+        initial=0,
+        required=False,
+    )
+    bill_early_termination_note = forms.CharField(
+        label="Dettagli penale / condizioni",
+        max_length=300,
+        required=False,
+        widget=forms.TextInput(
+            attrs={"placeholder": "Es. 300 € 1° anno, 200 € 2° anno, 100 € 3° anno — oppure 'Nessuna penale'"}
+        ),
+    )
     b_accise_iva = ItalianDecimalField(label="Accise + IVA", decimal_places=4, max_digits=12, initial=0)
 
     def __init__(self, *args, **kwargs):
@@ -455,6 +473,8 @@ class ConfrontoForm(forms.Form):
             self.fields["b_servizi_accessori"].label = "Servizi extra"
             self.fields["servizi_accessori_iva"].label = "IVA servizi extra"
             self.fields["bill_offer_expiry"].label = "Scadenza offerta"
+            self.fields["bill_early_termination_penalty"].label = "Penale se cambi fornitore (€)"
+            self.fields["bill_early_termination_note"].label = "Condizioni sulla penale"
             self.fields["b_accise_iva"].label = "Accise e IVA totali"
             self.fields["offer_var_choice_illumia"].label = "Offerta variabile Illumia"
             self.fields["offer_fix_choice_illumia"].label = "Offerta fissa Illumia"
@@ -606,8 +626,13 @@ def session_to_service_data(raw):
         "consumo",
         "tax_power_kw",
         "tax_annual_consumption",
-    ] + [f"b_{k}" for k in services.KEYS] + ["ill_sconto_var", "ill_sconto_fix"]:
+    ] + [f"b_{k}" for k in services.KEYS] + [
+        "ill_sconto_var",
+        "ill_sconto_fix",
+        "bill_early_termination_penalty",
+    ]:
         data[key] = services.parse_number(data.get(key))
+    data["bill_early_termination_note"] = data.get("bill_early_termination_note") or ""
     data["providers"] = services.normalize_providers(data.get("providers") or data.get("provider", "ILLUMIA"))
     data["provider"] = data["providers"][0] if data["providers"] else "ILLUMIA"
     data["bill_tariff_type"] = services.normalize_bill_tariff_type(data.get("bill_tariff_type"))

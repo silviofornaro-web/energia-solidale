@@ -2559,3 +2559,45 @@ class ConfrontoViewTests(TestCase):
         self.assertTrue(all(row["fissa"] == "N.D." for row in rows))
         self.assertNotEqual(next(row for row in rows if row["voce"] == "Totale")["bolletta"], "N.D.")
         self.assertNotEqual(next(row for row in rows if row["voce"] == "Accise e Iva")["bolletta"], "N.D.")
+
+
+class BillContractInfoTests(SimpleTestCase):
+    def test_calc_espone_tipo_prezzo_scadenza_e_penale(self):
+        calc = services.prepare_comparison(
+            service_data(
+                bill_tariff_type="FISSA",
+                bill_offer_expiry="2026-12-31",
+                bill_early_termination_penalty="300",
+                bill_early_termination_note="300 € primo anno",
+            )
+        )["calc"]
+        self.assertTrue(calc["bill_tariff_type_is_fixed"])
+        self.assertEqual(calc["bill_tariff_type_label"], "Fissa")
+        self.assertEqual(calc["bill_offer_expiry_label"], "31/12/2026")
+        self.assertEqual(calc["bill_early_termination_penalty_label"], "€ 300,00")
+        self.assertEqual(calc["bill_early_termination_note"], "300 € primo anno")
+        self.assertTrue(calc["bill_early_termination_has_penalty"])
+
+    def test_nessuna_penale_se_non_inserita(self):
+        calc = services.prepare_comparison(service_data())["calc"]
+        self.assertEqual(calc["bill_early_termination_penalty_label"], "Nessuna penale indicata")
+        self.assertFalse(calc["bill_early_termination_has_penalty"])
+
+    def test_excel_esporta_penale_e_dettagli(self):
+        data = service_data(
+            bill_early_termination_penalty="300",
+            bill_early_termination_note="300 € primo anno",
+        )
+        prepared = services.prepare_comparison(data)
+        wb = load_workbook(BytesIO(services.build_excel_bytes(data, prepared)), data_only=False)
+        ws = wb["Confronto"]
+        self.assertEqual(ws["F17"].value, "Penale recesso anticipato: € 300,00")
+        self.assertEqual(ws["F18"].value, "Dettagli penale: 300 € primo anno")
+
+    def test_parser_legge_clausola_penale(self):
+        parsed = parse_bill_text(
+            "ENERGIA ELETTRICA. Periodo: 01/11/2026 - 30/11/2026. "
+            "In caso di recesso anticipato e prevista una penale di 300,00 € per il primo anno. "
+            "Consumo totale fatturato: 100 kWh."
+        )
+        self.assertIn("penale di 300,00 €", parsed.values["bill_early_termination_note"])

@@ -1,4 +1,5 @@
 import io
+import re
 from copy import copy
 from pathlib import Path
 
@@ -189,6 +190,14 @@ def write_export_metadata(ws, prepared, start_col="F"):
     ws[f"{start_col}15"] = f"Periodo bolletta: {calc.get('period_label', 'N.D.')}"
     if calc.get("cve_selected"):
         ws[f"{start_col}16"] = f"CVE Over 70: {calc.get('cve_over70_label', 'No')}"
+    ws[f"{start_col}17"] = (
+        f"Penale recesso anticipato: {calc.get('bill_early_termination_penalty_label', 'Nessuna penale indicata')}"
+    )
+    ws[f"{start_col}17"].font = (
+        Font(bold=True, color="B3261E") if calc.get("bill_early_termination_has_penalty") else Font(bold=True)
+    )
+    if calc.get("bill_early_termination_note"):
+        ws[f"{start_col}18"] = f"Dettagli penale: {calc['bill_early_termination_note']}"
 
 
 def apply_accise_formula_conforme(ws, rm, col_letter, servizi_accessori_iva_rate=0.0):
@@ -275,6 +284,9 @@ REPORT_SUMMARY_BASE_COLUMNS = [
     "Periodo bolletta",
     "Consumo",
     "Fornitori confronto",
+    "Tipo tariffa bolletta",
+    "Scadenza offerta bolletta",
+    "Penale recesso anticipato",
 ]
 
 
@@ -359,6 +371,9 @@ def summarize_report_workbook(uploaded_file):
         "Periodo bolletta": _metadata_value(ws, "Periodo bolletta") or "N.D.",
         "Consumo": _summary_clean(ws["C1"].value),
         "Fornitori confronto": _metadata_value(ws, "Fornitori confronto") or "N.D.",
+        "Tipo tariffa bolletta": _metadata_value(ws, "Tipo tariffa bolletta") or "N.D.",
+        "Scadenza offerta bolletta": _metadata_value(ws, "Scadenza offerta bolletta") or "N.D.",
+        "Penale recesso anticipato": _metadata_value(ws, "Penale recesso anticipato") or "N.D.",
     }
     label_rows = []
     for row in range(4, ws.max_row + 1):

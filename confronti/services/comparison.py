@@ -387,6 +387,9 @@ def prepare_comparison(data):
     billing_months = billing_months_from_dates(bill_start, bill_end)
     billing_divisor = billing_divisor_from_months(billing_months)
     tariff_target_month = month_key_from_date(bill_end)
+    early_termination_penalty = float(data.get("bill_early_termination_penalty") or 0.0)
+    early_termination_note = clean_text(data.get("bill_early_termination_note"))
+    bill_tariff_type = normalize_bill_tariff_type(data.get("bill_tariff_type"))
 
     indici_rows = load_indici_rows(INDICI_XLSX)
     indice, indice_reason = select_indice_for_bill_period(indici_rows, bill_start, bill_end)
@@ -398,8 +401,9 @@ def prepare_comparison(data):
         "indirizzo_fornitura": clean_text(data.get("indirizzo_fornitura")),
         "pod_pdr": clean_text(data.get("pod_pdr")),
         "commodity": commodity,
-        "bill_tariff_type": normalize_bill_tariff_type(data.get("bill_tariff_type")),
-        "bill_tariff_type_label": bill_tariff_type_label(data.get("bill_tariff_type")),
+        "bill_tariff_type": bill_tariff_type,
+        "bill_tariff_type_label": bill_tariff_type_label(bill_tariff_type),
+        "bill_tariff_type_is_fixed": bill_tariff_type == "FISSA",
         "tax_primary_home": normalize_primary_home(data.get("tax_primary_home")),
         "tax_primary_home_label": primary_home_label(data.get("tax_primary_home")),
         "tax_power_kw": float(data.get("tax_power_kw", 0.0)),
@@ -424,6 +428,12 @@ def prepare_comparison(data):
         "period_label": bill_period_label(bill_start, bill_end),
         "bill_offer_expiry": bill_offer_expiry,
         "bill_offer_expiry_label": date_label_it(bill_offer_expiry),
+        "bill_early_termination_penalty": early_termination_penalty,
+        "bill_early_termination_penalty_label": (
+            format_eur(early_termination_penalty) if early_termination_penalty > 0 else "Nessuna penale indicata"
+        ),
+        "bill_early_termination_note": early_termination_note,
+        "bill_early_termination_has_penalty": early_termination_penalty > 0 or bool(early_termination_note),
         "indice": indice,
         "indice_reason": indice_reason,
         "pun": pun,

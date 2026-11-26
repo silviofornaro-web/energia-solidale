@@ -396,6 +396,8 @@
             <label>{{ form.servizi_accessori_iva.label }}{{ form.servizi_accessori_iva }}{{ form.servizi_accessori_iva.errors }}</label>
             <label>{{ form.b_accise_iva.label }}{{ form.b_accise_iva }}{{ form.b_accise_iva.errors }}</label>
             <label>{{ form.bill_offer_expiry.label }}{{ form.bill_offer_expiry }}{{ form.bill_offer_expiry.errors }}</label>
+            <label>{{ form.bill_early_termination_penalty.label }}{{ form.bill_early_termination_penalty }}{{ form.bill_early_termination_penalty.errors }}</label>
+            <label>{{ form.bill_early_termination_note.label }}{{ form.bill_early_termination_note }}{{ form.bill_early_termination_note.errors }}</label>
         </div>
     </details>
     {% else %}
@@ -444,6 +446,8 @@
         <label>{{ form.b_servizi_accessori.label }}{{ form.b_servizi_accessori }}{{ form.b_servizi_accessori.errors }}</label>
         <label>{{ form.servizi_accessori_iva.label }}{{ form.servizi_accessori_iva }}{{ form.servizi_accessori_iva.errors }}</label>
         <label>{{ form.bill_offer_expiry.label }}{{ form.bill_offer_expiry }}{{ form.bill_offer_expiry.errors }}</label>
+        <label>{{ form.bill_early_termination_penalty.label }}{{ form.bill_early_termination_penalty }}{{ form.bill_early_termination_penalty.errors }}</label>
+        <label>{{ form.bill_early_termination_note.label }}{{ form.bill_early_termination_note }}{{ form.bill_early_termination_note.errors }}</label>
         <label>{{ form.b_accise_iva.label }}{{ form.b_accise_iva }}{{ form.b_accise_iva.errors }}</label>
     </div>
     {% endif %}
@@ -458,8 +462,30 @@
 
 {% if prepared %}
 <section class="panel result">
-    <div class="offer-expiry">
-        <strong>Scadenza offerta bolletta:</strong> {{ prepared.calc.bill_offer_expiry_label }}
+    <div class="bill-contract-summary">
+        <div class="bill-contract-heading">Dati del contratto della bolletta inserita</div>
+        <div class="bill-contract-grid">
+            <div class="bill-contract-item">
+                <span class="bill-contract-label">Prezzo applicato</span>
+                <strong class="bill-price-badge{% if prepared.calc.bill_tariff_type_is_fixed %} is-fixed{% else %} is-variable{% endif %}">
+                    {% if prepared.calc.bill_tariff_type_is_fixed %}PREZZO FISSO{% else %}PREZZO VARIABILE{% endif %}
+                </strong>
+                <span class="bill-contract-detail">
+                    {% if prepared.calc.bill_tariff_type_is_fixed %}Prezzo bloccato per la durata delle condizioni economiche{% else %}Prezzo indicizzato: segue l'andamento del mercato{% endif %}
+                </span>
+            </div>
+            <div class="bill-contract-item">
+                <span class="bill-contract-label">Scadenza</span>
+                <div class="offer-expiry"><strong>Scadenza offerta bolletta:</strong> {{ prepared.calc.bill_offer_expiry_label }}</div>
+            </div>
+            <div class="bill-contract-item">
+                <span class="bill-contract-label">Risoluzione anticipata</span>
+                <div><strong>Penale recesso anticipato:</strong> {{ prepared.calc.bill_early_termination_penalty_label }}</div>
+                {% if prepared.calc.bill_early_termination_note %}
+                    <div class="bill-contract-detail">{{ prepared.calc.bill_early_termination_note }}</div>
+                {% endif %}
+            </div>
+        </div>
     </div>
 
     <div class="meta">
