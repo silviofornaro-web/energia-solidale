@@ -389,6 +389,16 @@ def prepare_comparison(data):
     billing_months = billing_months_from_dates(bill_start, bill_end)
     billing_divisor = billing_divisor_from_months(billing_months)
     tariff_target_month = month_key_from_date(bill_end)
+    bill_tariff_type = normalize_bill_tariff_type(data.get("bill_tariff_type"))
+    detected_tariff_type = clean_text(data.get("bill_tariff_type_detected")).upper()
+    tariff_type_mismatch = bool(detected_tariff_type and detected_tariff_type != bill_tariff_type)
+    tariff_type_mismatch_message = ""
+    if tariff_type_mismatch:
+        tariff_type_mismatch_message = (
+            f"La bolletta indica «{bill_tariff_type_label(detected_tariff_type).lower()}», "
+            f"ma nel modulo risulta selezionato «{bill_tariff_type_label(bill_tariff_type).lower()}». "
+            "Controlla il campo «Tipo prezzo della bolletta»: il report riporta il valore scelto nel modulo."
+        )
     early_termination_note = clean_text(data.get("bill_early_termination_note"))
     penalty_estimate = estimate_early_termination_penalty(
         data.get("bill_offer_start"),
@@ -396,7 +406,6 @@ def prepare_comparison(data):
         explicit_amount=float(data.get("bill_early_termination_penalty") or 0.0),
     )
     early_termination_penalty = penalty_estimate["amount"]
-    bill_tariff_type = normalize_bill_tariff_type(data.get("bill_tariff_type"))
 
     indici_rows = load_indici_rows(INDICI_XLSX)
     indice, indice_reason = select_indice_for_bill_period(indici_rows, bill_start, bill_end)
@@ -411,6 +420,10 @@ def prepare_comparison(data):
         "bill_tariff_type": bill_tariff_type,
         "bill_tariff_type_label": bill_tariff_type_label(bill_tariff_type),
         "bill_tariff_type_is_fixed": bill_tariff_type == "FISSA",
+        "bill_tariff_type_detected": detected_tariff_type,
+        "bill_tariff_type_detected_label": bill_tariff_type_label(detected_tariff_type) if detected_tariff_type else "",
+        "bill_tariff_type_mismatch": tariff_type_mismatch,
+        "bill_tariff_type_mismatch_message": tariff_type_mismatch_message,
         "tax_primary_home": normalize_primary_home(data.get("tax_primary_home")),
         "tax_primary_home_label": primary_home_label(data.get("tax_primary_home")),
         "tax_power_kw": float(data.get("tax_power_kw", 0.0)),

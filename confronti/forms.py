@@ -326,7 +326,11 @@ class ConfrontoForm(forms.Form):
     pod_pdr = forms.CharField(label="Codice POD/PDR", max_length=24, required=False)
     segmento = forms.ChoiceField(label="Segmento", choices=SEGMENT_CHOICES)
     commodity = forms.ChoiceField(label="Fornitura", choices=COMMODITY_CHOICES)
-    bill_tariff_type = forms.ChoiceField(label="Tipo tariffa bolletta", choices=BILL_TARIFF_TYPE_CHOICES)
+    bill_tariff_type = forms.ChoiceField(
+        label="Tipo prezzo della bolletta (fisso o variabile)",
+        choices=BILL_TARIFF_TYPE_CHOICES,
+    )
+    bill_tariff_type_detected = forms.CharField(required=False, widget=forms.HiddenInput())
     tariff_selection_mode = forms.ChoiceField(
         label="Logica tariffe confronto",
         choices=TARIFF_SELECTION_MODES,

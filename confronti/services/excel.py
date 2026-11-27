@@ -177,6 +177,9 @@ def write_export_metadata(ws, prepared, start_col="F"):
     from .utils import INDICI_XLSX
     ws[f"{start_col}5"] = f"Indice PUN/PSV: {indice.get('mese', 'N.D.')} ({INDICI_XLSX.name})"
     ws[f"{start_col}6"] = f"Tipo tariffa bolletta: {calc.get('bill_tariff_type_label', 'Variabile')}"
+    if calc.get("bill_tariff_type_mismatch"):
+        ws[f"{start_col}6"].font = Font(bold=True, color="B3261E")
+        ws[f"{start_col}21"] = f"Verifica tipo prezzo: {calc.get('bill_tariff_type_mismatch_message', '')}"
     ws[f"{start_col}7"] = f"Confronto eseguito: {calc.get('comparison_datetime_label', '')}"
     ws[f"{start_col}8"] = f"IVA servizi accessori: {calc.get('servizi_accessori_iva_label', '22%')}"
     ws[f"{start_col}9"] = f"Consumo annuo stimato: {calc.get('tax_annual_consumption_label', 'N.D.')}"

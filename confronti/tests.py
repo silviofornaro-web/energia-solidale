@@ -2583,6 +2583,33 @@ class BillContractInfoTests(SimpleTestCase):
         self.assertEqual(calc["bill_early_termination_penalty_label"], "Nessuna penale indicata")
         self.assertFalse(calc["bill_early_termination_has_penalty"])
 
+    def test_segnala_discordanza_tra_bolletta_e_modulo(self):
+        data = service_data(
+            bill_tariff_type="FISSA",
+            bill_tariff_type_detected="VARIABILE",
+        )
+        calc = services.prepare_comparison(data)["calc"]
+        self.assertTrue(calc["bill_tariff_type_mismatch"])
+        self.assertIn("La bolletta indica «variabile»", calc["bill_tariff_type_mismatch_message"])
+        self.assertEqual(calc["bill_tariff_type_label"], "Fissa")
+        wb = load_workbook(BytesIO(services.build_excel_bytes(data, services.prepare_comparison(data))), data_only=False)
+        self.assertIn("Verifica tipo prezzo", str(wb["Confronto"]["F21"].value))
+
+    def test_nessuna_discordanza_se_valori_coincidono(self):
+        calc = services.prepare_comparison(
+            service_data(bill_tariff_type="VARIABILE", bill_tariff_type_detected="VARIABILE")
+        )["calc"]
+        self.assertFalse(calc["bill_tariff_type_mismatch"])
+
+    def test_parser_conserva_tipo_rilevato(self):
+        parsed = parse_bill_text(
+            "ENERGIA ELETTRICA. Mario Rossi. Via Roma 1. "
+            "Tipologia di offerta: A prezzo variabile. "
+            "Periodo: 01/11/2026 - 30/11/2026. Consumo totale fatturato: 100 kWh."
+        )
+        self.assertEqual(parsed.values["bill_tariff_type"], "VARIABILE")
+        self.assertEqual(parsed.values["bill_tariff_type_detected"], "VARIABILE")
+
     def test_excel_esporta_penale_e_dettagli(self):
         data = service_data(
             bill_early_termination_penalty="300",

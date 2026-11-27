@@ -582,6 +582,8 @@ def parse_bill_text(text):
     tariff_type = _extract_bill_tariff_type(normalized)
     if tariff_type:
         values["bill_tariff_type"] = tariff_type
+        # Conserva il dato letto dal PDF per segnalare eventuali modifiche manuali.
+        values["bill_tariff_type_detected"] = tariff_type
     expiry = _extract_offer_expiry(normalized)
     if expiry:
         values["bill_offer_expiry"] = expiry

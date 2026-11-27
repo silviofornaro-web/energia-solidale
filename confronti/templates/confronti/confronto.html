@@ -271,6 +271,7 @@
 
 <form method="post" class="panel{% if admin_focus_panel == 'confronto' %} panel-inline-highlight{% endif %}">
     {% csrf_token %}
+    {{ form.bill_tariff_type_detected }}
     {{ form.non_field_errors }}
     {% if form.errors %}
         <div class="form-error-summary">Il confronto non è partito: controlla i campi evidenziati sotto.</div>
@@ -475,6 +476,9 @@
                 <span class="bill-contract-detail">
                     {% if prepared.calc.bill_tariff_type_is_fixed %}Prezzo bloccato per la durata delle condizioni economiche{% else %}Prezzo indicizzato: segue l'andamento del mercato{% endif %}
                 </span>
+                {% if prepared.calc.bill_tariff_type_detected_label %}
+                    <span class="bill-contract-detail">Rilevato dalla bolletta: {{ prepared.calc.bill_tariff_type_detected_label }}</span>
+                {% endif %}
             </div>
             <div class="bill-contract-item">
                 <span class="bill-contract-label">Decorrenza e scadenza</span>
@@ -492,6 +496,11 @@
                 {% endif %}
             </div>
         </div>
+        {% if prepared.calc.bill_tariff_type_mismatch %}
+            <div class="validity-warning">
+                Tipo prezzo da verificare: {{ prepared.calc.bill_tariff_type_mismatch_message }}
+            </div>
+        {% endif %}
         {% if prepared.calc.bill_early_termination_needs_confirmation %}
             <div class="validity-warning">
                 Da confermare: {{ prepared.calc.bill_early_termination_estimate_message }}

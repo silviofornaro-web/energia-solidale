@@ -185,6 +185,7 @@ def _confronto_page(request, customer_mode=False, operator_mode=False):
                 "segmento": request.POST.get("segmento") or "",
                 "commodity": request.POST.get("commodity") or "",
                 "bill_tariff_type": request.POST.get("bill_tariff_type") or "",
+                "bill_tariff_type_detected": request.POST.get("bill_tariff_type_detected") or "",
                 "bill_offer_start": request.POST.get("bill_offer_start") or "",
                 "bill_early_termination_penalty": request.POST.get("bill_early_termination_penalty") or "0",
                 "bill_early_termination_note": request.POST.get("bill_early_termination_note") or "",
