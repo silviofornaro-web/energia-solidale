@@ -220,6 +220,148 @@ def date_label_it(value):
     return value.strftime("%d/%m/%Y") if isinstance(value, date) else "N.D."
 
 
+_EARLY_TERMINATION_AMOUNT = r"\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?"
+_EARLY_TERMINATION_YEAR = (
+    r"(?:\d{1,2}\s*(?:°|º)?\s*anno|(?:primo|secondo|terzo|quarto|quinto|sesto)\s+anno)"
+)
+_EARLY_TERMINATION_WORD_YEARS = {
+    "primo": 1,
+    "secondo": 2,
+    "terzo": 3,
+    "quarto": 4,
+    "quinto": 5,
+    "sesto": 6,
+}
+
+
+def _early_termination_year_number(token):
+    match = re.search(r"\d{1,2}", token)
+    if match:
+        return int(match.group())
+    lowered = token.lower()
+    for word, number in _EARLY_TERMINATION_WORD_YEARS.items():
+        if word in lowered:
+            return number
+    return None
+
+
+def _early_termination_tiers(note):
+    """Estrae gli importi per anno di fornitura da una clausola di recesso."""
+    tiers = {}
+    amount_year = re.compile(
+        rf"({_EARLY_TERMINATION_AMOUNT})\s*(?:€|euro|EUR)\s*"
+        rf"(?:nel\s+|per\s+il\s+|al\s+|del\s+|durante\s+il\s+)?({_EARLY_TERMINATION_YEAR})",
+        re.IGNORECASE,
+    )
+    year_amount = re.compile(
+        rf"({_EARLY_TERMINATION_YEAR})\s*(?::|=|→|-)?\s*({_EARLY_TERMINATION_AMOUNT})\s*(?:€|euro|EUR)",
+        re.IGNORECASE,
+    )
+    for match in amount_year.finditer(note):
+        year = _early_termination_year_number(match.group(2))
+        if year:
+            tiers.setdefault(year, parse_number(match.group(1)))
+    for match in year_amount.finditer(note):
+        year = _early_termination_year_number(match.group(1))
+        if year:
+            tiers.setdefault(year, parse_number(match.group(2)))
+    return tiers
+
+
+def estimate_early_termination_penalty(offer_start, note, explicit_amount=None, today=None):
+    """Stima la penale di recesso anticipato in base all'anno di fornitura in corso.
+
+    La data di recesso ipotizzata e' oggi. Un importo inserito a mano ha sempre
+    priorita'. Quando il calcolo non e' affidabile restituisce uno stato
+    "needs_confirmation" con un messaggio da mostrare all'operatore.
+    """
+    today = today or timezone.localdate()
+    recess_label = today.strftime("%d/%m/%Y")
+    explicit_amount = float(explicit_amount or 0.0)
+    if explicit_amount > 0:
+        return {
+            "amount": explicit_amount,
+            "source": "manual",
+            "message": "",
+            "year_index": None,
+            "recess_date": today,
+        }
+
+    note = clean_text(note)
+    start = parse_date_any(offer_start)
+    start_label = start.strftime("%d/%m/%Y") if start else ""
+
+    def needs_confirmation(message):
+        return {
+            "amount": 0.0,
+            "source": "needs_confirmation",
+            "message": message,
+            "year_index": None,
+            "recess_date": today,
+        }
+
+    if re.search(
+        r"nessun\w*\s+(?:penal|onere)|non\s+previst\w*\s+(?:onere|penal)|esclus\w*\s+(?:onere|penal)",
+        note,
+        re.IGNORECASE,
+    ):
+        return needs_confirmation(
+            f"La clausola indica «nessuna penale» (recesso ipotizzato oggi {recess_label}): "
+            "conferma che l'importo sia 0 € oppure inserisci la penale corretta."
+        )
+
+    tiers = _early_termination_tiers(note)
+    flat_amount = None
+    if not tiers:
+        amounts = re.findall(rf"({_EARLY_TERMINATION_AMOUNT})\s*(?:€|euro|EUR)", note, re.IGNORECASE)
+        if len(amounts) == 1:
+            flat_amount = parse_number(amounts[0])
+
+    if not start:
+        return needs_confirmation(
+            f"Data inizio offerta mancante: impossibile stabilire l'anno di fornitura al {recess_label}. "
+            "Inserisci la data di inizio offerta oppure l'importo della penale manualmente."
+        )
+
+    years_elapsed = today.year - start.year - ((today.month, today.day) < (start.month, start.day))
+    year_index = max(years_elapsed + 1, 1)
+
+    if tiers:
+        if year_index in tiers:
+            amount = tiers[year_index]
+            return {
+                "amount": amount,
+                "source": "computed",
+                "message": (
+                    f"Recesso ipotizzato oggi {recess_label}: {year_index}° anno di fornitura "
+                    f"(inizio {start_label}) → penale stimata {format_eur(amount)} secondo la clausola."
+                ),
+                "year_index": year_index,
+                "recess_date": today,
+            }
+        return needs_confirmation(
+            f"Recesso ipotizzato oggi {recess_label}: {year_index}° anno di fornitura, "
+            "oltre l'ultimo scaglione indicato nella clausola. Conferma o inserisci l'importo manualmente."
+        )
+
+    if flat_amount is not None:
+        return {
+            "amount": flat_amount,
+            "source": "computed",
+            "message": (
+                f"Recesso ipotizzato oggi {recess_label}: penale forfettaria "
+                f"{format_eur(flat_amount)} indicata nella clausola."
+            ),
+            "year_index": year_index,
+            "recess_date": today,
+        }
+
+    return needs_confirmation(
+        f"Clausola penale non riconosciuta: impossibile calcolare l'importo al {recess_label}. "
+        "Inserisci la penale manualmente (es. «300 € 1° anno, 200 € 2° anno, 100 € 3° anno»)."
+    )
+
+
 def safe_download_filename(name):
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", str(name).strip())
     return cleaned or "confronto_bollette.xlsx"

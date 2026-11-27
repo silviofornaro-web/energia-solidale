@@ -396,6 +396,7 @@
             <label>{{ form.servizi_accessori_iva.label }}{{ form.servizi_accessori_iva }}{{ form.servizi_accessori_iva.errors }}</label>
             <label>{{ form.b_accise_iva.label }}{{ form.b_accise_iva }}{{ form.b_accise_iva.errors }}</label>
             <label>{{ form.bill_offer_expiry.label }}{{ form.bill_offer_expiry }}{{ form.bill_offer_expiry.errors }}</label>
+            <label>{{ form.bill_offer_start.label }}{{ form.bill_offer_start }}{{ form.bill_offer_start.errors }}</label>
             <label>{{ form.bill_early_termination_penalty.label }}{{ form.bill_early_termination_penalty }}{{ form.bill_early_termination_penalty.errors }}</label>
             <label>{{ form.bill_early_termination_note.label }}{{ form.bill_early_termination_note }}{{ form.bill_early_termination_note.errors }}</label>
         </div>
@@ -446,6 +447,7 @@
         <label>{{ form.b_servizi_accessori.label }}{{ form.b_servizi_accessori }}{{ form.b_servizi_accessori.errors }}</label>
         <label>{{ form.servizi_accessori_iva.label }}{{ form.servizi_accessori_iva }}{{ form.servizi_accessori_iva.errors }}</label>
         <label>{{ form.bill_offer_expiry.label }}{{ form.bill_offer_expiry }}{{ form.bill_offer_expiry.errors }}</label>
+        <label>{{ form.bill_offer_start.label }}{{ form.bill_offer_start }}{{ form.bill_offer_start.errors }}</label>
         <label>{{ form.bill_early_termination_penalty.label }}{{ form.bill_early_termination_penalty }}{{ form.bill_early_termination_penalty.errors }}</label>
         <label>{{ form.bill_early_termination_note.label }}{{ form.bill_early_termination_note }}{{ form.bill_early_termination_note.errors }}</label>
         <label>{{ form.b_accise_iva.label }}{{ form.b_accise_iva }}{{ form.b_accise_iva.errors }}</label>
@@ -475,17 +477,26 @@
                 </span>
             </div>
             <div class="bill-contract-item">
-                <span class="bill-contract-label">Scadenza</span>
+                <span class="bill-contract-label">Decorrenza e scadenza</span>
                 <div class="offer-expiry"><strong>Scadenza offerta bolletta:</strong> {{ prepared.calc.bill_offer_expiry_label }}</div>
+                <div class="bill-contract-detail">Inizio offerta: {{ prepared.calc.bill_offer_start_label }}</div>
             </div>
             <div class="bill-contract-item">
-                <span class="bill-contract-label">Risoluzione anticipata</span>
+                <span class="bill-contract-label">Risoluzione anticipata (recesso ipotizzato oggi {{ prepared.calc.bill_early_termination_recess_date_label }})</span>
                 <div><strong>Penale recesso anticipato:</strong> {{ prepared.calc.bill_early_termination_penalty_label }}</div>
+                {% if prepared.calc.bill_early_termination_estimate_message and not prepared.calc.bill_early_termination_needs_confirmation %}
+                    <div class="bill-contract-detail">{{ prepared.calc.bill_early_termination_estimate_message }}</div>
+                {% endif %}
                 {% if prepared.calc.bill_early_termination_note %}
-                    <div class="bill-contract-detail">{{ prepared.calc.bill_early_termination_note }}</div>
+                    <div class="bill-contract-detail">Clausola: {{ prepared.calc.bill_early_termination_note }}</div>
                 {% endif %}
             </div>
         </div>
+        {% if prepared.calc.bill_early_termination_needs_confirmation %}
+            <div class="validity-warning">
+                Da confermare: {{ prepared.calc.bill_early_termination_estimate_message }}
+            </div>
+        {% endif %}
     </div>
 
     <div class="meta">

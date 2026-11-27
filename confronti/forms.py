@@ -314,6 +314,7 @@ class ConfrontoForm(forms.Form):
         "tax_region",
         "b_quota_potenza",
         "b_accise_iva",
+        "bill_offer_start",
         "bill_early_termination_penalty",
         "bill_early_termination_note",
     )
@@ -425,6 +426,12 @@ class ConfrontoForm(forms.Form):
         input_formats=["%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"],
         widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
     )
+    bill_offer_start = forms.DateField(
+        label="Data inizio offerta / attivazione",
+        input_formats=["%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y"],
+        widget=forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+        required=False,
+    )
     bill_early_termination_penalty = ItalianDecimalField(
         label="Penale recesso anticipato (€)",
         min_value=0,
@@ -473,6 +480,7 @@ class ConfrontoForm(forms.Form):
             self.fields["b_servizi_accessori"].label = "Servizi extra"
             self.fields["servizi_accessori_iva"].label = "IVA servizi extra"
             self.fields["bill_offer_expiry"].label = "Scadenza offerta"
+            self.fields["bill_offer_start"].label = "Inizio offerta attuale"
             self.fields["bill_early_termination_penalty"].label = "Penale se cambi fornitore (€)"
             self.fields["bill_early_termination_note"].label = "Condizioni sulla penale"
             self.fields["b_accise_iva"].label = "Accise e IVA totali"
@@ -622,6 +630,7 @@ def session_to_service_data(raw):
     data["bill_start"] = services.parse_date_any(data.get("bill_start"))
     data["bill_end"] = services.parse_date_any(data.get("bill_end"))
     data["bill_offer_expiry"] = services.parse_date_any(data.get("bill_offer_expiry"))
+    data["bill_offer_start"] = services.parse_date_any(data.get("bill_offer_start"))
     for key in [
         "consumo",
         "tax_power_kw",

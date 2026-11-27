@@ -6,6 +6,7 @@ from .utils import (
     normalize_providers,
     normalize_bill_tariff_type,
     bill_tariff_type_label,
+    estimate_early_termination_penalty,
     normalize_tariff_selection_mode,
     tariff_selection_mode_label,
     normalize_accessory_services_vat_label,
@@ -16,6 +17,7 @@ from .utils import (
     comparison_datetime_from_data,
     comparison_datetime_label,
     date_label_it,
+    parse_date_any,
     provider_list_label,
     provider_label,
     format_eur,
@@ -387,8 +389,13 @@ def prepare_comparison(data):
     billing_months = billing_months_from_dates(bill_start, bill_end)
     billing_divisor = billing_divisor_from_months(billing_months)
     tariff_target_month = month_key_from_date(bill_end)
-    early_termination_penalty = float(data.get("bill_early_termination_penalty") or 0.0)
     early_termination_note = clean_text(data.get("bill_early_termination_note"))
+    penalty_estimate = estimate_early_termination_penalty(
+        data.get("bill_offer_start"),
+        early_termination_note,
+        explicit_amount=float(data.get("bill_early_termination_penalty") or 0.0),
+    )
+    early_termination_penalty = penalty_estimate["amount"]
     bill_tariff_type = normalize_bill_tariff_type(data.get("bill_tariff_type"))
 
     indici_rows = load_indici_rows(INDICI_XLSX)
@@ -428,6 +435,13 @@ def prepare_comparison(data):
         "period_label": bill_period_label(bill_start, bill_end),
         "bill_offer_expiry": bill_offer_expiry,
         "bill_offer_expiry_label": date_label_it(bill_offer_expiry),
+        "bill_offer_start": parse_date_any(data.get("bill_offer_start")),
+        "bill_offer_start_label": date_label_it(parse_date_any(data.get("bill_offer_start"))),
+        "bill_early_termination_recess_date_label": date_label_it(penalty_estimate["recess_date"]),
+        "bill_early_termination_estimate_source": penalty_estimate["source"],
+        "bill_early_termination_estimate_message": penalty_estimate["message"],
+        "bill_early_termination_estimate_year": penalty_estimate["year_index"],
+        "bill_early_termination_needs_confirmation": penalty_estimate["source"] == "needs_confirmation",
         "bill_early_termination_penalty": early_termination_penalty,
         "bill_early_termination_penalty_label": (
             format_eur(early_termination_penalty) if early_termination_penalty > 0 else "Nessuna penale indicata"

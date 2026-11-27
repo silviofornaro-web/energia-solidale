@@ -2601,3 +2601,70 @@ class BillContractInfoTests(SimpleTestCase):
             "Consumo totale fatturato: 100 kWh."
         )
         self.assertIn("penale di 300,00 €", parsed.values["bill_early_termination_note"])
+
+    def test_parser_legge_data_inizio_offerta(self):
+        parsed = parse_bill_text(
+            "ENERGIA ELETTRICA. Data attivazione fornitura: 15/06/2025. "
+            "Periodo: 01/11/2026 - 30/11/2026. Consumo totale fatturato: 100 kWh."
+        )
+        self.assertEqual(parsed.values["bill_offer_start"], date(2025, 6, 15))
+
+
+class EarlyTerminationEstimateTests(SimpleTestCase):
+    OGGI = date(2026, 11, 27)
+    CLAUSOLA = "300 € 1° anno, 200 € 2° anno, 100 € 3° anno"
+
+    def _stima(self, start, note="", esplicito=None):
+        return services.estimate_early_termination_penalty(start, note, esplicito, self.OGGI)
+
+    def test_secondo_anno_di_fornitura(self):
+        result = self._stima(date(2025, 6, 15), self.CLAUSOLA)
+        self.assertEqual(result["source"], "computed")
+        self.assertEqual(result["amount"], 200.0)
+        self.assertEqual(result["year_index"], 2)
+        self.assertIn("27/11/2026", result["message"])
+
+    def test_primo_anno_e_anniversario(self):
+        self.assertEqual(self._stima(date(2026, 6, 15), self.CLAUSOLA)["amount"], 300.0)
+        # Il 26/11/2025 l'anniversario e' gia' passato: siamo nel 2° anno;
+        # il 28/11/2025 non ancora: siamo ancora nel 1° anno.
+        self.assertEqual(self._stima(date(2025, 11, 26), self.CLAUSOLA)["amount"], 200.0)
+        self.assertEqual(self._stima(date(2025, 11, 28), self.CLAUSOLA)["amount"], 300.0)
+        self.assertEqual(self._stima(date(2024, 6, 15), self.CLAUSOLA)["amount"], 100.0)
+
+    def test_clausola_con_parole_e_ordine_inverso(self):
+        self.assertEqual(
+            self._stima(date(2025, 9, 1), "300 € nel primo anno, 200 € nel secondo anno")["amount"], 200.0
+        )
+        self.assertEqual(
+            self._stima(date(2025, 9, 1), "1° anno: 300 €, 2° anno: 200 €")["amount"], 200.0
+        )
+
+    def test_importo_manuale_ha_priorita(self):
+        result = self._stima(date(2025, 6, 15), self.CLAUSOLA, 175.0)
+        self.assertEqual(result["source"], "manual")
+        self.assertEqual(result["amount"], 175.0)
+
+    def test_casi_da_confermare(self):
+        for start, note in [
+            (None, self.CLAUSOLA),
+            (date(2025, 6, 15), ""),
+            (date(2022, 1, 1), self.CLAUSOLA),
+            (date(2025, 6, 15), "Nessuna penale di recesso anticipato"),
+        ]:
+            self.assertEqual(self._stima(start, note)["source"], "needs_confirmation")
+
+    def test_calcolo_entra_nel_confronto_e_nellexport(self):
+        data = service_data(
+            bill_offer_start="2025-06-15",
+            bill_early_termination_note=self.CLAUSOLA,
+        )
+        with patch("confronti.services.utils.timezone.localdate", return_value=self.OGGI):
+            prepared = services.prepare_comparison(data)
+            calc = prepared["calc"]
+            self.assertEqual(calc["bill_early_termination_penalty_label"], "€ 200,00")
+            self.assertEqual(calc["bill_early_termination_estimate_year"], 2)
+            self.assertFalse(calc["bill_early_termination_needs_confirmation"])
+            wb = load_workbook(BytesIO(services.build_excel_bytes(data, prepared)), data_only=False)
+        self.assertEqual(wb["Confronto"]["F17"].value, "Penale recesso anticipato: € 200,00")
+        self.assertEqual(wb["Confronto"]["F19"].value, "Data inizio offerta: 15/06/2025")

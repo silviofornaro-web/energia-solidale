@@ -12,7 +12,14 @@ from ..bill_parser import parse_uploaded_bill
 from ..forms import BillUploadForm, ConfrontoForm, CustomerInviteForm, ReportSummaryUploadForm
 from ..models import InviteCode
 from ..roles import is_illumia_operator, is_internal_user
-from ..services import build_reports_summary, current_offer_options_payload, prepare_comparison, provider_label, safe_download_filename
+from ..services import (
+    build_reports_summary,
+    current_offer_options_payload,
+    estimate_early_termination_penalty,
+    prepare_comparison,
+    provider_label,
+    safe_download_filename,
+)
 from .helpers import (
     LAST_ARCHIVED_REPORT_CLIENT_KEY,
     LAST_ARCHIVED_REPORT_KEY,
@@ -147,6 +154,13 @@ def _confronto_page(request, customer_mode=False, operator_mode=False):
                         initial_data = force_customer_mode_data(initial_data)
                     elif operator_mode:
                         initial_data = force_operator_mode_data(initial_data)
+                    if not initial_data.get("bill_early_termination_penalty"):
+                        suggestion = estimate_early_termination_penalty(
+                            initial_data.get("bill_offer_start"),
+                            initial_data.get("bill_early_termination_note"),
+                        )
+                        if suggestion["source"] == "computed":
+                            initial_data["bill_early_termination_penalty"] = suggestion["amount"]
                     form = comparison_form(initial=initial_data, customer_mode=customer_mode, operator_mode=operator_mode)
                     extraction_warnings = parsed.warnings
                     extraction_count = len(parsed.values)
@@ -171,6 +185,7 @@ def _confronto_page(request, customer_mode=False, operator_mode=False):
                 "segmento": request.POST.get("segmento") or "",
                 "commodity": request.POST.get("commodity") or "",
                 "bill_tariff_type": request.POST.get("bill_tariff_type") or "",
+                "bill_offer_start": request.POST.get("bill_offer_start") or "",
                 "bill_early_termination_penalty": request.POST.get("bill_early_termination_penalty") or "0",
                 "bill_early_termination_note": request.POST.get("bill_early_termination_note") or "",
                 "tariff_selection_mode": request.POST.get("tariff_selection_mode") or "",
@@ -207,6 +222,9 @@ def _confronto_page(request, customer_mode=False, operator_mode=False):
                 data["comparison_datetime"] = timezone.localtime().isoformat(timespec="seconds")
                 prepared = prepare_comparison(data)
                 rows = prepared["rows"]
+                # La penale stimata compare nella casella anche dopo il calcolo.
+                form_initial = dict(data)
+                form_initial["bill_early_termination_penalty"] = prepared["calc"]["bill_early_termination_penalty"]
                 session_data = form.session_data()
                 if customer_mode:
                     session_data = force_customer_mode_data(session_data)
@@ -216,7 +234,7 @@ def _confronto_page(request, customer_mode=False, operator_mode=False):
                 request.session[mode["comparison_session_key"]] = session_data
                 archived_report = create_archived_comparison_report(data, prepared, request.user)
                 request.session[mode["archive_report_session_key"]] = archived_report.pk
-                form = comparison_form(initial=data, customer_mode=customer_mode, operator_mode=operator_mode)
+                form = comparison_form(initial=form_initial, customer_mode=customer_mode, operator_mode=operator_mode)
 
     else:
         if not customer_mode:

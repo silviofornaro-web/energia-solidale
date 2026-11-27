@@ -415,6 +415,22 @@ def _extract_offer_expiry(text):
     return None if expiry and expiry.year >= 9999 else expiry
 
 
+def _extract_offer_start(text):
+    collapsed = _collapsed(text)
+    match = _first_match(
+        collapsed,
+        [
+            rf"Data (?:di )?(?:inizio|attivazione|decorrenza) (?:della )?fornitura\s*:?\s*({DATE_PATTERN})",
+            rf"Data (?:di )?(?:inizio|attivazione|decorrenza) (?:dell[' ])?offerta\s*:?\s*({DATE_PATTERN})",
+            rf"(?:Fornitura|Contratto) attiv[ao] (?:dal|il)\s*:?\s*({DATE_PATTERN})",
+            rf"Decorrenza (?:della fornitura|del contratto)\s*:?\s*({DATE_PATTERN})",
+            rf"Inizio fornitura\s*:?\s*({DATE_PATTERN})",
+        ],
+    )
+    start = _parse_date(match.group(1)) if match else None
+    return None if start and start.year >= 9999 else start
+
+
 def _extract_early_termination_clause(text):
     """Riconosce, se presente, la clausola sulle penali di recesso anticipato.
 
@@ -569,6 +585,9 @@ def parse_bill_text(text):
     expiry = _extract_offer_expiry(normalized)
     if expiry:
         values["bill_offer_expiry"] = expiry
+    start_offer = _extract_offer_start(normalized)
+    if start_offer:
+        values["bill_offer_start"] = start_offer
     early_termination_clause = _extract_early_termination_clause(normalized)
     if early_termination_clause:
         values["bill_early_termination_note"] = early_termination_clause

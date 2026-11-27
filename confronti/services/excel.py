@@ -198,6 +198,11 @@ def write_export_metadata(ws, prepared, start_col="F"):
     )
     if calc.get("bill_early_termination_note"):
         ws[f"{start_col}18"] = f"Dettagli penale: {calc['bill_early_termination_note']}"
+    ws[f"{start_col}19"] = f"Data inizio offerta: {calc.get('bill_offer_start_label', 'N.D.')}"
+    ws[f"{start_col}20"] = (
+        f"Calcolo penale (recesso ipotizzato oggi {calc.get('bill_early_termination_recess_date_label', 'N.D.')}): "
+        f"{calc.get('bill_early_termination_estimate_message') or 'Importo inserito manualmente'}"
+    )
 
 
 def apply_accise_formula_conforme(ws, rm, col_letter, servizi_accessori_iva_rate=0.0):
@@ -285,6 +290,7 @@ REPORT_SUMMARY_BASE_COLUMNS = [
     "Consumo",
     "Fornitori confronto",
     "Tipo tariffa bolletta",
+    "Data inizio offerta",
     "Scadenza offerta bolletta",
     "Penale recesso anticipato",
 ]
@@ -372,6 +378,7 @@ def summarize_report_workbook(uploaded_file):
         "Consumo": _summary_clean(ws["C1"].value),
         "Fornitori confronto": _metadata_value(ws, "Fornitori confronto") or "N.D.",
         "Tipo tariffa bolletta": _metadata_value(ws, "Tipo tariffa bolletta") or "N.D.",
+        "Data inizio offerta": _metadata_value(ws, "Data inizio offerta") or "N.D.",
         "Scadenza offerta bolletta": _metadata_value(ws, "Scadenza offerta bolletta") or "N.D.",
         "Penale recesso anticipato": _metadata_value(ws, "Penale recesso anticipato") or "N.D.",
     }
